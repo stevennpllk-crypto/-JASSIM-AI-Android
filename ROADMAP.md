@@ -65,7 +65,7 @@ Build an independent, Arabic-first AI assistant with a polished Android app and 
 - [ ] Optional cloud providers through server-side secrets only; never embed provider keys in APK or browser code.
 - [ ] Health, readiness, latency, token usage, storage, and error dashboards.
 - [ ] Backups, restore drills, database migrations, and retention controls.
-- [ ] Stable HTTPS deployment and documented upgrade/rollback process.
+- [x] Documented restartable Docker deployment, persistent model/database volumes, and readiness checks.\n- [ ] Operate the stack on an always-on host with stable HTTPS, backups, monitoring, and a tested restore/rollback process.
 
 ### Phase 5 — Product polish
 - [ ] Responsive premium Arabic RTL web experience and accessible Android UI.
@@ -77,7 +77,7 @@ Build an independent, Arabic-first AI assistant with a polished Android app and 
 ## Current honest limitations
 
 - The current backend is a single shared Bearer-token service, not a multi-user product.
-- The recommended model baseline is Qwen 2.5 3B. It is stronger than the previous 0.5B default but still a compact model; quality and speed depend on the host GPU/RAM and quantization. Keep-alive applies only while the Ollama runtime itself remains running.
+- The current default model is Qwen 3.5 4B, a compact baseline. Stronger answers require a larger capable model and sufficient host RAM/VRAM; model selection is configurable through `JASSIM_OLLAMA_MODEL`. It is stronger than the previous 0.5B default but still a compact model; quality and speed depend on the host GPU/RAM and quantization. Keep-alive applies only while the Ollama runtime itself remains running.
 - The API currently returns complete JSON responses, not streamed tokens. The default inference budget is now 8K context / 2K output with a 24K-character recent-history cap; actual quality still depends on the selected model and available GPU/RAM. Ollama is configured to keep the model loaded during the lifetime of its process, but there is no automatic restart or always-on host guarantee.
 - Android can list recent conversations, open one, and delete one after confirmation. Rename, archive, search, and export are not implemented yet.
 - The dashboard and Android client do not yet offer full file, image, audio, or tool workflows.
