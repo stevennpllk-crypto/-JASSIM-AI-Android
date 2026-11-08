@@ -96,12 +96,15 @@ public class MainActivity extends Activity {
         buildUi();
         // Always open directly into the chat. Server setup must never block the
         // primary conversation screen.
-        addMessage("JASSIM AI", "أهلاً بك! أنا JASSIM AI. اكتب رسالتك وسأكون جاهزاً لمساعدتك.");
         if (!prefs.getString("endpoint", "").trim().isEmpty()) {
+            // Let the history response populate the screen. Adding a welcome
+            // bubble here would trigger the "do not overwrite user messages"
+            // guard in loadHistory() and silently prevent history restoration.
             checkHealth();
             loadHistory();
         } else {
-            status.setText("● المحادثة جاهزة — بانتظار تهيئة خدمة الذكاء الاصطناعي");
+            addMessage("JASSIM AI", "أهلاً بك! أنا JASSIM AI. اكتب رسالتك وسأكون جاهزاً لمساعدتك.");
+            status.setText("● المحادثة جاهزة — خدمة الذكاء الاصطناعي غير متصلة بعد");
             status.setTextColor(0xFFFFC36B);
         }
     }
@@ -435,13 +438,17 @@ public class MainActivity extends Activity {
         addMessage("أنت", message);
 
         if (baseUrl().isEmpty()) {
-            addMessage("JASSIM AI", "وصلت رسالتك إلى واجهة المحادثة. خدمة النموذج السحابي لم تُهيأ بعد على هذا الإصدار؛ لن أختلق إجابة أو أدّعي أنني اتصلت بالخادم. احتفظ برسالتك، وسيتم تفعيل الردود الذكية عند نشر نقطة الخدمة الآمنة.");
-            status.setText("● وضع المحادثة — خدمة النموذج غير مهيأة");
+            // Keep the user's prompt in the composer without adding a fake
+            // assistant reply or implying that a remote model received it.
+            status.setText("● غير متصل — رسالتك محفوظة في مربع الكتابة");
             status.setTextColor(0xFFFFC36B);
             if (input.getText().toString().trim().isEmpty()) {
                 input.setText(message);
                 input.setSelection(input.length());
             }
+            Toast.makeText(this,
+                "خدمة الذكاء الاصطناعي غير متصلة حالياً. لم تُرسل رسالتك.",
+                Toast.LENGTH_LONG).show();
             return;
         }
 
