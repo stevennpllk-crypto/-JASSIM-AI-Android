@@ -8,6 +8,7 @@ import subprocess
 import sys
 import time
 import threading
+import socket
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 class FakeOllamaHandler(BaseHTTPRequestHandler):
@@ -52,9 +53,18 @@ class FakeOllamaHandler(BaseHTTPRequestHandler):
 class ServerSmokeTest(unittest.TestCase):
     def test_history_budget_preserves_recent_messages(self):
         import importlib.util
-        spec = importlib.util.spec_from_file_location("jassim_server", Path(__file__).with_name("server.py"))
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location("jassim_server_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
         module.HISTORY_CHAR_BUDGET = 10
         kept = module.fit_history_to_budget([
             {"role": "user", "content": "قديم جداً"},
@@ -68,8 +78,13 @@ class ServerSmokeTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             env = os.environ.copy()
             env["JASSIM_DATA_DIR"] = tmp
-            env["JASSIM_PORT"] = "18787"
+            with socket.socket() as port_probe:
+                port_probe.bind(("127.0.0.1", 0))
+                api_port = port_probe.getsockname()[1]
+            env["JASSIM_PORT"] = str(api_port)
             env["JASSIM_HOST"] = "127.0.0.1"
+            FakeOllamaHandler.offline = False
+            FakeOllamaHandler.last_chat_payload = None
             env["JASSIM_API_TOKEN"] = "smoke-test-token"
             fake_ollama = HTTPServer(("127.0.0.1", 0), FakeOllamaHandler)
             fake_thread = threading.Thread(target=fake_ollama.serve_forever, daemon=True)
@@ -81,7 +96,7 @@ class ServerSmokeTest(unittest.TestCase):
             try:
                 for _ in range(40):
                     try:
-                        with urlopen("http://127.0.0.1:18787/health", timeout=1) as r:
+                        with urlopen("http://127.0.0.1:{api_port}/health", timeout=1) as r:
                             health = json.loads(r.read())
                         break
                     except Exception:
@@ -184,6 +199,7 @@ class ServerSmokeTest(unittest.TestCase):
                 with self.assertRaises(Exception):
                     urlopen(Request("http://127.0.0.1:18787/api/conversations?limit=abc", headers=headers), timeout=5)
             finally:
+                FakeOllamaHandler.offline = False
                 proc.terminate()
                 proc.wait(timeout=5)
                 fake_ollama.shutdown()
