@@ -149,8 +149,10 @@ class ServerSmokeTest(unittest.TestCase):
             fake_thread.start()
             env["JASSIM_OLLAMA_URL"] = "http://127.0.0.1:" + str(fake_ollama.server_port)
             env["JASSIM_OLLAMA_MODEL"] = "qwen3.5:4b"
+            server_log_path = Path(tmp) / "server.log"
+            server_log = open(server_log_path, "w")
             proc = subprocess.Popen([sys.executable, str(Path(__file__).with_name("server.py"))],
-                                    env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                    env=env, stdout=server_log, stderr=subprocess.STDOUT)
             try:
                 for _ in range(40):
                     try:
@@ -180,8 +182,12 @@ class ServerSmokeTest(unittest.TestCase):
                 req = Request(api_base + "/api/chat", data=payload,
                               headers={"Content-Type": "application/json", "Authorization": "Bearer smoke-test-token"})
                 # Allow extra scheduler time on busy shared CI runners.
-                with urlopen(req, timeout=20) as r:
-                    result = json.loads(r.read())
+                try:
+                    with urlopen(req, timeout=20) as r:
+                        result = json.loads(r.read())
+                except Exception as exc:
+                    server_log.flush()
+                    self.fail("Chat request failed: " + repr(exc) + "\\n" + server_log_path.read_text(errors="ignore"))
                 self.assertIn("answer", result)
                 self.assertEqual(result["engine"], "ollama")
                 self.assertIn("إجابة اختبار", result["answer"])
@@ -261,6 +267,7 @@ class ServerSmokeTest(unittest.TestCase):
                 FakeOllamaHandler.offline = False
                 proc.terminate()
                 proc.wait(timeout=5)
+                server_log.close()
                 fake_ollama.shutdown()
                 fake_ollama.server_close()
                 fake_thread.join(timeout=2)
