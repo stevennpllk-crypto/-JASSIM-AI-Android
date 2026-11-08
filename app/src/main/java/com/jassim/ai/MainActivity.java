@@ -135,6 +135,8 @@ public class MainActivity extends Activity {
                 connection.setReadTimeout(60000);
                 connection.setDoOutput(true);
                 connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                String apiToken = prefs.getString("api_token", "").trim();
+                if (!apiToken.isEmpty()) connection.setRequestProperty("Authorization", "Bearer " + apiToken);
                 JSONObject body = new JSONObject();
                 body.put("message", message);
                 try (OutputStream out = connection.getOutputStream()) {
@@ -168,19 +170,31 @@ public class MainActivity extends Activity {
     }
 
     private void endpointDialog() {
+        LinearLayout fields = new LinearLayout(this);
+        fields.setOrientation(LinearLayout.VERTICAL);
+        int pad = (int)(18 * getResources().getDisplayMetrics().density);
+        fields.setPadding(pad, pad / 2, pad, 0);
         EditText field = new EditText(this);
         field.setSingleLine(true);
         field.setHint("https://your-server.example");
         field.setText(prefs.getString("endpoint", ""));
+        fields.addView(field);
+        EditText tokenField = new EditText(this);
+        tokenField.setSingleLine(true);
+        tokenField.setHint("رمز الوصول API Token");
+        tokenField.setInputType( android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD );
+        tokenField.setText(prefs.getString("api_token", ""));
+        fields.addView(tokenField);
         new AlertDialog.Builder(this)
-            .setTitle("رابط خادم JASSIM AI")
-            .setMessage("أدخل رابط الخادم دون /api/chat في النهاية.")
-            .setView(field)
+            .setTitle("اتصال خادم JASSIM AI")
+            .setMessage("أدخل رابط الخادم ورمز الوصول الذي ضبطته في إعدادات الخادم.")
+            .setView(fields)
             .setNegativeButton("إلغاء", null)
             .setPositiveButton("حفظ", (d, w) -> {
                 String value = field.getText().toString().trim();
-                prefs.edit().putString("endpoint", value).apply();
-                status.setText(value.isEmpty() ? "● غير متصل بالخادم" : "● تم حفظ رابط الخادم");
+                String token = tokenField.getText().toString().trim();
+                prefs.edit().putString("endpoint", value).putString("api_token", token).apply();
+                status.setText(value.isEmpty() ? "● غير متصل بالخادم" : "● تم حفظ إعدادات الخادم");
             }).show();
     }
 
