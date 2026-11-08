@@ -464,10 +464,16 @@ public class MainActivity extends Activity {
             } catch (Exception e) {
                 final String error = e.getMessage() == null ? "خطأ اتصال" : e.getMessage();
                 runOnUiThread(() -> {
-                    status.setText("● فشل الاتصال");
+                    status.setText("● فشل الاتصال — يمكنك إعادة المحاولة");
                     status.setTextColor(0xFFFF7777);
                     addMessage("JASSIM AI", "تعذر إكمال الطلب: " + error
-                        + "\nتحقق من أن جلسة Colab والنفق ما زالا يعملان.");
+                        + "\nتحقق من أن جلسة Colab والنفق ما زالا يعملان. احتفظت برسالتك لتتمكن من إعادة إرسالها.");
+                    // Restore the failed prompt only when the user has not started
+                    // composing another message while the network request was running.
+                    if (input.getText().toString().trim().isEmpty()) {
+                        input.setText(message);
+                        input.setSelection(input.length());
+                    }
                 });
             } finally {
                 if (connection != null) connection.disconnect();
