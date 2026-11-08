@@ -94,6 +94,21 @@ def list_conversations(limit=50):
         finally:
             db.close()
 
+def delete_conversation(conversation_id):
+    """Delete every message in one validated conversation, without touching other chats."""
+    with DB_LOCK:
+        db = connect_db()
+        try:
+            cursor = db.execute(
+                "DELETE FROM messages WHERE conversation_id=?",
+                (conversation_id,)
+            )
+            db.commit()
+            return cursor.rowcount
+        finally:
+            db.close()
+
+
 def save_message(conversation_id, role, content):
     with DB_LOCK:
         db = connect_db()
@@ -254,6 +269,24 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, {"conversation_id": conversation_id, "messages": history(conversation_id, 100)})
             return
         self.send_json(404, {"error": "not_found"})
+
+    def do_DELETE(self):
+        parsed = urlparse(self.path)
+        match = re.fullmatch(r"/api/conversations/([A-Za-z0-9_.:-]{1,100})", parsed.path)
+        if not match:
+            self.send_json(404, {"error": "not_found"})
+            return
+        if not self.authorized():
+            self.send_json(401, {"error": "unauthorized"})
+            return
+        if self.rate_limited():
+            self.send_json(429, {"error": "rate_limit_exceeded", "retry_after_seconds": 60})
+            return
+        deleted = delete_conversation(match.group(1))
+        if not deleted:
+            self.send_json(404, {"error": "conversation_not_found"})
+            return
+        self.send_json(200, {"deleted": True, "deleted_messages": deleted})
 
     def do_POST(self):
         if urlparse(self.path).path != "/api/chat":
