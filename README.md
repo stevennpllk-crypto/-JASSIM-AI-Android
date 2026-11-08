@@ -2,10 +2,10 @@
 
 JASSIM AI contains an Android client, a small Python API, SQLite conversation storage, and an Arabic RTL web dashboard.
 
-## Components
+## Product direction\n\nSee [ROADMAP.md](ROADMAP.md) for the complete staged plan: streaming chat, user-controlled memory, file knowledge, search/tools, multimodal support, multi-user security, and reliable deployment. These are planned capabilities, not claims that they are already shipped.\n\n## Components
 
 - `app/`: native Android client (Java). Configure the server URL and API token in the app's Settings.
-- `backend/server.py`: Python standard-library API with SQLite persistence, Bearer authentication, input-size checks, and per-IP rate limiting.
+- `backend/server.py`: Python standard-library API (v0.2.0) with SQLite persistence, Bearer authentication, input-size checks, per-IP rate limiting, model readiness checks, and an authenticated model inventory endpoint.
 - `dashboard/`: Arabic RTL dashboard for health checks and chat.
 - `.github/workflows/android.yml`: backend unit-test step and debug APK build.
 - `.github/workflows/pages.yml`: GitHub Pages deployment workflow for the dashboard.
@@ -18,7 +18,7 @@ JASSIM AI contains an Android client, a small Python API, SQLite conversation st
 - Use HTTPS for any server reachable over the internet. The Android app intentionally rejects plain HTTP endpoints.
 - Keep the API bound to `127.0.0.1` behind a trusted HTTPS reverse proxy/tunnel. Do not expose the Python HTTP server directly to the public internet.
 - The shared Bearer token currently represents one shared API identity, not individual user accounts. Rotate it if it was ever exposed. A multi-user login/session system is a separate next step.
-- `/health` is intentionally public and reports configuration, not proof that the Ollama model is responding. A successful chat request is the actual inference test.
+- `/health` is intentionally public and performs a short Ollama/model readiness probe. A successful chat request is still the definitive inference test.
 
 ## Run the API
 
