@@ -109,19 +109,6 @@ def delete_conversation(conversation_id):
             db.close()
 
 
-def delete_conversation(conversation_id):
-    """Delete only the selected conversation; leave all other records untouched."""
-    with DB_LOCK:
-        db = connect_db()
-        try:
-            cursor = db.execute(
-                "DELETE FROM messages WHERE conversation_id=?",
-                (conversation_id,)
-            )
-            db.commit()
-            return cursor.rowcount
-        finally:
-            db.close()
 
 def save_message(conversation_id, role, content):
     with DB_LOCK:
