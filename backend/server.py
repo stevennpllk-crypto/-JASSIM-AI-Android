@@ -109,6 +109,20 @@ def delete_conversation(conversation_id):
             db.close()
 
 
+def delete_conversation(conversation_id):
+    """Delete only the selected conversation; leave all other records untouched."""
+    with DB_LOCK:
+        db = connect_db()
+        try:
+            cursor = db.execute(
+                "DELETE FROM messages WHERE conversation_id=?",
+                (conversation_id,)
+            )
+            db.commit()
+            return cursor.rowcount
+        finally:
+            db.close()
+
 def save_message(conversation_id, role, content):
     with DB_LOCK:
         db = connect_db()
@@ -183,7 +197,7 @@ class Handler(BaseHTTPRequestHandler):
         origin = self.headers.get("Origin")
         if origin and CORS_ORIGIN not in ("", "null") and origin == CORS_ORIGIN:
             self.send_header("Access-Control-Allow-Origin", CORS_ORIGIN)
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
@@ -287,6 +301,31 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(404, {"error": "conversation_not_found"})
             return
         self.send_json(200, {"deleted": True, "deleted_messages": deleted})
+
+    def do_DELETE(self):
+        parsed = urlparse(self.path)
+        if parsed.path != "/api/conversations":
+            self.send_json(404, {"error": "not_found"})
+            return
+        if not self.authorized():
+            self.send_json(401, {"error": "unauthorized"})
+            return
+        if self.rate_limited():
+            self.send_json(429, {"error": "rate_limit_exceeded", "retry_after_seconds": 60})
+            return
+        conversation_id = parse_qs(parsed.query).get("conversation_id", [""])[0]
+        if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", conversation_id):
+            self.send_json(400, {"error": "invalid_conversation_id"})
+            return
+        deleted_count = delete_conversation(conversation_id)
+        if deleted_count == 0:
+            self.send_json(404, {"error": "conversation_not_found"})
+            return
+        self.send_json(200, {
+            "deleted": True,
+            "conversation_id": conversation_id,
+            "deleted_messages": deleted_count
+        })
 
     def do_POST(self):
         if urlparse(self.path).path != "/api/chat":
