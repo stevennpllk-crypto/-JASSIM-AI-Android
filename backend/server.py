@@ -163,7 +163,7 @@ def save_message(conversation_id, role, content):
         finally:
             db.close()
 
-def get_memory("default"):
+def get_memory(conversation_id):
     with DB_LOCK:
         db = connect_db()
         try:
@@ -189,7 +189,7 @@ def set_memory(conversation_id, content):
             db.close()
 
 
-def clear_memory("default"):
+def clear_memory(conversation_id):
     with DB_LOCK:
         db = connect_db()
         try:
