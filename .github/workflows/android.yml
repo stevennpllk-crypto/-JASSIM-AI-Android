@@ -37,6 +37,30 @@ jobs:
       - name: Build debug APK
         run: gradle assembleDebug
 
+      - name: Verify APK package
+        run: |
+          python - <<'PY'
+          import hashlib
+          import zipfile
+          from pathlib import Path
+
+          apk = Path("app/build/outputs/apk/debug/app-debug.apk")
+          if not apk.is_file() or apk.stat().st_size < 10240:
+              raise SystemExit("APK is missing or unexpectedly small")
+          with zipfile.ZipFile(apk) as archive:
+              bad_entry = archive.testzip()
+              if bad_entry:
+                  raise SystemExit(f"Corrupt APK entry: {bad_entry}")
+              names = set(archive.namelist())
+              required = {"AndroidManifest.xml", "classes.dex"}
+              missing = required - names
+              if missing:
+                  raise SystemExit(f"APK is missing required entries: {sorted(missing)}")
+          digest = hashlib.sha256(apk.read_bytes()).hexdigest()
+          print(f"Verified APK: {apk.stat().st_size} bytes")
+          print(f"SHA-256: {digest}")
+          PY
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
