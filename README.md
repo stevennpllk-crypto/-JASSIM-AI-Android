@@ -5,7 +5,7 @@ JASSIM AI contains an Android client, a small Python API, SQLite conversation st
 ## Product direction\n\nSee [ROADMAP.md](ROADMAP.md) for the complete staged plan: streaming chat, user-controlled memory, file knowledge, search/tools, multimodal support, multi-user security, and reliable deployment. These are planned capabilities, not claims that they are already shipped.\n\n## Components
 
 - `app/`: native Android client (Java). Configure the server URL and API token in the app's Settings. The active conversation transcript is restored from the authenticated history endpoint on startup.
-- `backend/server.py`: Python standard-library API (v0.2.0) with SQLite persistence, Bearer authentication, input-size checks, per-IP rate limiting, model readiness checks, and an authenticated model inventory endpoint.
+- `DEPLOYMENT.md`: restartable Docker deployment, persistent model/database volumes, readiness checks, and HTTPS guidance.\n- `backend/server.py`: Python standard-library API (v0.2.0) with SQLite persistence, Bearer authentication, input-size checks, per-IP rate limiting, model readiness checks, and an authenticated model inventory endpoint.
 - `dashboard/`: Arabic RTL dashboard for health checks and chat.
 - `.github/workflows/android.yml`: backend smoke tests, debug APK build, ZIP integrity/required-entry verification, and artifact upload.
 - `.github/workflows/pages.yml`: GitHub Pages deployment workflow for the dashboard.
@@ -60,7 +60,7 @@ curl -X POST "http://127.0.0.1:8787/api/chat" \
 
 Colab can run the API and Ollama for experiments, but its runtime and public tunnel URL are temporary. The notebook downloads the configured `qwen3.5:4b` model, uses an 8K context and a 2K output budget by default, and configures indefinite model residency while the runtime remains active; this does not prevent Colab from disconnecting or reclaiming the machine. After a runtime restart, start Ollama, the API, and the tunnel again, then update the endpoint in the Android app if the tunnel URL changed. Run the notebook's **Watchdog** cell after the startup cells: it restarts crashed Ollama/API/tunnel processes while the Colab runtime remains alive and prints a replacement tunnel URL when needed. It cannot prevent Colab from disconnecting or reclaiming the machine. SQLite data persists only when `JASSIM_DATA_DIR` points to a mounted persistent drive.
 
-A temporary tunnel is not permanent hosting. For always-on access, deploy the API behind a stable HTTPS domain on a machine or host that can run the selected model. Free hosting may sleep, limit CPU/RAM, or lack a GPU.
+For a restartable API + Ollama stack on an always-on Linux host, follow [DEPLOYMENT.md](DEPLOYMENT.md) and use `docker-compose.always-on.yml`.\n\nA temporary tunnel is not permanent hosting. For always-on access, deploy the API behind a stable HTTPS domain on a machine or host that can run the selected model. Free hosting may sleep, limit CPU/RAM, or lack a GPU.
 
 ## Android build
 
