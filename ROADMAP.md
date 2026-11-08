@@ -24,12 +24,13 @@ Build an independent, Arabic-first AI assistant with a polished Android app and 
 - [x] Honest non-AI fallback instead of claiming a generated answer.
 - [x] Public health endpoint with bounded Ollama/model readiness checks.
 - [x] Authenticated installed-model listing endpoint.
+- [x] CI smoke tests for API health, chat persistence, and protected/validated history access.
 - [ ] Automated backend tests against both online and offline Ollama conditions.
 - [ ] Add request IDs, structured logs, and safe error categories.
 
 ### Phase 1 — ChatGPT-like conversation experience
 - [ ] Stream generated text to Android and web clients (SSE) with cancel support.
-- [ ] Load previous conversation history on app startup.
+- [x] Restore the active conversation transcript on Android app startup.
 - [ ] Conversation list, rename, archive, delete, search, and export.
 - [ ] Markdown rendering, code blocks, copy buttons, and syntax highlighting.
 - [ ] Regenerate response, edit-and-resend, stop generation, and retry.
@@ -74,7 +75,8 @@ Build an independent, Arabic-first AI assistant with a polished Android app and 
 - The current backend is a single shared Bearer-token service, not a multi-user product.
 - The current model is a small local Ollama model; its answer quality and speed depend on available hardware.
 - The API currently returns complete JSON responses, not streamed tokens.
-- Conversation history is stored server-side, but the Android client does not yet restore the transcript automatically.
+- Android restores the active conversation transcript, but there is not yet a conversation browser/list.
+- Conversation history is stored server-side and the Android client restores the active conversation transcript; browsing multiple conversations is still planned.
 - The dashboard and Android client do not yet offer full file, image, audio, or tool workflows.
 - Colab and quick tunnels are temporary development infrastructure, not reliable always-on hosting.
 - Free hosting does not guarantee persistent storage, sufficient RAM, or GPU access.
