@@ -17,6 +17,12 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import android.util.Base64;
+import java.security.KeyStore;
+import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.GCMParameterSpec;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -29,6 +35,58 @@ public class MainActivity extends Activity {
     private TextView status;
     private SharedPreferences prefs;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private static final String KEY_ALIAS = "jassim_api_token_v1";
+
+    private SecretKey getOrCreateSecretKey() throws Exception {
+        KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
+        keyStore.load(null);
+        java.security.Key key = keyStore.getKey(KEY_ALIAS, null);
+        if (key instanceof SecretKey) return (SecretKey) key;
+        KeyGenerator generator = KeyGenerator.getInstance(
+            android.security.keystore.KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
+        generator.init(new android.security.keystore.KeyGenParameterSpec.Builder(
+            KEY_ALIAS,
+            android.security.keystore.KeyProperties.PURPOSE_ENCRYPT
+                | android.security.keystore.KeyProperties.PURPOSE_DECRYPT)
+            .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
+            .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
+            .setRandomizedEncryptionRequired(true)
+            .build());
+        return generator.generateKey();
+    }
+
+    private void saveApiToken(String token) throws Exception {
+        if (token == null || token.isEmpty()) {
+            prefs.edit().remove("api_token").remove("api_token_enc").remove("api_token_iv").apply();
+            return;
+        }
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateSecretKey());
+        byte[] encrypted = cipher.doFinal(token.getBytes(StandardCharsets.UTF_8));
+        prefs.edit()
+            .putString("api_token_enc", Base64.encodeToString(encrypted, Base64.NO_WRAP))
+            .putString("api_token_iv", Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP))
+            .remove("api_token")
+            .apply();
+    }
+
+    private String readApiToken() {
+        try {
+            String encrypted = prefs.getString("api_token_enc", "");
+            String iv = prefs.getString("api_token_iv", "");
+            if (encrypted.isEmpty() || iv.isEmpty()) {
+                String legacy = prefs.getString("api_token", "");
+                if (!legacy.isEmpty()) saveApiToken(legacy);
+                return legacy;
+            }
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.DECRYPT_MODE, getOrCreateSecretKey(),
+                new GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP)));
+            return new String(cipher.doFinal(Base64.decode(encrypted, Base64.NO_WRAP)), StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            return "";
+        }
+    }
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -150,7 +208,7 @@ public class MainActivity extends Activity {
         connection.setConnectTimeout(20000);
         connection.setReadTimeout(180000);
         connection.setRequestProperty("Accept", "application/json");
-        String token = prefs.getString("api_token", "").trim();
+        String token = readApiToken().trim();
         if (!token.isEmpty()) connection.setRequestProperty("Authorization", "Bearer " + token);
         return connection;
     }
@@ -274,7 +332,7 @@ public class MainActivity extends Activity {
         tokenField.setHint("رمز الوصول API Token");
         tokenField.setInputType(android.text.InputType.TYPE_CLASS_TEXT
             | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        tokenField.setText(prefs.getString("api_token", ""));
+        tokenField.setText(readApiToken());
         fields.addView(tokenField);
 
         new AlertDialog.Builder(this)
@@ -289,8 +347,17 @@ public class MainActivity extends Activity {
                     Toast.makeText(this, "الحماية مفعّلة: يجب استخدام رابط HTTPS فقط", Toast.LENGTH_LONG).show();
                     return;
                 }
-                prefs.edit().putString("endpoint", value).putString("api_token", token).apply();
-                checkHealth();
+                if (value.isEmpty() || token.isEmpty()) {
+                    Toast.makeText(this, "أدخل رابط الخادم ورمز API معاً", Toast.LENGTH_LONG).show();
+                    return;
+                }
+                try {
+                    saveApiToken(token);
+                    prefs.edit().putString("endpoint", value).apply();
+                    checkHealth();
+                } catch (Exception e) {
+                    Toast.makeText(this, "تعذر حفظ الرمز بأمان على هذا الجهاز", Toast.LENGTH_LONG).show();
+                }
             }).show();
     }
 
