@@ -20,6 +20,21 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Validate Colab notebook JSON and Python cells
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("notebooks/JASSIM_AI_Colab_GPU.ipynb")
+          notebook = json.loads(path.read_text(encoding="utf-8"))
+          for index, cell in enumerate(notebook.get("cells", [])):
+              if cell.get("cell_type") == "code":
+                  source = "".join(cell.get("source", []))
+                  compile(source, f"{path}:cell-{index}", "exec")
+          print(f"Validated {len(notebook.get('cells', []))} notebook cells")
+          PY
+
       - name: Test self-hosted backend
         run: python -m unittest discover -s backend -p 'test_*.py' -v
 
