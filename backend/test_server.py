@@ -85,6 +85,20 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(kept[-1]["role"], "user")
         self.assertLessEqual(sum(len(x["content"]) for x in kept), 10)
 
+    def test_inference_queue_rejects_overload_cleanly(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("jassim_queue_test", Path(__file__).with_name("server.py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        module.INFERENCE_SEMAPHORE.acquire()
+        module.OLLAMA_QUEUE_TIMEOUT = 0.01
+        try:
+            answer, engine = module.generate_answer([])
+            self.assertEqual(engine, "busy")
+            self.assertIn("مشغول", answer)
+        finally:
+            module.INFERENCE_SEMAPHORE.release()
+
     def test_liveness_and_readiness_are_distinct(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = os.environ.copy()
