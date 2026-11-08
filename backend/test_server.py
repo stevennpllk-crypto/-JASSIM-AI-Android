@@ -154,6 +154,11 @@ class ServerSmokeTest(unittest.TestCase):
                     "http://127.0.0.1:18787/api/history?conversation_id=offline", headers=headers)
                 with urlopen(offline_history, timeout=5) as r:
                     self.assertEqual(len(json.loads(r.read())["messages"]), 1)
+                delete_offline = Request(
+                    "http://127.0.0.1:18787/api/conversations?conversation_id=offline",
+                    headers=headers, method="DELETE")
+                with urlopen(delete_offline, timeout=5) as r:
+                    self.assertEqual(json.loads(r.read())["deleted_messages"], 1)
                 FakeOllamaHandler.offline = False
                 with self.assertRaises(Exception):
                     urlopen(Request("http://127.0.0.1:18787/api/conversations?conversation_id=smoke",
