@@ -61,6 +61,39 @@ def history(conversation_id, limit=12):
         finally:
             db.close()
 
+def list_conversations(limit=50):
+    """Return recent conversations without exposing message bodies beyond a short title."""
+    with DB_LOCK:
+        db = connect_db()
+        try:
+            rows = db.execute("""
+                SELECT conversation_id,
+                       COALESCE(
+                           (SELECT content FROM messages first_user
+                            WHERE first_user.conversation_id = grouped.conversation_id
+                              AND first_user.role = 'user'
+                            ORDER BY first_user.id ASC LIMIT 1),
+                           (SELECT content FROM messages first_message
+                            WHERE first_message.conversation_id = grouped.conversation_id
+                            ORDER BY first_message.id ASC LIMIT 1),
+                           'محادثة جديدة'
+                       ) AS title,
+                       MAX(created_at) AS updated_at,
+                       COUNT(*) AS message_count
+                FROM messages grouped
+                GROUP BY conversation_id
+                ORDER BY MAX(id) DESC
+                LIMIT ?
+            """, (limit,)).fetchall()
+            return [{
+                "conversation_id": row[0],
+                "title": row[1][:90],
+                "updated_at": row[2],
+                "message_count": row[3]
+            } for row in rows]
+        finally:
+            db.close()
+
 def save_message(conversation_id, role, content):
     with DB_LOCK:
         db = connect_db()
@@ -110,7 +143,6 @@ def generate_answer(messages):
     try:
         return ask_ollama(messages), "ollama"
     except (urllib.error.URLError, TimeoutError, ValueError, RuntimeError, OSError):
-        # Never echo a user's private message as if it were an AI answer.
         return (
             "محرك الذكاء الاصطناعي غير متاح حالياً. "
             "الخادم استقبل طلبك، لكن لم يتمكن من توليد إجابة من النموذج. "
@@ -186,31 +218,34 @@ class Handler(BaseHTTPRequestHandler):
                 "authentication": "configured" if API_TOKEN else "not-configured"
             })
             return
-        if parsed.path == "/api/models":
+        if parsed.path in ("/api/models", "/api/history", "/api/conversations"):
             if not self.authorized():
                 self.send_json(401, {"error": "unauthorized"})
                 return
             if self.rate_limited():
                 self.send_json(429, {"error": "rate_limit_exceeded", "retry_after_seconds": 60})
                 return
-            request = urllib.request.Request(OLLAMA_URL.rstrip("/") + "/api/tags", method="GET")
-            try:
-                with urllib.request.urlopen(request, timeout=5) as response:
-                    payload = json.loads(response.read().decode("utf-8"))
-                models = [
-                    {"name": item.get("name", ""), "size": item.get("size", 0)}
-                    for item in payload.get("models", []) if isinstance(item, dict)
-                ]
-                self.send_json(200, {"models": models, "active_model": OLLAMA_MODEL})
-            except (urllib.error.URLError, TimeoutError, ValueError, OSError):
-                self.send_json(503, {"error": "model_engine_unavailable"})
-            return
-        if parsed.path == "/api/history":
-            if not self.authorized():
-                self.send_json(401, {"error": "unauthorized"})
+            if parsed.path == "/api/models":
+                request = urllib.request.Request(OLLAMA_URL.rstrip("/") + "/api/tags", method="GET")
+                try:
+                    with urllib.request.urlopen(request, timeout=5) as response:
+                        payload = json.loads(response.read().decode("utf-8"))
+                    models = [
+                        {"name": item.get("name", ""), "size": item.get("size", 0)}
+                        for item in payload.get("models", []) if isinstance(item, dict)
+                    ]
+                    self.send_json(200, {"models": models, "active_model": OLLAMA_MODEL})
+                except (urllib.error.URLError, TimeoutError, ValueError, OSError):
+                    self.send_json(503, {"error": "model_engine_unavailable"})
                 return
-            if self.rate_limited():
-                self.send_json(429, {"error": "rate_limit_exceeded", "retry_after_seconds": 60})
+            if parsed.path == "/api/conversations":
+                raw_limit = parse_qs(parsed.query).get("limit", ["50"])[0]
+                try:
+                    limit = max(1, min(int(raw_limit), 100))
+                except (TypeError, ValueError):
+                    self.send_json(400, {"error": "invalid_limit"})
+                    return
+                self.send_json(200, {"conversations": list_conversations(limit)})
                 return
             conversation_id = parse_qs(parsed.query).get("conversation_id", ["default"])[0]
             if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", conversation_id):
