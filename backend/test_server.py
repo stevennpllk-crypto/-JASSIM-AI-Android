@@ -43,6 +43,20 @@ class FakeOllamaHandler(BaseHTTPRequestHandler):
 
 
 class ServerSmokeTest(unittest.TestCase):
+    def test_history_budget_preserves_recent_messages(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("jassim_server", Path(__file__).with_name("server.py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        module.HISTORY_CHAR_BUDGET = 10
+        kept = module.fit_history_to_budget([
+            {"role": "user", "content": "قديم جداً"},
+            {"role": "assistant", "content": "رد قديم"},
+            {"role": "user", "content": "هذا أحدث سؤال"}
+        ])
+        self.assertEqual(kept[-1]["role"], "user")
+        self.assertLessEqual(sum(len(x["content"]) for x in kept), 10)
+
     def test_server_health_and_chat(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = os.environ.copy()
@@ -93,7 +107,9 @@ class ServerSmokeTest(unittest.TestCase):
                 self.assertEqual(sent["model"], "qwen3.5:4b")
                 self.assertEqual(sent["keep_alive"], "-1")
                 self.assertEqual(sent["options"]["num_ctx"], 8192)
-                self.assertEqual(sent["options"]["num_predict"], 1024)
+                self.assertEqual(sent["options"]["num_predict"], 2048)
+                self.assertEqual(sent["options"]["temperature"], 0.55)
+                self.assertEqual(sent["options"]["top_k"], 40)
                 self.assertEqual(sent["messages"][0]["role"], "system")
                 self.assertIn("اللهجة التونسية", sent["messages"][0]["content"])
                 with self.assertRaises(Exception):
