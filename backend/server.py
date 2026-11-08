@@ -4,6 +4,8 @@ import json
 import os
 import sqlite3
 import threading
+import time
+import re
 import hmac
 import urllib.request
 import urllib.error
@@ -24,6 +26,10 @@ OLLAMA_URL = os.environ.get("JASSIM_OLLAMA_URL", "http://127.0.0.1:11434")
 OLLAMA_MODEL = os.environ.get("JASSIM_OLLAMA_MODEL", "qwen2.5:0.5b")
 MAX_MESSAGE_CHARS = 8000
 DB_LOCK = threading.Lock()
+RATE_LOCK = threading.Lock()
+RATE_BUCKETS = {}
+RATE_LIMIT = int(os.environ.get("JASSIM_RATE_LIMIT_PER_MINUTE", "20"))
+RATE_WINDOW = 60
 SYSTEM_PROMPT = (
     "You are JASSIM AI, a helpful Arabic-first assistant. "
     "Reply naturally in the user's language, including Tunisian Arabic when appropriate. "
@@ -114,18 +120,37 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(raw)
 
     def end_headers(self):
-        self.send_header("Access-Control-Allow-Origin", CORS_ORIGIN)
+        origin = self.headers.get("Origin")
+        if origin and CORS_ORIGIN not in ("", "null") and origin == CORS_ORIGIN:
+            self.send_header("Access-Control-Allow-Origin", CORS_ORIGIN)
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.send_header("Vary", "Origin")
         super().end_headers()
 
     def authorized(self):
         if not API_TOKEN:
-            return True  # Local development mode; set JASSIM_API_TOKEN before public deployment.
+            return False
         supplied = self.headers.get("Authorization", "")
         expected = "Bearer " + API_TOKEN
         return hmac.compare_digest(supplied, expected)
+
+    def rate_limited(self):
+        now = time.time()
+        client = self.client_address[0]
+        with RATE_LOCK:
+            hits = [stamp for stamp in RATE_BUCKETS.get(client, []) if now - stamp < RATE_WINDOW]
+            if len(hits) >= RATE_LIMIT:
+                RATE_BUCKETS[client] = hits
+                return True
+            hits.append(now)
+            RATE_BUCKETS[client] = hits
+            if len(RATE_BUCKETS) > 5000:
+                for key in list(RATE_BUCKETS)[:1000]:
+                    RATE_BUCKETS.pop(key, None)
+            return False
 
     def do_OPTIONS(self):
         self.send_response(204)
@@ -138,7 +163,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, {
                 "ok": True, "service": "JASSIM AI", "version": "0.1.0",
                 "engine": "ollama-configured" if OLLAMA_URL else "not-configured",
-                "storage": "sqlite", "database": str(DB_PATH)
+                "storage": "sqlite", "authentication": "configured" if API_TOKEN else "not-configured"
             })
             return
         if parsed.path == "/api/history":
@@ -155,7 +180,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(404, {"error": "not_found"})
             return
         if not self.authorized():
-            self.send_json(401, {"error": "unauthorized"})
+            self.send_json(503 if not API_TOKEN else 401, {"error": "authentication_not_configured" if not API_TOKEN else "unauthorized"})
+            return
+        if self.rate_limited():
+            self.send_json(429, {"error": "rate_limit_exceeded", "retry_after_seconds": 60})
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -165,6 +193,9 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length).decode("utf-8"))
             message = str(body.get("message", "")).strip()
             conversation_id = str(body.get("conversation_id", "default")).strip()[:100] or "default"
+            if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", conversation_id):
+                self.send_json(400, {"error": "invalid_conversation_id"})
+                return
             if not message:
                 self.send_json(400, {"error": "message_required"})
                 return
