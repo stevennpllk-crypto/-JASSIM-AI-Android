@@ -435,8 +435,6 @@ public class MainActivity extends Activity {
         input.setText("");
         ((InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE))
             .hideSoftInputFromWindow(input.getWindowToken(), 0);
-        addMessage("أنت", message);
-
         if (baseUrl().isEmpty()) {
             // Keep the user's prompt in the composer without adding a fake
             // assistant reply or implying that a remote model received it.
@@ -452,6 +450,7 @@ public class MainActivity extends Activity {
             return;
         }
 
+        addMessage("أنت", message);
         status.setText("● جارٍ إرسال الرسالة إلى JASSIM AI...");
         status.setTextColor(0xFFFFC36B);
         String conversationId = ensureConversationId();
