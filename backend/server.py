@@ -92,16 +92,29 @@ def ask_ollama(messages):
         raise RuntimeError("محرك Ollama لم يُرجع إجابة.")
     return answer
 
+def ollama_status():
+    """Return a bounded, non-sensitive model readiness check."""
+    request = urllib.request.Request(OLLAMA_URL.rstrip("/") + "/api/tags", method="GET")
+    try:
+        with urllib.request.urlopen(request, timeout=2) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        models = payload.get("models", [])
+        names = [item.get("name", "") for item in models if isinstance(item, dict)]
+        ready = any(name == OLLAMA_MODEL or name.startswith(OLLAMA_MODEL + ":") for name in names)
+        return {"reachable": True, "model_ready": ready}
+    except (urllib.error.URLError, TimeoutError, ValueError, OSError):
+        return {"reachable": False, "model_ready": False}
+
+
 def generate_answer(messages):
     try:
         return ask_ollama(messages), "ollama"
-    except (urllib.error.URLError, TimeoutError, ValueError, RuntimeError, OSError) as exc:
-        # Explicit fallback: do not pretend this is an LLM response.
-        last = messages[-1]["content"] if messages else ""
+    except (urllib.error.URLError, TimeoutError, ValueError, RuntimeError, OSError):
+        # Never echo a user's private message as if it were an AI answer.
         return (
-            "خادم JASSIM يعمل ويحفظ المحادثة، لكن محرك النموذج غير متصل حالياً. "
-            "لتفعيل الإجابات الذكية شغّل Ollama على جهاز يدعم النموذج ثم أعد المحاولة. "
-            "رسالتك وصلت: " + last[:500]
+            "محرك الذكاء الاصطناعي غير متاح حالياً. "
+            "الخادم استقبل طلبك، لكن لم يتمكن من توليد إجابة من النموذج. "
+            "تحقق من تشغيل Ollama وتحميل النموذج ثم أعد المحاولة."
         ), "fallback"
 
 class Handler(BaseHTTPRequestHandler):
@@ -160,11 +173,37 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         if parsed.path == "/health":
+            model_state = ollama_status()
             self.send_json(200, {
-                "ok": True, "service": "JASSIM AI", "version": "0.1.0",
-                "engine": "ollama-configured" if OLLAMA_URL else "not-configured",
-                "storage": "sqlite", "authentication": "configured" if API_TOKEN else "not-configured"
+                "ok": True,
+                "service": "JASSIM AI",
+                "version": "0.2.0",
+                "engine": "ollama",
+                "model": OLLAMA_MODEL,
+                "model_ready": model_state["model_ready"],
+                "ollama_reachable": model_state["reachable"],
+                "storage": "sqlite",
+                "authentication": "configured" if API_TOKEN else "not-configured"
             })
+            return
+        if parsed.path == "/api/models":
+            if not self.authorized():
+                self.send_json(401, {"error": "unauthorized"})
+                return
+            if self.rate_limited():
+                self.send_json(429, {"error": "rate_limit_exceeded", "retry_after_seconds": 60})
+                return
+            request = urllib.request.Request(OLLAMA_URL.rstrip("/") + "/api/tags", method="GET")
+            try:
+                with urllib.request.urlopen(request, timeout=5) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                models = [
+                    {"name": item.get("name", ""), "size": item.get("size", 0)}
+                    for item in payload.get("models", []) if isinstance(item, dict)
+                ]
+                self.send_json(200, {"models": models, "active_model": OLLAMA_MODEL})
+            except (urllib.error.URLError, TimeoutError, ValueError, OSError):
+                self.send_json(503, {"error": "model_engine_unavailable"})
             return
         if parsed.path == "/api/history":
             if not self.authorized():
@@ -224,7 +263,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     connect_db().close()
-    print(f"JASSIM AI API listening on http://{HOST}:{PORT}")
+    print(f"JASSIM AI API v0.2.0 listening on http://{HOST}:{PORT}")
     print(f"Persistent database: {DB_PATH}")
     print(f"Ollama model: {OLLAMA_MODEL} ({OLLAMA_URL})")
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
