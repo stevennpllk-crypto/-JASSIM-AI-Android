@@ -18,7 +18,7 @@ JASSIM AI contains an Android client, a small Python API, SQLite conversation st
 - Use HTTPS for any server reachable over the internet. The Android app intentionally rejects plain HTTP endpoints.
 - Keep the API bound to `127.0.0.1` behind a trusted HTTPS reverse proxy/tunnel. Do not expose the Python HTTP server directly to the public internet.
 - The shared Bearer token currently represents one shared API identity, not individual user accounts. Rotate it if it was ever exposed. A multi-user login/session system is a separate next step.
-- `/health` is intentionally public and performs a short Ollama/model readiness probe. A successful chat request is still the definitive inference test.
+- `/health` is a public liveness/diagnostics endpoint. `/ready` returns HTTP 503 unless the token is configured and Ollama can see the configured model. A successful chat request remains the definitive inference test.
 
 ## Run the API
 
