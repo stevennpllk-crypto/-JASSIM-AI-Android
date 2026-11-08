@@ -416,31 +416,28 @@ class Handler(BaseHTTPRequestHandler):
             if len(message) > MAX_MESSAGE_CHARS:
                 self.send_json(413, {"error": "message_too_long", "limit": MAX_MESSAGE_CHARS})
                 return
-            if not INFERENCE_SEMAPHORE.acquire(timeout=OLLAMA_QUEUE_TIMEOUT):
+            save_message(conversation_id, "user", message)
+            context = fit_history_to_budget(history(conversation_id, HISTORY_MESSAGES))
+            answer, engine = generate_answer(context)
+            if engine == "busy":
                 self.send_json(503, {
                     "error": "model_busy",
-                    "message": "محرك الذكاء مشغول حالياً. انتظر قليلاً ثم أعد المحاولة.",
+                    "message": answer,
                     "retry_after_seconds": 5
                 })
                 return
-            try:
-                save_message(conversation_id, "user", message)
-                context = fit_history_to_budget(history(conversation_id, HISTORY_MESSAGES))
-                answer, engine = generate_answer(context)
-                if engine == "ollama":
-                    save_message(conversation_id, "assistant", answer)
-                self.send_json(200, {
-                    "answer": answer, "reply": answer,
-                    "conversation_id": conversation_id, "engine": engine
-                })
-            finally:
-                INFERENCE_SEMAPHORE.release()
+            if engine == "ollama":
+                save_message(conversation_id, "assistant", answer)
+            self.send_json(200, {
+                "answer": answer, "reply": answer,
+                "conversation_id": conversation_id, "engine": engine
+            })
         except (UnicodeDecodeError, json.JSONDecodeError, AttributeError, TypeError, ValueError) as exc:
             self.send_json(400, {"error": "bad_request", "detail": str(exc)})
 
 def main():
     connect_db().close()
-    print(f"JASSIM AI API v0.2.0 listening on http://{HOST}:{PORT}")
+    print(f"JASSIM AI API v0.3.1 listening on http://{HOST}:{PORT}")
     print(f"Persistent database: {DB_PATH}")
     print(f"Ollama model: {OLLAMA_MODEL} ({OLLAMA_URL})")
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
