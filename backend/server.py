@@ -286,24 +286,6 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         parsed = urlparse(self.path)
-        match = re.fullmatch(r"/api/conversations/([A-Za-z0-9_.:-]{1,100})", parsed.path)
-        if not match:
-            self.send_json(404, {"error": "not_found"})
-            return
-        if not self.authorized():
-            self.send_json(401, {"error": "unauthorized"})
-            return
-        if self.rate_limited():
-            self.send_json(429, {"error": "rate_limit_exceeded", "retry_after_seconds": 60})
-            return
-        deleted = delete_conversation(match.group(1))
-        if not deleted:
-            self.send_json(404, {"error": "conversation_not_found"})
-            return
-        self.send_json(200, {"deleted": True, "deleted_messages": deleted})
-
-    def do_DELETE(self):
-        parsed = urlparse(self.path)
         if parsed.path != "/api/conversations":
             self.send_json(404, {"error": "not_found"})
             return
