@@ -17,6 +17,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "jassim.db"
 HOST = os.environ.get("JASSIM_HOST", "127.0.0.1")
 PORT = int(os.environ.get("JASSIM_PORT", "8787"))
+CORS_ORIGIN = os.environ.get("JASSIM_CORS_ORIGIN", "*")
 OLLAMA_URL = os.environ.get("JASSIM_OLLAMA_URL", "http://127.0.0.1:11434")
 OLLAMA_MODEL = os.environ.get("JASSIM_OLLAMA_MODEL", "qwen2.5:0.5b")
 MAX_MESSAGE_CHARS = 8000
@@ -109,6 +110,18 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(raw)
+
+    def end_headers(self):
+        self.send_header("Access-Control-Allow-Origin", CORS_ORIGIN)
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("Vary", "Origin")
+        super().end_headers()
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def do_GET(self):
         parsed = urlparse(self.path)
