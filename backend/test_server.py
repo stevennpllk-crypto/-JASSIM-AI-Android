@@ -7,6 +7,40 @@ from urllib.request import Request, urlopen
 import subprocess
 import sys
 import time
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+class FakeOllamaHandler(BaseHTTPRequestHandler):
+    last_chat_payload = None
+
+    def log_message(self, fmt, *args):
+        pass
+
+    def do_GET(self):
+        if self.path == "/api/tags":
+            payload = {"models": [{"name": "qwen2.5:3b", "size": 1234}]}
+        elif self.path == "/api/ps":
+            payload = {"models": [{"name": "qwen2.5:3b"}]}
+        else:
+            self.send_error(404)
+            return
+        raw = json.dumps(payload).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length", "0"))
+        FakeOllamaHandler.last_chat_payload = json.loads(self.rfile.read(length))
+        raw = json.dumps({"message": {"content": "مرحباً! أنا JASSIM AI، وهذه إجابة اختبار حقيقية من محرك Ollama التجريبي."}}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
 
 class ServerSmokeTest(unittest.TestCase):
     def test_server_health_and_chat(self):
@@ -16,6 +50,11 @@ class ServerSmokeTest(unittest.TestCase):
             env["JASSIM_PORT"] = "18787"
             env["JASSIM_HOST"] = "127.0.0.1"
             env["JASSIM_API_TOKEN"] = "smoke-test-token"
+            fake_ollama = HTTPServer(("127.0.0.1", 0), FakeOllamaHandler)
+            fake_thread = threading.Thread(target=fake_ollama.serve_forever, daemon=True)
+            fake_thread.start()
+            env["JASSIM_OLLAMA_URL"] = "http://127.0.0.1:" + str(fake_ollama.server_port)
+            env["JASSIM_OLLAMA_MODEL"] = "qwen2.5:3b"
             proc = subprocess.Popen([sys.executable, str(Path(__file__).with_name("server.py"))],
                                     env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             try:
@@ -31,6 +70,10 @@ class ServerSmokeTest(unittest.TestCase):
                 self.assertTrue(health["ok"])
                 self.assertIn("model_ready", health)
                 self.assertIsInstance(health["model_ready"], bool)
+                self.assertTrue(health["model_ready"])
+                self.assertTrue(health["model_loaded"])
+                self.assertTrue(health["ollama_reachable"])
+                self.assertGreaterEqual(health["uptime_seconds"], 0)
                 with self.assertRaises(Exception):
                     urlopen(Request("http://127.0.0.1:18787/api/models"), timeout=5)
                 payload = json.dumps({"message": "hello", "conversation_id": "smoke"}).encode()
@@ -43,7 +86,16 @@ class ServerSmokeTest(unittest.TestCase):
                 with urlopen(req, timeout=5) as r:
                     result = json.loads(r.read())
                 self.assertIn("answer", result)
+                self.assertEqual(result["engine"], "ollama")
+                self.assertIn("إجابة اختبار", result["answer"])
                 self.assertEqual(result["conversation_id"], "smoke")
+                sent = FakeOllamaHandler.last_chat_payload
+                self.assertEqual(sent["model"], "qwen2.5:3b")
+                self.assertEqual(sent["keep_alive"], "-1")
+                self.assertEqual(sent["options"]["num_ctx"], 8192)
+                self.assertEqual(sent["options"]["num_predict"], 1024)
+                self.assertEqual(sent["messages"][0]["role"], "system")
+                self.assertIn("اللهجة التونسية", sent["messages"][0]["content"])
                 with self.assertRaises(Exception):
                     urlopen(Request("http://127.0.0.1:18787/api/history?conversation_id=smoke"), timeout=5)
                 with self.assertRaises(Exception):
@@ -89,6 +141,9 @@ class ServerSmokeTest(unittest.TestCase):
             finally:
                 proc.terminate()
                 proc.wait(timeout=5)
+                fake_ollama.shutdown()
+                fake_ollama.server_close()
+                fake_thread.join(timeout=2)
 
 if __name__ == "__main__":
     unittest.main()
