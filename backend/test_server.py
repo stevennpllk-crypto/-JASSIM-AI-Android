@@ -29,6 +29,11 @@ class ServerSmokeTest(unittest.TestCase):
                 else:
                     self.fail("server did not start")
                 self.assertTrue(health["ok"])
+                self.assertIn("model_ready", health)
+                self.assertIsInstance(health["model_ready"], bool)
+                models_denied = Request("http://127.0.0.1:18787/api/models")
+                with self.assertRaises(Exception):
+                    urlopen(models_denied, timeout=5)
                 payload = json.dumps({"message": "hello", "conversation_id": "smoke"}).encode()
                 denied = Request("http://127.0.0.1:18787/api/chat", data=payload,
                                  headers={"Content-Type": "application/json"})
