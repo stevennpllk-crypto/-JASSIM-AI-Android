@@ -45,10 +45,23 @@ class ServerSmokeTest(unittest.TestCase):
                     result = json.loads(r.read())
                 self.assertIn("answer", result)
                 self.assertEqual(result["conversation_id"], "smoke")
+                unauthorized_history = Request("http://127.0.0.1:18787/api/history?conversation_id=smoke")
+                with self.assertRaises(Exception):
+                    urlopen(unauthorized_history, timeout=5)
+
                 history_req = Request("http://127.0.0.1:18787/api/history?conversation_id=smoke", headers={"Authorization": "Bearer smoke-test-token"})
-                with urlopen(history_req) as r:
+                with urlopen(history_req, timeout=5) as r:
                     saved = json.loads(r.read())
                 self.assertEqual(len(saved["messages"]), 2)
+                self.assertEqual(saved["messages"][0]["role"], "user")
+                self.assertEqual(saved["messages"][0]["content"], "hello")
+                self.assertEqual(saved["messages"][1]["role"], "assistant")
+
+                invalid_history = Request(
+                    "http://127.0.0.1:18787/api/history?conversation_id=bad%2Fid",
+                    headers={"Authorization": "Bearer smoke-test-token"})
+                with self.assertRaises(Exception):
+                    urlopen(invalid_history, timeout=5)
             finally:
                 proc.terminate()
                 proc.wait(timeout=5)
