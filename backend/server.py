@@ -37,6 +37,9 @@ RATE_LOCK = threading.Lock()
 RATE_BUCKETS = {}
 RATE_LIMIT = int(os.environ.get("JASSIM_RATE_LIMIT_PER_MINUTE", "20"))
 RATE_WINDOW = 60
+OLLAMA_MAX_CONCURRENT = max(1, min(int(os.environ.get("JASSIM_MAX_CONCURRENT", "1")), 4))
+OLLAMA_QUEUE_TIMEOUT = max(5, min(int(os.environ.get("JASSIM_QUEUE_TIMEOUT", "180")), 600))
+INFERENCE_SEMAPHORE = threading.BoundedSemaphore(OLLAMA_MAX_CONCURRENT)
 SYSTEM_PROMPT = """أنت JASSIM AI، مساعد مستقل عالي الجودة، والعربية لغتك الأساسية.
 مهمتك تقديم إجابات صحيحة ومفيدة، لا مجرد ردود سريعة.
 منهج الإجابة:
@@ -219,17 +222,25 @@ def ollama_status():
 
 
 def generate_answer(messages):
-    try:
-        return ask_ollama(messages), "ollama"
-    except (urllib.error.URLError, TimeoutError, ValueError, RuntimeError, OSError):
+    if not INFERENCE_SEMAPHORE.acquire(timeout=OLLAMA_QUEUE_TIMEOUT):
         return (
-            "محرك الذكاء الاصطناعي غير متاح حالياً. "
-            "الخادم استقبل طلبك، لكن لم يتمكن من توليد إجابة من النموذج. "
-            "تحقق من تشغيل Ollama وتحميل النموذج ثم أعد المحاولة."
-        ), "fallback"
+            "محرك الذكاء الاصطناعي مشغول بطلب آخر. انتظر قليلاً ثم أعد المحاولة؛ "
+            "لم يتم توليد إجابة لهذا الطلب."
+        ), "busy"
+    try:
+        try:
+            return ask_ollama(messages), "ollama"
+        except (urllib.error.URLError, TimeoutError, ValueError, RuntimeError, OSError):
+            return (
+                "محرك الذكاء الاصطناعي غير متاح حالياً. "
+                "الخادم استقبل طلبك، لكن لم يتمكن من توليد إجابة من النموذج. "
+                "تحقق من تشغيل Ollama وتحميل النموذج ثم أعد المحاولة."
+            ), "fallback"
+    finally:
+        INFERENCE_SEMAPHORE.release()
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "JASSIM-AI/0.1"
+    server_version = "JASSIM-AI/0.3.1"
 
     def log_message(self, fmt, *args):
         print("[JASSIM] " + (fmt % args))
@@ -297,7 +308,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, {
                 "ok": True,
                 "service": "JASSIM AI",
-                "version": "0.3.0",
+                "version": "0.3.1",
                 "engine": "ollama",
                 "model": OLLAMA_MODEL,
                 "model_ready": model_state["model_ready"],
