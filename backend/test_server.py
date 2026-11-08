@@ -179,7 +179,8 @@ class ServerSmokeTest(unittest.TestCase):
                     urlopen(denied, timeout=5)
                 req = Request(api_base + "/api/chat", data=payload,
                               headers={"Content-Type": "application/json", "Authorization": "Bearer smoke-test-token"})
-                with urlopen(req, timeout=5) as r:
+                # Allow extra scheduler time on busy shared CI runners.
+                with urlopen(req, timeout=20) as r:
                     result = json.loads(r.read())
                 self.assertIn("answer", result)
                 self.assertEqual(result["engine"], "ollama")
