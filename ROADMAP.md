@@ -59,6 +59,8 @@ Build an independent, Arabic-first AI assistant with a polished Android app and 
 - [x] Configurable Ollama model, context size, output budget, timeout, history window, and model keep-alive.
 - [ ] Configurable local model registry and model selection.
 - [ ] Benchmark Arabic, Tunisian Arabic, reasoning, coding, latency, and memory use.
+- [x] Stronger Arabic/Tunisian system instructions, larger default answer budget, and bounded recent-history context.
+- [x] Colab watchdog that restarts crashed API/model/tunnel processes while the runtime remains alive.
 - [ ] Model-specific context limits and prompt templates.
 - [ ] Optional cloud providers through server-side secrets only; never embed provider keys in APK or browser code.
 - [ ] Health, readiness, latency, token usage, storage, and error dashboards.
@@ -76,10 +78,10 @@ Build an independent, Arabic-first AI assistant with a polished Android app and 
 
 - The current backend is a single shared Bearer-token service, not a multi-user product.
 - The recommended model baseline is Qwen 2.5 3B. It is stronger than the previous 0.5B default but still a compact model; quality and speed depend on the host GPU/RAM and quantization. Keep-alive applies only while the Ollama runtime itself remains running.
-- The API currently returns complete JSON responses, not streamed tokens. Ollama is configured to keep the model loaded during the lifetime of its process, but there is no automatic restart or always-on host guarantee.
+- The API currently returns complete JSON responses, not streamed tokens. The default inference budget is now 8K context / 2K output with a 24K-character recent-history cap; actual quality still depends on the selected model and available GPU/RAM. Ollama is configured to keep the model loaded during the lifetime of its process, but there is no automatic restart or always-on host guarantee.
 - Android can list recent conversations, open one, and delete one after confirmation. Rename, archive, search, and export are not implemented yet.
 - The dashboard and Android client do not yet offer full file, image, audio, or tool workflows.
-- Colab and quick tunnels are temporary development infrastructure, not reliable always-on hosting.
+- Colab watchdog recovery can restart crashed processes only while the runtime is alive. Colab and quick tunnels remain temporary development infrastructure, not reliable always-on hosting.
 - Free hosting does not guarantee persistent storage, sufficient RAM, or GPU access.
 
 ## Definition of done
