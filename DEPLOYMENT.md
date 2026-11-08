@@ -13,8 +13,12 @@ This deployment runs the API and Ollama together on an always-on Linux host (VPS
 ## Requirements
 
 - An always-on Linux host with Docker Engine and Docker Compose.
-- Enough RAM/VRAM for the selected model. The default `qwen3.5:4b` is a compact baseline, not a frontier model. Larger models may improve reasoning and coding but need more memory and may be slower.
+- Enough RAM/VRAM for the selected model. The default `qwen3.5:4b` is the lighter compatibility choice. For stronger reasoning and coding, set `JASSIM_OLLAMA_MODEL=qwen3.5:9b` on a host with enough memory; the quantized model download is about 6.6 GB, before runtime/context overhead. If the host struggles, return to 4B.
 - CPU-only operation is supported but can be much slower. For NVIDIA GPU acceleration, install the NVIDIA Container Toolkit and use the GPU override.
+
+## Model quality
+
+The Colab notebook automatically selects Qwen3.5 9B when it detects an NVIDIA GPU and falls back to 4B otherwise. On a permanent host, choose deliberately in `.env`: 9B for better capability when memory permits, 4B for lower resource use. JASSIM allows up to 3072 output tokens by default and serializes generations to reduce GPU memory spikes. This improves answer depth and service stability, but does not replace evaluation on Arabic/Tunisian prompts.
 
 ## First start
 
@@ -53,7 +57,7 @@ This deployment runs the API and Ollama together on an always-on Linux host (VPS
 - SQLite is stored in `jassim-data`; model weights are stored in `ollama-models`.
 - Back up the database volume before upgrades. Find the exact volume name with `docker volume ls`; Compose may prefix it with the project name.
 - Docker starts services again after a host reboot. If model download or API startup failed, inspect logs and run `docker compose ... up -d` again.
-- A health check reports an unhealthy service. Docker's restart policy restarts crashed processes, but does not automatically restart a process that remains alive while unhealthy. Monitor `/ready` and alert/restart on sustained failures.
+- A health check reports an unhealthy service. Docker's restart policy restarts crashed processes, but does not automatically restart a process that remains alive while unhealthy. Monitor `/ready` externally and alert/restart on sustained failures; test backup restoration periodically.
 
 ## Honest limits
 
