@@ -142,6 +142,9 @@ public class MainActivity extends Activity {
 
     private HttpURLConnection openConnection(String path, String method) throws Exception {
         URL url = new URL(baseUrl() + path);
+        if (!"https".equalsIgnoreCase(url.getProtocol()) || url.getHost().isEmpty()) {
+            throw new IOException("الاتصال الآمن HTTPS فقط مسموح به");
+        }
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
         connection.setRequestMethod(method);
         connection.setConnectTimeout(20000);
@@ -276,14 +279,14 @@ public class MainActivity extends Activity {
 
         new AlertDialog.Builder(this)
             .setTitle("اتصال خادم JASSIM AI")
-            .setMessage("أدخل رابط HTTPS الظاهر في Colab ورمز API الخاص بالجلسة. لا تشارك الرمز مع أحد.")
+            .setMessage("أدخل رابط HTTPS ورمز API. لا تستخدم روابط HTTP ولا تشارك الرمز مع أحد.")
             .setView(fields)
             .setNegativeButton("إلغاء", null)
             .setPositiveButton("حفظ وفحص", (d, w) -> {
                 String value = field.getText().toString().trim();
                 String token = tokenField.getText().toString().trim();
-                if (!value.isEmpty() && !(value.startsWith("https://") || value.startsWith("http://"))) {
-                    Toast.makeText(this, "يجب أن يبدأ الرابط بـ https://", Toast.LENGTH_LONG).show();
+                if (!value.isEmpty() && !value.startsWith("https://")) {
+                    Toast.makeText(this, "الحماية مفعّلة: يجب استخدام رابط HTTPS فقط", Toast.LENGTH_LONG).show();
                     return;
                 }
                 prefs.edit().putString("endpoint", value).putString("api_token", token).apply();
