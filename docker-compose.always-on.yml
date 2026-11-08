@@ -1,0 +1,62 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: jassim-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+
+  ollama-model-init:
+    image: ollama/ollama:latest
+    container_name: jassim-model-init
+    restart: "no"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      JASSIM_OLLAMA_MODEL: ${JASSIM_OLLAMA_MODEL:-qwen3.5:4b}
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["ollama pull \"$${JASSIM_OLLAMA_MODEL}\""]
+
+  jassim-api:
+    build: .
+    container_name: jassim-ai-api
+    restart: unless-stopped
+    depends_on:
+      ollama-model-init:
+        condition: service_completed_successfully
+    environment:
+      JASSIM_HOST: 0.0.0.0
+      JASSIM_PORT: 8787
+      JASSIM_DATA_DIR: /data
+      JASSIM_API_TOKEN: ${JASSIM_API_TOKEN:?Set JASSIM_API_TOKEN in .env}
+      JASSIM_CORS_ORIGIN: ${JASSIM_CORS_ORIGIN:-}
+      JASSIM_OLLAMA_URL: http://ollama:11434
+      JASSIM_OLLAMA_MODEL: ${JASSIM_OLLAMA_MODEL:-qwen3.5:4b}
+      JASSIM_OLLAMA_KEEP_ALIVE: ${JASSIM_OLLAMA_KEEP_ALIVE:--1}
+      JASSIM_NUM_CTX: ${JASSIM_NUM_CTX:-8192}
+      JASSIM_NUM_PREDICT: ${JASSIM_NUM_PREDICT:-2048}
+      JASSIM_REQUEST_TIMEOUT: ${JASSIM_REQUEST_TIMEOUT:-300}
+      JASSIM_HISTORY_MESSAGES: ${JASSIM_HISTORY_MESSAGES:-20}
+      JASSIM_HISTORY_CHAR_BUDGET: ${JASSIM_HISTORY_CHAR_BUDGET:-24000}
+    ports:
+      - "127.0.0.1:${JASSIM_PORT:-8787}:8787"
+    volumes:
+      - jassim-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/ready', timeout=5)"]
+      interval: 30s
+      timeout: 8s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  ollama-models:
+  jassim-data:
