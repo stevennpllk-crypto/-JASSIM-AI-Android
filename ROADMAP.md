@@ -60,7 +60,9 @@ Build an independent, Arabic-first AI assistant with a polished Android app and 
 - [x] Configurable Ollama model, context size, output budget, timeout, history window, and model keep-alive.
 - [ ] Configurable local model registry and model selection.
 - [ ] Benchmark Arabic, Tunisian Arabic, reasoning, coding, latency, and memory use.
-- [x] Stronger Arabic/Tunisian system instructions, larger default answer budget, and bounded recent-history context.
+- [x] Stronger Arabic/Tunisian system instructions, larger 3072-token answer budget, and bounded 32K-character recent-history context.
+- [x] Colab selects Qwen3.5 9B when an NVIDIA GPU is detected, with a 4B low-resource fallback.
+- [x] Serialize model inference by default with a bounded queue to reduce GPU memory spikes under concurrent requests.
 - [x] Colab watchdog that restarts crashed API/model/tunnel processes while the runtime remains alive.
 - [ ] Model-specific context limits and prompt templates.
 - [ ] Optional cloud providers through server-side secrets only; never embed provider keys in APK or browser code.
@@ -80,7 +82,7 @@ Build an independent, Arabic-first AI assistant with a polished Android app and 
 
 - The current backend is a single shared Bearer-token service, not a multi-user product.
 - The self-hosted API default is Qwen 3.5 4B. The Colab GPU notebook selects Qwen 3.5 9B when it detects an NVIDIA GPU and falls back to 4B otherwise. Stronger answers require a larger capable model and sufficient host RAM/VRAM; model selection is configurable through `JASSIM_OLLAMA_MODEL`. Quality and speed depend on host memory and quantization. Keep-alive applies only while Ollama itself remains running.
-- The API currently returns complete JSON responses, not streamed tokens. The default inference budget is now 8K context / 2K output with a 24K-character recent-history cap; actual quality still depends on the selected model and available GPU/RAM. Ollama keep-alive holds the model in memory while the process runs. Colab Watchdog and Docker restart policies recover crashed processes, but neither can keep an interrupted Colab session or suspended host alive.
+- The API currently returns complete JSON responses, not streamed tokens. The default inference budget is now 8K context / 3K output with a 32K-character recent-history cap; actual quality still depends on the selected model and available GPU/RAM. Ollama keep-alive holds the model in memory while the process runs. Colab Watchdog and Docker restart policies recover crashed processes, but neither can keep an interrupted Colab session or suspended host alive.
 - Android can list recent conversations, open one, and delete one after confirmation. Rename, archive, search, and export are not implemented yet.
 - The dashboard and Android client do not yet offer full file, image, audio, or tool workflows.
 - Colab watchdog recovery can restart crashed processes only while the runtime is alive. The Docker deployment can restart crashed services on an always-on host; Colab and Quick Tunnels remain temporary.
