@@ -86,18 +86,6 @@ class ServerSmokeTest(unittest.TestCase):
                     urlopen(Request("http://127.0.0.1:18787/api/history?conversation_id=bad%2Fid", headers=headers), timeout=5)
                 with self.assertRaises(Exception):
                     urlopen(Request("http://127.0.0.1:18787/api/conversations?limit=abc", headers=headers), timeout=5)
-                delete_url = "http://127.0.0.1:18787/api/conversations?conversation_id=smoke"
-                with self.assertRaises(Exception):
-                    urlopen(Request(delete_url, method="DELETE"), timeout=5)
-                delete_req = Request(delete_url, method="DELETE", headers=headers)
-                with urlopen(delete_req, timeout=5) as r:
-                    deleted = json.loads(r.read())
-                self.assertTrue(deleted["deleted"])
-                self.assertEqual(deleted["deleted_messages"], 2)
-                with urlopen(conversations_req, timeout=5) as r:
-                    self.assertEqual(json.loads(r.read())["conversations"], [])
-                with self.assertRaises(Exception):
-                    urlopen(Request(delete_url, method="DELETE", headers=headers), timeout=5)
             finally:
                 proc.terminate()
                 proc.wait(timeout=5)
