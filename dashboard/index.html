@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#090d18">
+  <meta name="description" content="JASSIM AI Cloud — لوحة إدارة الذكاء الاصطناعي">
+  <title>JASSIM AI CLOUD</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div class="ambient a1"></div><div class="ambient a2"></div>
+  <aside class="sidebar">
+    <a class="brand" href="#"><span class="brand-mark">J</span><span><b>JASSIM AI</b><small>CLOUD PLATFORM</small></span></a>
+    <div class="nav-label">مساحة العمل</div>
+    <button class="nav active" data-view="overview"><i>◈</i> نظرة عامة</button>
+    <button class="nav" data-view="chat"><i>✳</i> مركز المحادثة</button>
+    <button class="nav" data-view="memory"><i>▤</i> الذاكرة والسجل</button>
+    <button class="nav" data-view="systems"><i>⌘</i> الخادم والمحركات</button>
+    <div class="side-bottom"><span class="live-dot"></span><span id="sideStatus">بانتظار ربط الخادم</span><small>الإصدار 0.1 · لوحة تجريبية</small></div>
+  </aside>
+  <main class="main">
+    <header class="topbar"><div><div class="eyebrow">مركز قيادة الذكاء الاصطناعي</div><h1 id="pageTitle">نظرة عامة</h1></div><div class="top-actions"><span class="pill"><span class="live-dot"></span><span id="connectionLabel">غير متصل</span></span><button class="icon-btn" id="settingsBtn" title="إعداد الاتصال">⚙</button></div></header>
+    <section class="view active" id="overview">
+      <div class="hero"><div class="hero-copy"><span class="tag">YOUR PRIVATE AI WORKSPACE</span><h2>مرحباً بك في <em>JASSIM AI</em></h2><p>مركز واحد لإدارة العقل الاصطناعي والذاكرة والخادم. اربط خادمك لعرض البيانات الحقيقية والبدء بالمحادثة.</p><div class="hero-actions"><button class="primary" data-open="chat">ابدأ المحادثة <span>←</span></button><button class="secondary" id="heroConnect">ربط الخادم</button></div></div><div class="orb-wrap"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="orb"><span>J</span></div><div class="orbit-node node-one"></div><div class="orbit-node node-two"></div></div></div>
+      <div class="section-head"><div><h3>حالة المنظومة</h3><p>معلومات مباشرة عند الاتصال بالخادم</p></div><button class="text-btn" id="refreshBtn">↻ تحديث الحالة</button></div>
+      <div class="stats"><article class="stat"><span class="stat-icon purple">◈</span><span class="stat-name">حالة API</span><strong id="apiStat">غير متصل</strong><small id="apiDetail">لم يتم إعداد الرابط</small></article><article class="stat"><span class="stat-icon blue">✳</span><span class="stat-name">محرك الذكاء</span><strong id="engineStat">غير معروف</strong><small id="engineDetail">بانتظار الخادم</small></article><article class="stat"><span class="stat-icon green">▤</span><span class="stat-name">التخزين</span><strong id="storageStat">—</strong><small>حالة قاعدة البيانات</small></article><article class="stat"><span class="stat-icon orange">⌁</span><span class="stat-name">آخر فحص</span><strong id="checkedStat">—</strong><small>توقيت محلي</small></article></div>
+      <div class="bottom-grid"><article class="panel"><div class="panel-head"><div><h3>ابدأ من هنا</h3><p>خطوات إعداد المنصة</p></div><span class="panel-symbol">✦</span></div><div class="steps"><div><b>01</b><span><strong>اربط خادم API</strong><small>أدخل عنوان الخادم الذي تملكه.</small></span><span class="step-state" id="step1">●</span></div><div><b>02</b><span><strong>تحقق من محرك الذكاء</strong><small>تأكد أن نموذج اللغة يعمل فعلياً.</small></span><span class="step-state">○</span></div><div><b>03</b><span><strong>اربط تطبيق Android</strong><small>استخدم نفس عنوان API في التطبيق.</small></span><span class="step-state">○</span></div></div></article><article class="panel notice"><div class="panel-head"><div><h3>ملاحظة تشغيل</h3><p>شفافية حالة النظام</p></div><span class="panel-symbol">ⓘ</span></div><p>هذه الواجهة لا تدّعي أن الخادم أو النموذج يعملان قبل التحقق منهما. حالة المحرك تُقرأ من ردود API، أما موارد CPU وRAM فتحتاج نقطة مراقبة مخصصة.</p><div class="notice-foot">خصوصيتك أولاً · لا تضع مفاتيح سرية في رابط عام.</div></article></div>
+    </section>
+    <section class="view" id="chat"><div class="chat-layout"><div class="panel chat-panel"><div class="panel-head"><div><h3>محادثة JASSIM</h3><p>تُرسل الرسائل إلى خادمك المرتبط</p></div><button class="text-btn" id="clearChat">محادثة جديدة</button></div><div class="chat-messages" id="messages"><div class="welcome"><div class="welcome-icon">✳</div><b>أهلاً، أنا JASSIM AI</b><p>اربط الخادم من الإعدادات ثم ابدأ المحادثة.</p></div></div><form id="chatForm" class="composer"><textarea id="chatInput" rows="1" placeholder="اكتب رسالتك هنا..." maxlength="8000"></textarea><button class="send-btn" type="submit">إرسال ↑</button></form></div><aside class="panel chat-info"><h3>معلومات الجلسة</h3><p>المحادثة الحالية</p><code id="conversationId">default</code><hr><p>حالة الاتصال</p><strong id="chatConnection">غير متصل</strong><p class="hint">يتم حفظ السجل على الخادم إذا كانت واجهة API تدعم ذلك.</p></aside></div></section>
+    <section class="view" id="memory"><div class="panel empty-panel"><div class="empty-icon">▤</div><h3>الذاكرة والسجل</h3><p>واجهة سجل المحادثات قيد التجهيز. الخادم الحالي يحفظ الرسائل في SQLite ويوفر مسار قراءة السجل.</p><button class="secondary" id="loadHistory">تحميل سجل المحادثة الحالية</button><pre id="historyOutput" class="history-output">لا توجد بيانات محمّلة.</pre></div></section>
+    <section class="view" id="systems"><div class="system-grid"><article class="panel"><h3>اتصال الخادم</h3><p>عنوان API الأساسي</p><div class="server-url" id="serverUrlText">لم يتم الإعداد</div><button class="primary" id="systemSettings">إعداد الاتصال</button></article><article class="panel"><h3>محرك النموذج</h3><p>تُعرض حالة المحرك حسب استجابة الخادم، ولا يتم افتراض توفر GPU.</p><strong id="systemEngine">غير معروف</strong></article><article class="panel"><h3>التخزين</h3><p>قاعدة بيانات المحادثات</p><strong id="systemStorage">غير معروف</strong></article><article class="panel"><h3>أمان الاتصال</h3><p>استخدم HTTPS عند الاتصال عبر الإنترنت، ولا تكشف الخادم دون مصادقة وحدود استخدام.</p><span class="tag warning">يتطلب إعداداً قبل النشر العام</span></article></div></section>
+    <footer>JASSIM AI CLOUD <span>واجهة أولية قابلة للتطوير · لا تمثل حالة تشغيل فعلية دون اتصال</span></footer>
+  </main>
+  <dialog id="settingsDialog"><form method="dialog" id="settingsForm"><div class="dialog-head"><div><span class="tag">SERVER CONNECTION</span><h2>إعداد اتصال الخادم</h2></div><button class="icon-btn" value="cancel">×</button></div><label for="endpoint">عنوان API الأساسي</label><input id="endpoint" type="url" placeholder="https://your-server.example" autocomplete="url"><small>أدخل العنوان دون /api/chat. مثال محلي: http://127.0.0.1:8787</small><div class="dialog-actions"><button class="secondary" value="cancel">إلغاء</button><button class="primary" id="saveEndpoint" value="default">حفظ وفحص الاتصال</button></div></form></dialog>
+  <div class="toast" id="toast" role="status"></div>
+  <script src="./app.js"></script>
+</body></html>
