@@ -85,6 +85,26 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(kept[-1]["role"], "user")
         self.assertLessEqual(sum(len(x["content"]) for x in kept), 10)
 
+    def test_history_budget_preserves_start_of_long_current_prompt(self):
+        import importlib.util
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location("jassim_prompt_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+        module.HISTORY_CHAR_BUDGET = 5
+        kept = module.fit_history_to_budget([
+            {"role": "user", "content": "START-question-tail"}
+        ])
+        self.assertEqual(kept, [{"role": "user", "content": "START"}])
+
     def test_inference_queue_rejects_overload_cleanly(self):
         import importlib.util
         spec = importlib.util.spec_from_file_location("jassim_queue_test", Path(__file__).with_name("server.py"))
