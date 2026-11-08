@@ -81,6 +81,7 @@ class ServerSmokeTest(unittest.TestCase):
             with socket.socket() as port_probe:
                 port_probe.bind(("127.0.0.1", 0))
                 api_port = port_probe.getsockname()[1]
+            api_base = "http://127.0.0.1:" + str(api_port)
             env["JASSIM_PORT"] = str(api_port)
             env["JASSIM_HOST"] = "127.0.0.1"
             FakeOllamaHandler.offline = False
@@ -96,7 +97,7 @@ class ServerSmokeTest(unittest.TestCase):
             try:
                 for _ in range(40):
                     try:
-                        with urlopen("http://127.0.0.1:{api_port}/health", timeout=1) as r:
+                        with urlopen(api_base + "/health", timeout=1) as r:
                             health = json.loads(r.read())
                         break
                     except Exception:
@@ -110,16 +111,16 @@ class ServerSmokeTest(unittest.TestCase):
                 self.assertTrue(health["model_loaded"])
                 self.assertTrue(health["ollama_reachable"])
                 self.assertGreaterEqual(health["uptime_seconds"], 0)
-                with urlopen("http://127.0.0.1:18787/ready", timeout=5) as r:
+                with urlopen(api_base + "/ready", timeout=5) as r:
                     self.assertTrue(json.loads(r.read())["ready"])
                 with self.assertRaises(Exception):
-                    urlopen(Request("http://127.0.0.1:18787/api/models"), timeout=5)
+                    urlopen(Request(api_base + "/api/models"), timeout=5)
                 payload = json.dumps({"message": "hello", "conversation_id": "smoke"}).encode()
-                denied = Request("http://127.0.0.1:18787/api/chat", data=payload,
+                denied = Request(api_base + "/api/chat", data=payload,
                                  headers={"Content-Type": "application/json"})
                 with self.assertRaises(Exception):
                     urlopen(denied, timeout=5)
-                req = Request("http://127.0.0.1:18787/api/chat", data=payload,
+                req = Request(api_base + "/api/chat", data=payload,
                               headers={"Content-Type": "application/json", "Authorization": "Bearer smoke-test-token"})
                 with urlopen(req, timeout=5) as r:
                     result = json.loads(r.read())
@@ -137,18 +138,18 @@ class ServerSmokeTest(unittest.TestCase):
                 self.assertEqual(sent["messages"][0]["role"], "system")
                 self.assertIn("اللهجة التونسية", sent["messages"][0]["content"])
                 with self.assertRaises(Exception):
-                    urlopen(Request("http://127.0.0.1:18787/api/history?conversation_id=smoke"), timeout=5)
+                    urlopen(Request(api_base + "/api/history?conversation_id=smoke"), timeout=5)
                 with self.assertRaises(Exception):
-                    urlopen(Request("http://127.0.0.1:18787/api/conversations"), timeout=5)
+                    urlopen(Request(api_base + "/api/conversations"), timeout=5)
                 headers = {"Authorization": "Bearer smoke-test-token"}
-                history_req = Request("http://127.0.0.1:18787/api/history?conversation_id=smoke", headers=headers)
+                history_req = Request(api_base + "/api/history?conversation_id=smoke", headers=headers)
                 with urlopen(history_req, timeout=5) as r:
                     saved = json.loads(r.read())
                 self.assertEqual(len(saved["messages"]), 2)
                 self.assertEqual(saved["messages"][0]["role"], "user")
                 self.assertEqual(saved["messages"][0]["content"], "hello")
                 self.assertEqual(saved["messages"][1]["role"], "assistant")
-                conversations_req = Request("http://127.0.0.1:18787/api/conversations", headers=headers)
+                conversations_req = Request(api_base + "/api/conversations", headers=headers)
                 with urlopen(conversations_req, timeout=5) as r:
                     conversations = json.loads(r.read())["conversations"]
                 self.assertEqual(len(conversations), 1)
@@ -157,34 +158,34 @@ class ServerSmokeTest(unittest.TestCase):
                 self.assertEqual(conversations[0]["message_count"], 2)
                 FakeOllamaHandler.offline = True
                 with self.assertRaises(Exception):
-                    urlopen("http://127.0.0.1:18787/ready", timeout=5)
+                    urlopen(api_base + "/ready", timeout=5)
                 offline_payload = json.dumps({"message": "اختبار انقطاع المحرك", "conversation_id": "offline"}).encode()
                 offline_req = Request(
-                    "http://127.0.0.1:18787/api/chat", data=offline_payload,
+                    api_base + "/api/chat", data=offline_payload,
                     headers={"Content-Type": "application/json", "Authorization": "Bearer smoke-test-token"})
                 with urlopen(offline_req, timeout=5) as r:
                     offline_result = json.loads(r.read())
                 self.assertEqual(offline_result["engine"], "fallback")
                 offline_history = Request(
-                    "http://127.0.0.1:18787/api/history?conversation_id=offline", headers=headers)
+                    api_base + "/api/history?conversation_id=offline", headers=headers)
                 with urlopen(offline_history, timeout=5) as r:
                     self.assertEqual(len(json.loads(r.read())["messages"]), 1)
                 delete_offline = Request(
-                    "http://127.0.0.1:18787/api/conversations?conversation_id=offline",
+                    api_base + "/api/conversations?conversation_id=offline",
                     headers=headers, method="DELETE")
                 with urlopen(delete_offline, timeout=5) as r:
                     self.assertEqual(json.loads(r.read())["deleted_messages"], 1)
                 FakeOllamaHandler.offline = False
                 with self.assertRaises(Exception):
-                    urlopen(Request("http://127.0.0.1:18787/api/conversations?conversation_id=smoke",
+                    urlopen(Request(api_base + "/api/conversations?conversation_id=smoke",
                                     method="DELETE"), timeout=5)
                 invalid_delete = Request(
-                    "http://127.0.0.1:18787/api/conversations?conversation_id=bad%2Fid",
+                    api_base + "/api/conversations?conversation_id=bad%2Fid",
                     headers=headers, method="DELETE")
                 with self.assertRaises(Exception):
                     urlopen(invalid_delete, timeout=5)
                 delete_req = Request(
-                    "http://127.0.0.1:18787/api/conversations?conversation_id=smoke",
+                    api_base + "/api/conversations?conversation_id=smoke",
                     headers=headers, method="DELETE")
                 with urlopen(delete_req, timeout=5) as r:
                     deleted = json.loads(r.read())
@@ -195,9 +196,9 @@ class ServerSmokeTest(unittest.TestCase):
                 with self.assertRaises(Exception):
                     urlopen(delete_req, timeout=5)
                 with self.assertRaises(Exception):
-                    urlopen(Request("http://127.0.0.1:18787/api/history?conversation_id=bad%2Fid", headers=headers), timeout=5)
+                    urlopen(Request(api_base + "/api/history?conversation_id=bad%2Fid", headers=headers), timeout=5)
                 with self.assertRaises(Exception):
-                    urlopen(Request("http://127.0.0.1:18787/api/conversations?limit=abc", headers=headers), timeout=5)
+                    urlopen(Request(api_base + "/api/conversations?limit=abc", headers=headers), timeout=5)
             finally:
                 FakeOllamaHandler.offline = False
                 proc.terminate()
