@@ -488,7 +488,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not memory_text:
                     self.send_json(400, {"error": "memory_content_required"})
                     return
-                set_memory("default", memory_text)
+                set_memory(conversation_id, memory_text)
                 answer = "حفظت هذه المعلومة في ذاكرة هذه المحادثة. يمكنك عرضها بقول «ماذا تتذكر عني؟» أو مسحها بقول «انسَ ذاكرتي»."
                 save_message(conversation_id, "user", message)
                 save_message(conversation_id, "assistant", answer)
@@ -514,16 +514,18 @@ class Handler(BaseHTTPRequestHandler):
                 previous.insert(0, {"role": "system", "content": "معلومات اختار المستخدم حفظها صراحةً في ذاكرة JASSIM المشتركة لهذا الخادم، استخدمها فقط عندما تكون ذات صلة ولا تفترض أنها حقائق خارج هذا السياق: " + saved_memory})
             context = fit_history_to_budget(previous + [{"role": "user", "content": message}])
             answer, engine = generate_answer(context)
-            if engine == "busy":
+            if engine in ("busy", "fallback"):
+                # Do not return a fake successful chat response when no model
+                # generated an answer. The client can preserve and retry it.
                 self.send_json(503, {
-                    "error": "model_busy",
+                    "error": "model_busy" if engine == "busy" else "model_unavailable",
                     "message": answer,
-                    "retry_after_seconds": 5
+                    "retry_after_seconds": 5 if engine == "busy" else 30,
+                    "conversation_id": conversation_id
                 })
                 return
             save_message(conversation_id, "user", message)
-            if engine == "ollama":
-                save_message(conversation_id, "assistant", answer)
+            save_message(conversation_id, "assistant", answer)
             self.send_json(200, {
                 "answer": answer, "reply": answer,
                 "conversation_id": conversation_id, "engine": engine
