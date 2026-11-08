@@ -18,9 +18,9 @@ class FakeOllamaHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/api/tags":
-            payload = {"models": [{"name": "qwen2.5:3b", "size": 1234}]}
+            payload = {"models": [{"name": "qwen3.5:4b", "size": 1234}]}
         elif self.path == "/api/ps":
-            payload = {"models": [{"name": "qwen2.5:3b"}]}
+            payload = {"models": [{"name": "qwen3.5:4b"}]}
         else:
             self.send_error(404)
             return
@@ -54,7 +54,7 @@ class ServerSmokeTest(unittest.TestCase):
             fake_thread = threading.Thread(target=fake_ollama.serve_forever, daemon=True)
             fake_thread.start()
             env["JASSIM_OLLAMA_URL"] = "http://127.0.0.1:" + str(fake_ollama.server_port)
-            env["JASSIM_OLLAMA_MODEL"] = "qwen2.5:3b"
+            env["JASSIM_OLLAMA_MODEL"] = "qwen3.5:4b"
             proc = subprocess.Popen([sys.executable, str(Path(__file__).with_name("server.py"))],
                                     env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             try:
@@ -90,7 +90,7 @@ class ServerSmokeTest(unittest.TestCase):
                 self.assertIn("إجابة اختبار", result["answer"])
                 self.assertEqual(result["conversation_id"], "smoke")
                 sent = FakeOllamaHandler.last_chat_payload
-                self.assertEqual(sent["model"], "qwen2.5:3b")
+                self.assertEqual(sent["model"], "qwen3.5:4b")
                 self.assertEqual(sent["keep_alive"], "-1")
                 self.assertEqual(sent["options"]["num_ctx"], 8192)
                 self.assertEqual(sent["options"]["num_predict"], 1024)
