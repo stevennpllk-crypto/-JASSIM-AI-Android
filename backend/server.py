@@ -163,7 +163,7 @@ def save_message(conversation_id, role, content):
         finally:
             db.close()
 
-def get_memory(conversation_id):
+def get_memory("default"):
     with DB_LOCK:
         db = connect_db()
         try:
@@ -189,7 +189,7 @@ def set_memory(conversation_id, content):
             db.close()
 
 
-def clear_memory(conversation_id):
+def clear_memory("default"):
     with DB_LOCK:
         db = connect_db()
         try:
@@ -488,7 +488,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not memory_text:
                     self.send_json(400, {"error": "memory_content_required"})
                     return
-                set_memory(conversation_id, memory_text)
+                set_memory("default", memory_text)
                 answer = "حفظت هذه المعلومة في ذاكرة هذه المحادثة. يمكنك عرضها بقول «ماذا تتذكر عني؟» أو مسحها بقول «انسَ ذاكرتي»."
                 save_message(conversation_id, "user", message)
                 save_message(conversation_id, "assistant", answer)
@@ -511,7 +511,7 @@ class Handler(BaseHTTPRequestHandler):
             previous = history(conversation_id, max(1, HISTORY_MESSAGES - 1))
             saved_memory = get_memory(conversation_id)
             if saved_memory:
-                previous.insert(0, {"role": "system", "content": "معلومات اختار المستخدم حفظها صراحةً، استخدمها فقط عندما تكون ذات صلة ولا تفترض أنها حقائق خارج هذا السياق: " + saved_memory})
+                previous.insert(0, {"role": "system", "content": "معلومات اختار المستخدم حفظها صراحةً في ذاكرة JASSIM المشتركة لهذا الخادم، استخدمها فقط عندما تكون ذات صلة ولا تفترض أنها حقائق خارج هذا السياق: " + saved_memory})
             context = fit_history_to_budget(previous + [{"role": "user", "content": message}])
             answer, engine = generate_answer(context)
             if engine == "busy":
