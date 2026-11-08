@@ -245,10 +245,13 @@ public class MainActivity extends Activity {
                 connection = openConnection("/health", "GET");
                 JSONObject result = readJsonResponse(connection);
                 boolean ok = result.optBoolean("ok", false);
-                String engine = result.optString("engine", "غير معروف");
+                boolean modelReady = result.optBoolean("model_ready", false);
+                String engine = result.optString("model", result.optString("engine", "غير معروف"));
                 runOnUiThread(() -> {
-                    status.setText(ok ? "● متصل بالخادم — " + engine : "● الخادم غير جاهز");
-                    status.setTextColor(ok ? 0xFF62DCA8 : 0xFFFFC36B);
+                    status.setText(!ok ? "● الخادم غير جاهز"
+                        : modelReady ? "● الخادم متصل — النموذج جاهز"
+                        : "● الخادم متصل — النموذج غير جاهز (" + engine + ")");
+                    status.setTextColor(!ok ? 0xFFFF7777 : modelReady ? 0xFF62DCA8 : 0xFFFFC36B);
                 });
             } catch (Exception e) {
                 String error = e.getMessage() == null ? "تعذر فحص الخادم" : e.getMessage();
