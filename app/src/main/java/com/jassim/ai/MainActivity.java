@@ -398,7 +398,7 @@ public class MainActivity extends Activity {
             HttpURLConnection connection = null;
             try {
                 String encodedId = java.net.URLEncoder.encode(conversationId, "UTF-8");
-                connection = openConnection("/api/conversations/" + encodedId, "DELETE");
+                connection = openConnection("/api/conversations?conversation_id=" + encodedId, "DELETE");
                 JSONObject result = readJsonResponse(connection);
                 boolean deleted = result.optBoolean("deleted", false);
                 runOnUiThread(() -> {
