@@ -96,7 +96,7 @@ def ollama_status():
     """Return a bounded, non-sensitive model readiness check."""
     request = urllib.request.Request(OLLAMA_URL.rstrip("/") + "/api/tags", method="GET")
     try:
-        with urllib.request.urlopen(request, timeout=2) as response:
+        with urllib.request.urlopen(request, timeout=0.5) as response:
             payload = json.loads(response.read().decode("utf-8"))
         models = payload.get("models", [])
         names = [item.get("name", "") for item in models if isinstance(item, dict)]
