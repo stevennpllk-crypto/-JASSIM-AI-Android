@@ -78,11 +78,11 @@ Build an independent, Arabic-first AI assistant with a polished Android app and 
 ## Current honest limitations
 
 - The current backend is a single shared Bearer-token service, not a multi-user product.
-- The current default model is Qwen 3.5 4B, a compact baseline. Stronger answers require a larger capable model and sufficient host RAM/VRAM; model selection is configurable through `JASSIM_OLLAMA_MODEL`. It is stronger than the previous 0.5B default but still a compact model; quality and speed depend on the host GPU/RAM and quantization. Keep-alive applies only while the Ollama runtime itself remains running.
+- The current default model is Qwen 3.5 4B, a compact baseline. Stronger answers require a larger capable model and sufficient host RAM/VRAM; model selection is configurable through `JASSIM_OLLAMA_MODEL`. Quality and speed depend on the host GPU/RAM and quantization. Keep-alive applies only while Ollama itself remains running.
 - The API currently returns complete JSON responses, not streamed tokens. The default inference budget is now 8K context / 2K output with a 24K-character recent-history cap; actual quality still depends on the selected model and available GPU/RAM. Ollama keep-alive holds the model in memory while the process runs. Colab Watchdog and Docker restart policies recover crashed processes, but neither can keep an interrupted Colab session or suspended host alive.
 - Android can list recent conversations, open one, and delete one after confirmation. Rename, archive, search, and export are not implemented yet.
 - The dashboard and Android client do not yet offer full file, image, audio, or tool workflows.
-- Colab watchdog recovery can restart crashed processes only while the runtime is alive. Colab and quick tunnels remain temporary development infrastructure, not reliable always-on hosting.
+- Colab watchdog recovery can restart crashed processes only while the runtime is alive. The Docker deployment can restart crashed services on an always-on host; Colab and Quick Tunnels remain temporary.
 - Free hosting does not guarantee persistent storage, sufficient RAM, or GPU access.
 
 ## Definition of done
