@@ -94,11 +94,15 @@ public class MainActivity extends Activity {
         prefs = getSharedPreferences("jassim", MODE_PRIVATE);
         ensureConversationId();
         buildUi();
+        // Always open directly into the chat. Server setup must never block the
+        // primary conversation screen.
+        addMessage("JASSIM AI", "أهلاً بك! أنا JASSIM AI. اكتب رسالتك وسأكون جاهزاً لمساعدتك.");
         if (!prefs.getString("endpoint", "").trim().isEmpty()) {
             checkHealth();
             loadHistory();
         } else {
-            addMessage("JASSIM AI", "أهلاً بك! أنا JASSIM AI. اربطني بخادم الذكاء الاصطناعي من زر الإعدادات لبدء المحادثة الذكية.");
+            status.setText("● المحادثة جاهزة — بانتظار تهيئة خدمة الذكاء الاصطناعي");
+            status.setTextColor(0xFFFFC36B);
         }
     }
 
@@ -431,7 +435,13 @@ public class MainActivity extends Activity {
         addMessage("أنت", message);
 
         if (baseUrl().isEmpty()) {
-            addMessage("JASSIM AI", "لم يتم إعداد رابط الخادم بعد. اضغط «الإعدادات» وأدخل رابط HTTPS ورمز API.");
+            addMessage("JASSIM AI", "وصلت رسالتك إلى واجهة المحادثة. خدمة النموذج السحابي لم تُهيأ بعد على هذا الإصدار؛ لن أختلق إجابة أو أدّعي أنني اتصلت بالخادم. احتفظ برسالتك، وسيتم تفعيل الردود الذكية عند نشر نقطة الخدمة الآمنة.");
+            status.setText("● وضع المحادثة — خدمة النموذج غير مهيأة");
+            status.setTextColor(0xFFFFC36B);
+            if (input.getText().toString().trim().isEmpty()) {
+                input.setText(message);
+                input.setSelection(input.length());
+            }
             return;
         }
 
