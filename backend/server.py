@@ -283,8 +283,17 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
-        if parsed.path == "/health":
+        if parsed.path in ("/health", "/ready"):
             model_state = ollama_status()
+            ready = bool(API_TOKEN and model_state["reachable"] and model_state["model_ready"])
+            if parsed.path == "/ready":
+                self.send_json(200 if ready else 503, {
+                    "ready": ready,
+                    "api_token_configured": bool(API_TOKEN),
+                    "ollama_reachable": model_state["reachable"],
+                    "model_ready": model_state["model_ready"]
+                })
+                return
             self.send_json(200, {
                 "ok": True,
                 "service": "JASSIM AI",
