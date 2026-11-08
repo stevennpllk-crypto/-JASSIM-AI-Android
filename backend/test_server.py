@@ -265,7 +265,17 @@ class ServerSmokeTest(unittest.TestCase):
                 with urlopen(memory_history_req, timeout=5) as response:
                     memory_history = json.loads(response.read())["messages"]
                 self.assertEqual(len(memory_history), 2)
-                self.assertIn("أفضل الإجابات المختصرة", memory_history[1]["content"])
+                self.assertIn("حفظت هذه المعلومة", memory_history[1]["content"])
+                show_memory_payload = json.dumps({
+                    "message": "ماذا تتذكر عني؟",
+                    "conversation_id": "memory-chat"
+                }).encode()
+                show_memory_req = Request(
+                    api_base + "/api/chat", data=show_memory_payload,
+                    headers={"Content-Type": "application/json", **headers})
+                with urlopen(show_memory_req, timeout=5) as response:
+                    shown_memory = json.loads(response.read())["answer"]
+                self.assertIn("أفضل الإجابات المختصرة", shown_memory)
                 history_req = Request(api_base + "/api/history?conversation_id=smoke", headers=headers)
                 with urlopen(history_req, timeout=5) as r:
                     saved = json.loads(r.read())
