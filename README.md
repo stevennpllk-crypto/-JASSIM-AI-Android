@@ -29,7 +29,11 @@ export JASSIM_API_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsaf
 export JASSIM_HOST="127.0.0.1"
 export JASSIM_PORT="8787"
 export JASSIM_OLLAMA_URL="http://127.0.0.1:11434"
-export JASSIM_OLLAMA_MODEL="qwen2.5:1.5b"
+export JASSIM_OLLAMA_MODEL="qwen2.5:3b"
+export JASSIM_OLLAMA_KEEP_ALIVE="-1"
+export JASSIM_NUM_CTX="8192"
+export JASSIM_NUM_PREDICT="1024"
+export JASSIM_REQUEST_TIMEOUT="240"
 export JASSIM_DATA_DIR="$HOME/JASSIM_AI/data"
 python backend/server.py
 ```
@@ -53,7 +57,7 @@ curl -X POST "http://127.0.0.1:8787/api/chat" \
 
 ## Google Colab / temporary tunnels
 
-Colab can run the API and Ollama for experiments, but its runtime and public tunnel URL are temporary. After a runtime restart, start Ollama, the API, and the tunnel again, then update the endpoint in the Android app if the tunnel URL changed. SQLite data persists only when `JASSIM_DATA_DIR` points to a mounted persistent drive.
+Colab can run the API and Ollama for experiments, but its runtime and public tunnel URL are temporary. The notebook downloads Qwen 2.5 3B and configures indefinite model residency while the runtime remains active; this does not prevent Colab from disconnecting or reclaiming the machine. After a runtime restart, start Ollama, the API, and the tunnel again, then update the endpoint in the Android app if the tunnel URL changed. SQLite data persists only when `JASSIM_DATA_DIR` points to a mounted persistent drive.
 
 A temporary tunnel is not permanent hosting. For always-on access, deploy the API behind a stable HTTPS domain on a machine or host that can run the selected model. Free hosting may sleep, limit CPU/RAM, or lack a GPU.
 
