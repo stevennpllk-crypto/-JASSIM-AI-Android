@@ -15,6 +15,7 @@ class ServerSmokeTest(unittest.TestCase):
             env["JASSIM_DATA_DIR"] = tmp
             env["JASSIM_PORT"] = "18787"
             env["JASSIM_HOST"] = "127.0.0.1"
+            env["JASSIM_API_TOKEN"] = "smoke-test-token"
             proc = subprocess.Popen([sys.executable, str(Path(__file__).with_name("server.py"))],
                                     env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             try:
@@ -29,13 +30,18 @@ class ServerSmokeTest(unittest.TestCase):
                     self.fail("server did not start")
                 self.assertTrue(health["ok"])
                 payload = json.dumps({"message": "hello", "conversation_id": "smoke"}).encode()
+                denied = Request("http://127.0.0.1:18787/api/chat", data=payload,
+                                 headers={"Content-Type": "application/json"})
+                with self.assertRaises(Exception):
+                    urlopen(denied, timeout=5)
                 req = Request("http://127.0.0.1:18787/api/chat", data=payload,
-                              headers={"Content-Type": "application/json"})
+                              headers={"Content-Type": "application/json", "Authorization": "Bearer smoke-test-token"})
                 with urlopen(req, timeout=5) as r:
                     result = json.loads(r.read())
                 self.assertIn("answer", result)
                 self.assertEqual(result["conversation_id"], "smoke")
-                with urlopen("http://127.0.0.1:18787/api/history?conversation_id=smoke") as r:
+                history_req = Request("http://127.0.0.1:18787/api/history?conversation_id=smoke", headers={"Authorization": "Bearer smoke-test-token"})
+                with urlopen(history_req) as r:
                     saved = json.loads(r.read())
                 self.assertEqual(len(saved["messages"]), 2)
             finally:
