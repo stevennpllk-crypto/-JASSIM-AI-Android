@@ -416,8 +416,8 @@ class Handler(BaseHTTPRequestHandler):
             if len(message) > MAX_MESSAGE_CHARS:
                 self.send_json(413, {"error": "message_too_long", "limit": MAX_MESSAGE_CHARS})
                 return
-            save_message(conversation_id, "user", message)
-            context = fit_history_to_budget(history(conversation_id, HISTORY_MESSAGES))
+            previous = history(conversation_id, max(1, HISTORY_MESSAGES - 1))
+            context = fit_history_to_budget(previous + [{"role": "user", "content": message}])
             answer, engine = generate_answer(context)
             if engine == "busy":
                 self.send_json(503, {
@@ -426,6 +426,7 @@ class Handler(BaseHTTPRequestHandler):
                     "retry_after_seconds": 5
                 })
                 return
+            save_message(conversation_id, "user", message)
             if engine == "ollama":
                 save_message(conversation_id, "assistant", answer)
             self.send_json(200, {
