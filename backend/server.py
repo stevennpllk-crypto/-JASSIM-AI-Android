@@ -158,7 +158,9 @@ def fit_history_to_budget(messages):
             break
         if len(content) > remaining:
             if not kept and item.get("role") == "user":
-                content = content[-remaining:]
+                # Preserve the beginning of the newest prompt; its instructions
+                # and question are usually at the start, not the trailing text.
+                content = content[:remaining]
             else:
                 break
         kept.append({"role": item.get("role", "user"), "content": content})
