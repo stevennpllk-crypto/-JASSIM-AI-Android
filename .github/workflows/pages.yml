@@ -1,3 +1,4 @@
+# Re-run deployment after enabling GitHub Pages in repository settings.
 name: Deploy JASSIM AI Cloud Dashboard
 
 on:
