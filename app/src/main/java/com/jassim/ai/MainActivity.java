@@ -359,9 +359,24 @@ public class MainActivity extends Activity {
                     .setItems(labels, (dialog, which) -> {
                         String selectedId = ids[which];
                         if (selectedId == null || selectedId.isEmpty()) return;
-                        prefs.edit().putString("conversation_id", selectedId).apply();
-                        messages.removeAllViews();
-                        loadHistory();
+                        new AlertDialog.Builder(this)
+                            .setTitle("إدارة المحادثة")
+                            .setItems(new String[]{"فتح المحادثة", "حذف المحادثة"}, (choiceDialog, action) -> {
+                                if (action == 0) {
+                                    prefs.edit().putString("conversation_id", selectedId).apply();
+                                    messages.removeAllViews();
+                                    loadHistory();
+                                } else {
+                                    new AlertDialog.Builder(this)
+                                        .setTitle("تأكيد الحذف")
+                                        .setMessage("سيتم حذف جميع رسائل هذه المحادثة نهائياً من الخادم. لا يمكن التراجع.")
+                                        .setNegativeButton("إلغاء", null)
+                                        .setPositiveButton("حذف", (confirmDialog, confirm) -> deleteConversation(selectedId))
+                                        .show();
+                                }
+                            })
+                            .setNegativeButton("إلغاء", null)
+                            .show();
                     })
                     .setNegativeButton("إغلاق", null)
                     .show());
@@ -372,6 +387,35 @@ public class MainActivity extends Activity {
                     status.setTextColor(0xFFFF7777);
                     Toast.makeText(this, error, Toast.LENGTH_LONG).show();
                 });
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        });
+    }
+
+    private void deleteConversation(String conversationId) {
+        executor.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                String encodedId = java.net.URLEncoder.encode(conversationId, "UTF-8");
+                connection = openConnection("/api/conversations/" + encodedId, "DELETE");
+                JSONObject result = readJsonResponse(connection);
+                boolean deleted = result.optBoolean("deleted", false);
+                runOnUiThread(() -> {
+                    if (!deleted) {
+                        Toast.makeText(this, "لم يتم حذف المحادثة", Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    if (conversationId.equals(prefs.getString("conversation_id", ""))) {
+                        newConversation();
+                    }
+                    status.setText("● تم حذف المحادثة");
+                    status.setTextColor(0xFF62DCA8);
+                    Toast.makeText(this, "حُذفت المحادثة ورسائلها من الخادم", Toast.LENGTH_LONG).show();
+                });
+            } catch (Exception e) {
+                String error = e.getMessage() == null ? "تعذر حذف المحادثة" : e.getMessage();
+                runOnUiThread(() -> Toast.makeText(this, error, Toast.LENGTH_LONG).show());
             } finally {
                 if (connection != null) connection.disconnect();
             }
