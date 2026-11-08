@@ -5,6 +5,9 @@ A small self-hosted HTTP API for the existing JASSIM AI Android client. It uses 
 ## Safety defaults
 - Binds to `127.0.0.1` only. Do not expose it to the public internet as-is.
 - No API keys are embedded in the Android APK.
+- Set `JASSIM_API_TOKEN` before public deployment. The Android app and dashboard send it as `Authorization: Bearer ...`.
+- The dashboard keeps the token in session storage only; the Android app stores it in private app preferences.
+- Set `JASSIM_CORS_ORIGIN` to the exact HTTPS dashboard origin, not `*`, before public deployment.
 - Request size and message length are limited.
 - Chat history is stored locally in `backend/data/jassim.db`.
 
@@ -17,6 +20,17 @@ A small self-hosted HTTP API for the existing JASSIM AI Android client. It uses 
    curl http://127.0.0.1:8787/health
    curl -X POST http://127.0.0.1:8787/api/chat -H 'Content-Type: application/json' -d '{"message":"مرحبا","conversation_id":"test"}'
    ```
+
+## Enable API authentication
+Generate a long random token and configure it as an environment variable on the server (never commit it to Git):
+
+```sh
+export JASSIM_API_TOKEN="paste-a-long-random-secret-here"
+export JASSIM_CORS_ORIGIN="https://stevennpllk-crypto.github.io"
+python server.py
+```
+
+Enter the same token in the Android app settings or the dashboard connection settings. `/health` remains public for connection checks; chat and history require the token. If `JASSIM_API_TOKEN` is unset, the server remains in local-development mode without authentication, so do not expose it publicly.
 
 ## Enable a real local model
 The API can call an Ollama server compatible with `POST /api/chat`.
