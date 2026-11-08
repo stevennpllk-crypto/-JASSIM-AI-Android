@@ -46,7 +46,7 @@ export JASSIM_DATA_DIR="$HOME/JASSIM_AI/data"
 python backend/server.py
 ```
 
-The API serializes model inference by default (one generation at a time) to avoid overloading small GPUs; tune `JASSIM_MAX_CONCURRENT` only when the host has enough memory. The standard API profile defaults to 2048 output tokens and 24,000 history characters; the Colab GPU profile raises these to 3072 tokens and 32,000 history characters.
+The API serializes model inference by default (one generation at a time) to avoid overloading small GPUs; tune `JASSIM_MAX_CONCURRENT` only when the host has enough memory. The API defaults to 3072 output tokens and a 24,000-character recent-history budget. The Colab GPU profile keeps the 3072-token output budget and raises the history budget to 32,000 characters.
 
 Keep the generated token private. Enter the server's HTTPS URL and this token in the Android app's Settings. Do not paste the token into GitHub, public issues, screenshots, or chat messages.
 
