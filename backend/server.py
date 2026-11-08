@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 import threading
+import hmac
 import urllib.request
 import urllib.error
 from datetime import datetime, timezone
@@ -17,7 +18,8 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "jassim.db"
 HOST = os.environ.get("JASSIM_HOST", "127.0.0.1")
 PORT = int(os.environ.get("JASSIM_PORT", "8787"))
-CORS_ORIGIN = os.environ.get("JASSIM_CORS_ORIGIN", "*")
+CORS_ORIGIN = os.environ.get("JASSIM_CORS_ORIGIN", "null")
+API_TOKEN = os.environ.get("JASSIM_API_TOKEN", "").strip()
 OLLAMA_URL = os.environ.get("JASSIM_OLLAMA_URL", "http://127.0.0.1:11434")
 OLLAMA_MODEL = os.environ.get("JASSIM_OLLAMA_MODEL", "qwen2.5:0.5b")
 MAX_MESSAGE_CHARS = 8000
@@ -118,6 +120,13 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Vary", "Origin")
         super().end_headers()
 
+    def authorized(self):
+        if not API_TOKEN:
+            return True  # Local development mode; set JASSIM_API_TOKEN before public deployment.
+        supplied = self.headers.get("Authorization", "")
+        expected = "Bearer " + API_TOKEN
+        return hmac.compare_digest(supplied, expected)
+
     def do_OPTIONS(self):
         self.send_response(204)
         self.send_header("Content-Length", "0")
@@ -133,6 +142,9 @@ class Handler(BaseHTTPRequestHandler):
             })
             return
         if parsed.path == "/api/history":
+            if not self.authorized():
+                self.send_json(401, {"error": "unauthorized"})
+                return
             conversation_id = parse_qs(parsed.query).get("conversation_id", ["default"])[0]
             self.send_json(200, {"conversation_id": conversation_id, "messages": history(conversation_id, 100)})
             return
@@ -141,6 +153,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if urlparse(self.path).path != "/api/chat":
             self.send_json(404, {"error": "not_found"})
+            return
+        if not self.authorized():
+            self.send_json(401, {"error": "unauthorized"})
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
