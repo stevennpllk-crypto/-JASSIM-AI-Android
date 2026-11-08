@@ -1,0 +1,22 @@
+services:
+  jassim-api:
+    build: .
+    container_name: jassim-ai-api
+    restart: unless-stopped
+    environment:
+      JASSIM_HOST: 0.0.0.0
+      JASSIM_PORT: 8787
+      JASSIM_DATA_DIR: /data
+      JASSIM_API_TOKEN: ${JASSIM_API_TOKEN:?Set JASSIM_API_TOKEN in the host environment}
+      JASSIM_CORS_ORIGIN: ${JASSIM_CORS_ORIGIN:?Set JASSIM_CORS_ORIGIN to the exact dashboard origin}
+      JASSIM_OLLAMA_URL: ${JASSIM_OLLAMA_URL:-http://host.docker.internal:11434}
+      JASSIM_OLLAMA_MODEL: ${JASSIM_OLLAMA_MODEL:-qwen2.5:0.5b}
+    ports:
+      - "8787:8787"
+    volumes:
+      - jassim-data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  jassim-data:
