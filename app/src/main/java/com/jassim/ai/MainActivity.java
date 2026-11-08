@@ -282,6 +282,9 @@ public class MainActivity extends Activity {
                 JSONObject json = readJsonResponse(connection);
                 JSONArray saved = json.optJSONArray("messages");
                 runOnUiThread(() -> {
+                    if (!conversationId.equals(prefs.getString("conversation_id", ""))) return;
+                    // Do not overwrite a message the user sent while history was loading.
+                    if (messages.getChildCount() > 0) return;
                     messages.removeAllViews();
                     if (saved == null || saved.length() == 0) {
                         addMessage("JASSIM AI", "أهلاً بك! أنا JASSIM AI. اكتب رسالتك لبدء المحادثة.");
@@ -301,6 +304,7 @@ public class MainActivity extends Activity {
             } catch (Exception e) {
                 final String error = e.getMessage() == null ? "تعذر تحميل السجل" : e.getMessage();
                 runOnUiThread(() -> {
+                    if (!conversationId.equals(prefs.getString("conversation_id", ""))) return;
                     status.setText("● تعذر تحميل سجل المحادثة");
                     status.setTextColor(0xFFFFC36B);
                     addMessage("JASSIM AI", "لم أتمكن من استرجاع السجل من الخادم: " + error);
