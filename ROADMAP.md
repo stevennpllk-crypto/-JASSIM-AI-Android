@@ -25,7 +25,8 @@ Build an independent, Arabic-first AI assistant with a polished Android app and 
 - [x] Public health endpoint with bounded Ollama/model readiness checks.
 - [x] Authenticated installed-model listing endpoint.
 - [x] CI smoke tests for API health, chat persistence, and protected/validated history access.
-- [ ] Automated backend tests against both online and offline Ollama conditions.
+- [x] Deterministic CI integration test against a local Ollama-compatible mock, including generation settings and readiness.
+- [ ] Add an explicit offline-engine test and retry/error telemetry.
 - [ ] Add request IDs, structured logs, and safe error categories.
 
 ### Phase 1 — ChatGPT-like conversation experience
@@ -55,6 +56,7 @@ Build an independent, Arabic-first AI assistant with a polished Android app and 
 - [ ] Never claim a tool ran unless its result was received and checked.
 
 ### Phase 4 — Model quality and operations
+- [x] Configurable Ollama model, context size, output budget, timeout, history window, and model keep-alive.
 - [ ] Configurable local model registry and model selection.
 - [ ] Benchmark Arabic, Tunisian Arabic, reasoning, coding, latency, and memory use.
 - [ ] Model-specific context limits and prompt templates.
@@ -73,8 +75,8 @@ Build an independent, Arabic-first AI assistant with a polished Android app and 
 ## Current honest limitations
 
 - The current backend is a single shared Bearer-token service, not a multi-user product.
-- The current model is a small local Ollama model; its answer quality and speed depend on available hardware.
-- The API currently returns complete JSON responses, not streamed tokens.
+- The recommended model baseline is Qwen 2.5 3B. It is stronger than the previous 0.5B default but still a compact model; quality and speed depend on the host GPU/RAM and quantization. Keep-alive applies only while the Ollama runtime itself remains running.
+- The API currently returns complete JSON responses, not streamed tokens. Ollama is configured to keep the model loaded during the lifetime of its process, but there is no automatic restart or always-on host guarantee.
 - Android can list recent conversations, open one, and delete one after confirmation. Rename, archive, search, and export are not implemented yet.
 - The dashboard and Android client do not yet offer full file, image, audio, or tool workflows.
 - Colab and quick tunnels are temporary development infrastructure, not reliable always-on hosting.
