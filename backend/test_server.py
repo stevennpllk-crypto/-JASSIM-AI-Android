@@ -251,6 +251,21 @@ class ServerSmokeTest(unittest.TestCase):
                 with self.assertRaises(Exception):
                     urlopen(Request(api_base + "/api/conversations"), timeout=5)
                 headers = {"Authorization": "Bearer smoke-test-token"}
+                memory_payload = json.dumps({
+                    "message": "تذكر أنني أفضل الإجابات المختصرة",
+                    "conversation_id": "memory-chat"
+                }).encode()
+                memory_req = Request(
+                    api_base + "/api/chat", data=memory_payload,
+                    headers={"Content-Type": "application/json", **headers})
+                with urlopen(memory_req, timeout=5) as response:
+                    self.assertEqual(json.loads(response.read())["engine"], "memory")
+                memory_history_req = Request(
+                    api_base + "/api/history?conversation_id=memory-chat", headers=headers)
+                with urlopen(memory_history_req, timeout=5) as response:
+                    memory_history = json.loads(response.read())["messages"]
+                self.assertEqual(len(memory_history), 2)
+                self.assertIn("أفضل الإجابات المختصرة", memory_history[1]["content"])
                 history_req = Request(api_base + "/api/history?conversation_id=smoke", headers=headers)
                 with urlopen(history_req, timeout=5) as r:
                     saved = json.loads(r.read())
@@ -272,18 +287,19 @@ class ServerSmokeTest(unittest.TestCase):
                 offline_req = Request(
                     api_base + "/api/chat", data=offline_payload,
                     headers={"Content-Type": "application/json", "Authorization": "Bearer smoke-test-token"})
-                with urlopen(offline_req, timeout=5) as r:
-                    offline_result = json.loads(r.read())
-                self.assertEqual(offline_result["engine"], "fallback")
+                with self.assertRaises(Exception) as offline_error:
+                    urlopen(offline_req, timeout=5)
+                self.assertEqual(getattr(offline_error.exception, "code", None), 503)
                 offline_history = Request(
                     api_base + "/api/history?conversation_id=offline", headers=headers)
                 with urlopen(offline_history, timeout=5) as r:
-                    self.assertEqual(len(json.loads(r.read())["messages"]), 1)
+                    self.assertEqual(json.loads(r.read())["messages"], [])
                 delete_offline = Request(
                     api_base + "/api/conversations?conversation_id=offline",
                     headers=headers, method="DELETE")
-                with urlopen(delete_offline, timeout=5) as r:
-                    self.assertEqual(json.loads(r.read())["deleted_messages"], 1)
+                with self.assertRaises(Exception) as missing_offline:
+                    urlopen(delete_offline, timeout=5)
+                self.assertEqual(getattr(missing_offline.exception, "code", None), 404)
                 FakeOllamaHandler.offline = False
                 with self.assertRaises(Exception):
                     urlopen(Request(api_base + "/api/conversations?conversation_id=smoke",
