@@ -4,10 +4,10 @@ JASSIM AI contains an Android client, a small Python API, SQLite conversation st
 
 ## Product direction\n\nSee [ROADMAP.md](ROADMAP.md) for the complete staged plan: streaming chat, user-controlled memory, file knowledge, search/tools, multimodal support, multi-user security, and reliable deployment. These are planned capabilities, not claims that they are already shipped.\n\n## Components
 
-- `app/`: native Android client (Java). Configure the server URL and API token in the app's Settings.
+- `app/`: native Android client (Java). Configure the server URL and API token in the app's Settings. The active conversation transcript is restored from the authenticated history endpoint on startup.
 - `backend/server.py`: Python standard-library API (v0.2.0) with SQLite persistence, Bearer authentication, input-size checks, per-IP rate limiting, model readiness checks, and an authenticated model inventory endpoint.
 - `dashboard/`: Arabic RTL dashboard for health checks and chat.
-- `.github/workflows/android.yml`: backend unit-test step and debug APK build.
+- `.github/workflows/android.yml`: backend smoke tests, debug APK build, ZIP integrity/required-entry verification, and artifact upload.
 - `.github/workflows/pages.yml`: GitHub Pages deployment workflow for the dashboard.
 
 ## Important security notes
