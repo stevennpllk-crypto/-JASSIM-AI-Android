@@ -34,12 +34,14 @@ export JASSIM_OLLAMA_KEEP_ALIVE="-1"
 export JASSIM_NUM_CTX="8192"
 export JASSIM_NUM_PREDICT="2048"
 export JASSIM_HISTORY_CHAR_BUDGET="24000"
-export JASSIM_REQUEST_TIMEOUT="240"
+export JASSIM_REQUEST_TIMEOUT="300"
+export JASSIM_MAX_CONCURRENT="1"
+export JASSIM_QUEUE_TIMEOUT="180"
 export JASSIM_DATA_DIR="$HOME/JASSIM_AI/data"
 python backend/server.py
 ```
 
-Keep the generated token private. Enter the server's HTTPS URL and this token in the Android app's Settings. Do not paste the token into GitHub, public issues, screenshots, or chat messages.
+The API serializes model inference by default (one generation at a time) to avoid overloading small GPUs; tune `JASSIM_MAX_CONCURRENT` only when the host has enough memory. The default output budget is 2048 tokens and the recent-history budget is 24,000 characters.\n\nKeep the generated token private. Enter the server's HTTPS URL and this token in the Android app's Settings. Do not paste the token into GitHub, public issues, screenshots, or chat messages.
 
 Check local API health:
 
@@ -66,7 +68,7 @@ curl -X POST "http://127.0.0.1:8787/api/chat" \
 
 Colab can run the API and Ollama for experiments, but its runtime and public tunnel URL are temporary. The notebook automatically selects `qwen3.5:9b` when an NVIDIA GPU is detected and falls back to `qwen3.5:4b` otherwise; it uses an 8K context and a 2K output budget by default, and configures indefinite model residency while the runtime remains active; this does not prevent Colab from disconnecting or reclaiming the machine. After a runtime restart, start Ollama, the API, and the tunnel again, then update the endpoint in the Android app if the tunnel URL changed. Run the notebook's **Watchdog** cell after the startup cells: it restarts crashed Ollama/API/tunnel processes while the Colab runtime remains alive and prints a replacement tunnel URL when needed. It cannot prevent Colab from disconnecting or reclaiming the machine. SQLite data persists only when `JASSIM_DATA_DIR` points to a mounted persistent drive.
 
-For a restartable API + Ollama stack on an always-on Linux host, follow [DEPLOYMENT.md](DEPLOYMENT.md) and use `docker-compose.always-on.yml`.\n\nA temporary tunnel is not permanent hosting. For always-on access, deploy the API behind a stable HTTPS domain on a machine or host that can run the selected model. Free hosting may sleep, limit CPU/RAM, or lack a GPU.
+For a restartable API + Ollama stack on an always-on Linux host, follow [DEPLOYMENT.md](DEPLOYMENT.md) and use `docker-compose.always-on.yml`.\n\nA temporary tunnel is not permanent hosting. For always-on access, deploy the API behind a stable HTTPS domain on an always-on machine that can run the selected model. Free hosting may sleep, limit CPU/RAM, or lack a GPU.
 
 ## Android build
 
