@@ -252,7 +252,7 @@ class ServerSmokeTest(unittest.TestCase):
                     urlopen(Request(api_base + "/api/conversations"), timeout=5)
                 headers = {"Authorization": "Bearer smoke-test-token"}
                 memory_payload = json.dumps({
-                    "message": "تذكر أنني أفضل الإجابات المختصرة",
+                    "message": "تذكر أن أفضل الإجابات المختصرة",
                     "conversation_id": "memory-chat"
                 }).encode()
                 memory_req = Request(
