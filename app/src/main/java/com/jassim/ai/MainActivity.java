@@ -135,6 +135,11 @@ public class MainActivity extends Activity {
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         header.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
 
+        Button historyButton = new Button(this);
+        historyButton.setText("السجل");
+        historyButton.setOnClickListener(v -> showConversations());
+        header.addView(historyButton);
+
         Button newChat = new Button(this);
         newChat.setText("محادثة جديدة");
         newChat.setOnClickListener(v -> newConversation());
@@ -308,6 +313,64 @@ public class MainActivity extends Activity {
                     status.setText("● تعذر تحميل سجل المحادثة");
                     status.setTextColor(0xFFFFC36B);
                     addMessage("JASSIM AI", "لم أتمكن من استرجاع السجل من الخادم: " + error);
+                });
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        });
+    }
+
+
+    private void showConversations() {
+        if (baseUrl().isEmpty()) {
+            Toast.makeText(this, "اربط التطبيق بالخادم أولاً", Toast.LENGTH_LONG).show();
+            return;
+        }
+        status.setText("● جارٍ تحميل قائمة المحادثات...");
+        executor.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                connection = openConnection("/api/conversations?limit=50", "GET");
+                JSONObject response = readJsonResponse(connection);
+                JSONArray items = response.optJSONArray("conversations");
+                if (items == null || items.length() == 0) {
+                    runOnUiThread(() -> {
+                        status.setText("● لا توجد محادثات محفوظة بعد");
+                        status.setTextColor(0xFFFFC36B);
+                        Toast.makeText(this, "ستظهر محادثاتك هنا بعد إرسال الرسائل", Toast.LENGTH_LONG).show();
+                    });
+                    return;
+                }
+                String[] labels = new String[items.length()];
+                String[] ids = new String[items.length()];
+                for (int i = 0; i < items.length(); i++) {
+                    JSONObject item = items.optJSONObject(i);
+                    if (item == null) item = new JSONObject();
+                    ids[i] = item.optString("conversation_id", "");
+                    String title = item.optString("title", "محادثة");
+                    int count = item.optInt("message_count", 0);
+                    labels[i] = title + "  ·  " + count + " رسالة";
+                    if (ids[i].equals(prefs.getString("conversation_id", ""))) {
+                        labels[i] = "✓ " + labels[i];
+                    }
+                }
+                runOnUiThread(() -> new AlertDialog.Builder(this)
+                    .setTitle("محادثاتك الأخيرة")
+                    .setItems(labels, (dialog, which) -> {
+                        String selectedId = ids[which];
+                        if (selectedId == null || selectedId.isEmpty()) return;
+                        prefs.edit().putString("conversation_id", selectedId).apply();
+                        messages.removeAllViews();
+                        loadHistory();
+                    })
+                    .setNegativeButton("إغلاق", null)
+                    .show());
+            } catch (Exception e) {
+                final String error = e.getMessage() == null ? "تعذر تحميل المحادثات" : e.getMessage();
+                runOnUiThread(() -> {
+                    status.setText("● تعذر تحميل قائمة المحادثات");
+                    status.setTextColor(0xFFFF7777);
+                    Toast.makeText(this, error, Toast.LENGTH_LONG).show();
                 });
             } finally {
                 if (connection != null) connection.disconnect();
