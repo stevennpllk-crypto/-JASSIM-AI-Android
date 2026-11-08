@@ -170,7 +170,13 @@ class Handler(BaseHTTPRequestHandler):
             if not self.authorized():
                 self.send_json(401, {"error": "unauthorized"})
                 return
+            if self.rate_limited():
+                self.send_json(429, {"error": "rate_limit_exceeded", "retry_after_seconds": 60})
+                return
             conversation_id = parse_qs(parsed.query).get("conversation_id", ["default"])[0]
+            if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", conversation_id):
+                self.send_json(400, {"error": "invalid_conversation_id"})
+                return
             self.send_json(200, {"conversation_id": conversation_id, "messages": history(conversation_id, 100)})
             return
         self.send_json(404, {"error": "not_found"})
@@ -191,6 +197,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(413, {"error": "invalid_body_size"})
                 return
             body = json.loads(self.rfile.read(length).decode("utf-8"))
+            if not isinstance(body, dict):
+                self.send_json(400, {"error": "json_object_required"})
+                return
             message = str(body.get("message", "")).strip()
             conversation_id = str(body.get("conversation_id", "default")).strip()[:100] or "default"
             if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", conversation_id):
