@@ -12,6 +12,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.widget.*;
 import org.json.JSONObject;
+import org.json.JSONArray;
 import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -93,9 +94,11 @@ public class MainActivity extends Activity {
         prefs = getSharedPreferences("jassim", MODE_PRIVATE);
         ensureConversationId();
         buildUi();
-        addMessage("JASSIM AI", "أهلاً بك! أنا JASSIM AI. اربطني بخادم الذكاء الاصطناعي من زر الإعدادات لبدء المحادثة الذكية.");
         if (!prefs.getString("endpoint", "").trim().isEmpty()) {
             checkHealth();
+            loadHistory();
+        } else {
+            addMessage("JASSIM AI", "أهلاً بك! أنا JASSIM AI. اربطني بخادم الذكاء الاصطناعي من زر الإعدادات لبدء المحادثة الذكية.");
         }
     }
 
@@ -111,6 +114,7 @@ public class MainActivity extends Activity {
     private void newConversation() {
         String id = "android-" + UUID.randomUUID().toString();
         prefs.edit().putString("conversation_id", id).apply();
+        messages.removeAllViews();
         addMessage("JASSIM AI", "بدأنا محادثة جديدة. رسائلك الجديدة ستحفظ في سجل مستقل.");
     }
 
@@ -265,6 +269,48 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void loadHistory() {
+        if (baseUrl().isEmpty()) return;
+        final String conversationId = ensureConversationId();
+        status.setText("● جارٍ تحميل سجل المحادثة...");
+        executor.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                connection = openConnection(
+                    "/api/history?conversation_id=" + java.net.URLEncoder.encode(conversationId, "UTF-8"),
+                    "GET");
+                JSONObject json = readJsonResponse(connection);
+                JSONArray saved = json.optJSONArray("messages");
+                runOnUiThread(() -> {
+                    messages.removeAllViews();
+                    if (saved == null || saved.length() == 0) {
+                        addMessage("JASSIM AI", "أهلاً بك! أنا JASSIM AI. اكتب رسالتك لبدء المحادثة.");
+                        return;
+                    }
+                    for (int i = 0; i < saved.length(); i++) {
+                        JSONObject item = saved.optJSONObject(i);
+                        if (item == null) continue;
+                        String role = item.optString("role", "");
+                        String content = item.optString("content", "");
+                        if (content.isEmpty()) continue;
+                        addMessage("assistant".equals(role) ? "JASSIM AI" : "أنت", content);
+                    }
+                    status.setText("● تم تحميل سجل المحادثة");
+                    status.setTextColor(0xFF62DCA8);
+                });
+            } catch (Exception e) {
+                final String error = e.getMessage() == null ? "تعذر تحميل السجل" : e.getMessage();
+                runOnUiThread(() -> {
+                    status.setText("● تعذر تحميل سجل المحادثة");
+                    status.setTextColor(0xFFFFC36B);
+                    addMessage("JASSIM AI", "لم أتمكن من استرجاع السجل من الخادم: " + error);
+                });
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        });
+    }
+
     private void sendMessage() {
         String message = input.getText().toString().trim();
         if (message.isEmpty()) return;
@@ -358,6 +404,7 @@ public class MainActivity extends Activity {
                     saveApiToken(token);
                     prefs.edit().putString("endpoint", value).apply();
                     checkHealth();
+                    loadHistory();
                 } catch (Exception e) {
                     Toast.makeText(this, "تعذر حفظ الرمز بأمان على هذا الجهاز", Toast.LENGTH_LONG).show();
                 }
