@@ -51,6 +51,17 @@ class FakeOllamaHandler(BaseHTTPRequestHandler):
 
 
 class ServerSmokeTest(unittest.TestCase):
+    def test_colab_notebook_code_cells_compile(self):
+        notebook_path = Path(__file__).resolve().parents[1] / "notebooks" / "JASSIM_AI_Colab_GPU.ipynb"
+        notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
+        self.assertEqual(notebook.get("nbformat"), 4)
+        code_cells = [cell for cell in notebook.get("cells", []) if cell.get("cell_type") == "code"]
+        self.assertGreaterEqual(len(code_cells), 8)
+        for index, cell in enumerate(code_cells):
+            source = "".join(cell.get("source", []))
+            self.assertTrue(source.strip(), f"Notebook code cell {index} is empty")
+            compile(source, f"JASSIM_AI_Colab_GPU.ipynb:cell-{index}", "exec")
+
     def test_history_budget_preserves_recent_messages(self):
         import importlib.util
         with tempfile.TemporaryDirectory() as tmp:
