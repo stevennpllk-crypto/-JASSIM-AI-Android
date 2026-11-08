@@ -26,7 +26,8 @@ Build an independent, Arabic-first AI assistant with a polished Android app and 
 - [x] Authenticated installed-model listing endpoint.
 - [x] CI smoke tests for API health, chat persistence, and protected/validated history access.
 - [x] Deterministic CI integration test against a local Ollama-compatible mock, including generation settings and readiness.
-- [ ] Add an explicit offline-engine test and retry/error telemetry.
+- [x] Add an explicit offline-engine test and verify fallback replies are not saved as AI answers.
+- [ ] Add retry/error telemetry.
 - [ ] Add request IDs, structured logs, and safe error categories.
 
 ### Phase 1 — ChatGPT-like conversation experience
@@ -78,7 +79,7 @@ Build an independent, Arabic-first AI assistant with a polished Android app and 
 
 - The current backend is a single shared Bearer-token service, not a multi-user product.
 - The current default model is Qwen 3.5 4B, a compact baseline. Stronger answers require a larger capable model and sufficient host RAM/VRAM; model selection is configurable through `JASSIM_OLLAMA_MODEL`. It is stronger than the previous 0.5B default but still a compact model; quality and speed depend on the host GPU/RAM and quantization. Keep-alive applies only while the Ollama runtime itself remains running.
-- The API currently returns complete JSON responses, not streamed tokens. The default inference budget is now 8K context / 2K output with a 24K-character recent-history cap; actual quality still depends on the selected model and available GPU/RAM. Ollama is configured to keep the model loaded during the lifetime of its process, but there is no automatic restart or always-on host guarantee.
+- The API currently returns complete JSON responses, not streamed tokens. The default inference budget is now 8K context / 2K output with a 24K-character recent-history cap; actual quality still depends on the selected model and available GPU/RAM. Ollama keep-alive holds the model in memory while the process runs. Colab Watchdog and Docker restart policies recover crashed processes, but neither can keep an interrupted Colab session or suspended host alive.
 - Android can list recent conversations, open one, and delete one after confirmation. Rename, archive, search, and export are not implemented yet.
 - The dashboard and Android client do not yet offer full file, image, audio, or tool workflows.
 - Colab watchdog recovery can restart crashed processes only while the runtime is alive. Colab and quick tunnels remain temporary development infrastructure, not reliable always-on hosting.
