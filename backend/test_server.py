@@ -74,6 +74,38 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(kept[-1]["role"], "user")
         self.assertLessEqual(sum(len(x["content"]) for x in kept), 10)
 
+    def test_liveness_and_readiness_are_distinct(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = os.environ.copy()
+            env["JASSIM_DATA_DIR"] = tmp
+            env["JASSIM_PORT"] = "18788"
+            env["JASSIM_HOST"] = "127.0.0.1"
+            env["JASSIM_API_TOKEN"] = "readiness-test-token"
+            env["JASSIM_OLLAMA_URL"] = "http://127.0.0.1:1"
+            env["JASSIM_OLLAMA_MODEL"] = "qwen3.5:4b"
+            proc = subprocess.Popen(
+                [sys.executable, str(Path(__file__).with_name("server.py"))],
+                env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+            try:
+                for _ in range(40):
+                    try:
+                        with urlopen("http://127.0.0.1:18788/health", timeout=2) as response:
+                            health = json.loads(response.read())
+                        break
+                    except Exception:
+                        time.sleep(0.1)
+                else:
+                    self.fail("server did not start")
+                self.assertTrue(health["ok"])
+                self.assertFalse(health["ollama_reachable"])
+                with self.assertRaises(Exception) as raised:
+                    urlopen("http://127.0.0.1:18788/ready", timeout=3)
+                self.assertEqual(getattr(raised.exception, "code", None), 503)
+            finally:
+                proc.terminate()
+                proc.wait(timeout=5)
+
     def test_server_health_and_chat(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = os.environ.copy()
