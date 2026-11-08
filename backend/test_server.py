@@ -114,22 +114,21 @@ class ServerSmokeTest(unittest.TestCase):
                 spec = importlib.util.spec_from_file_location("jassim_memory_test", Path(__file__).with_name("server.py"))
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
+                self.assertEqual(module.memory_command("تذكر أن لغتي المفضلة العربية"),
+                                 ("save", "لغتي المفضلة العربية"))
+                self.assertEqual(module.memory_command("ماذا تتذكر عني؟"), ("show", ""))
+                self.assertEqual(module.memory_command("انسَ ذاكرتي"), ("clear", ""))
+                module.set_memory("chat-test", "أفضل الشرح المختصر")
+                self.assertEqual(module.get_memory("chat-test"), "أفضل الشرح المختصر")
+                self.assertTrue(module.clear_memory("chat-test"))
+                self.assertEqual(module.get_memory("chat-test"), "")
+                with self.assertRaises(ValueError):
+                    module.set_memory("chat-test", " ")
             finally:
                 if previous_data_dir is None:
                     os.environ.pop("JASSIM_DATA_DIR", None)
                 else:
                     os.environ["JASSIM_DATA_DIR"] = previous_data_dir
-        self.assertEqual(module.memory_command("تذكر أن لغتي المفضلة العربية"),
-                         ("save", "لغتي المفضلة العربية"))
-        self.assertEqual(module.memory_command("ماذا تتذكر عني؟"), ("show", ""))
-        self.assertEqual(module.memory_command("انسَ ذاكرتي"), ("clear", ""))
-        module.set_memory("chat-test", "أفضل الشرح المختصر")
-        self.assertEqual(module.get_memory("chat-test"), "أفضل الشرح المختصر")
-        self.assertTrue(module.clear_memory("chat-test"))
-        self.assertEqual(module.get_memory("chat-test"), "")
-        with self.assertRaises(ValueError):
-            module.set_memory("chat-test", " ")
-
 
     def test_inference_queue_rejects_overload_cleanly(self):
         import importlib.util
