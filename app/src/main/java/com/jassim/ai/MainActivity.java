@@ -44,6 +44,8 @@ public class MainActivity extends Activity {
     private volatile boolean cancelRequested;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private static final String KEY_ALIAS = "jassim_api_token_v1";
+    private static final String DEFAULT_SERVER_URL =
+        "https://jassim-ai-core-production.up.railway.app";
 
     private SecretKey getOrCreateSecretKey() throws Exception {
         KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
@@ -395,6 +397,7 @@ public class MainActivity extends Activity {
 
     private String baseUrl() {
         String endpoint = prefs.getString("endpoint", "").trim();
+        if (endpoint.isEmpty()) endpoint = DEFAULT_SERVER_URL;
         while (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
         return endpoint;
     }
@@ -447,12 +450,15 @@ public class MainActivity extends Activity {
                 JSONObject result = readJsonResponse(connection);
                 boolean ok = result.optBoolean("ok", false);
                 boolean modelReady = result.optBoolean("model_ready", false);
+                boolean adaptiveReady = result.optBoolean("external_provider_ready", false);
+                boolean ready = modelReady || adaptiveReady;
                 String engine = result.optString("model", result.optString("engine", "غير معروف"));
                 runOnUiThread(() -> {
                     status.setText(!ok ? "● الخادم غير جاهز"
-                        : modelReady ? "● الخادم متصل — النموذج جاهز"
+                        : modelReady ? "● الخادم متصل — النموذج المحلي جاهز"
+                        : adaptiveReady ? "● الخادم متصل — التوجيه الذكي جاهز"
                         : "● الخادم متصل — النموذج غير جاهز (" + engine + ")");
-                    status.setTextColor(!ok ? 0xFFFF7777 : modelReady ? 0xFF62DCA8 : 0xFFFFC36B);
+                    status.setTextColor(!ok ? 0xFFFF7777 : ready ? 0xFF62DCA8 : 0xFFFFC36B);
                 });
             } catch (Exception e) {
                 String error = e.getMessage() == null ? "تعذر فحص الخادم" : e.getMessage();
@@ -936,7 +942,7 @@ public class MainActivity extends Activity {
         EditText field = new EditText(this);
         field.setSingleLine(true);
         field.setHint("https://your-server.trycloudflare.com");
-        field.setText(prefs.getString("endpoint", ""));
+        field.setText(prefs.getString("endpoint", DEFAULT_SERVER_URL));
         fields.addView(field);
 
         EditText tokenField = new EditText(this);
