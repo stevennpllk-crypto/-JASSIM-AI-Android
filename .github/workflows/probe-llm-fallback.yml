@@ -16,12 +16,26 @@ jobs:
           python - <<'PY'
           import json, urllib.request
           url = "https://api.jarvisclaw.ai/v1/chat/completions"
-          body = json.dumps({"model":"auto/free","messages":[{"role":"user","content":"Reply exactly: JASSIM ONLINE"}],"stream":False,"max_tokens":40}).encode()
+          body = json.dumps({"model":"auto/free","messages":[{"role":"user","content":"Reply exactly: JASSIM ONLINE"}],"stream":True,"max_tokens":40}).encode()
           req = urllib.request.Request(url,data=body,headers={"Content-Type":"application/json"})
           try:
+              answer = []
               with urllib.request.urlopen(req,timeout=90) as r:
-                  x=json.loads(r.read())
-                  print("JARVISCLAW_OK:",x["choices"][0]["message"]["content"][:300])
+                  for raw in r:
+                      line = raw.decode("utf-8","replace").strip()
+                      if not line.startswith("data:"):
+                          continue
+                      data = line[5:].strip()
+                      if data == "[DONE]":
+                          break
+                      x = json.loads(data)
+                      choices = x.get("choices", [])
+                      if choices:
+                          answer.append(choices[0].get("delta", {}).get("content", ""))
+              result = "".join(answer)
+              if not result:
+                  raise RuntimeError("No streamed content returned")
+              print("JARVISCLAW_STREAM_OK:", result[:300])
           except Exception as e:
               print("JARVISCLAW_FAIL:",repr(e))
               raise
