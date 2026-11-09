@@ -71,3 +71,15 @@ The API preserves the existing contract: `POST /api/chat` with JSON `{"message":
 
 ## Current limits
 This is a self-hosted API foundation, not an unlimited GPU host. A 3 GB Android phone can host the API and SQLite store, but it is not suitable for large LLM inference. For larger models, connect a separately owned computer or GPU host with sufficient RAM/VRAM and persistent storage.
+
+
+## Adaptive provider learning (v0.5)
+
+JASSIM can benchmark multiple OpenAI-compatible inference providers and rank them using synthetic Arabic, arithmetic, and English test prompts. It stores attempts, success rate, latency, and an exponentially weighted quality estimate in SQLite. The evaluator never reads or uploads the user's chat history.
+
+- `GET /api/providers` (Bearer token): current provider ranking and score history.
+- `POST /api/admin/evaluate` (Bearer token): run the synthetic benchmark against configured public providers.
+- `JASSIM_ENABLE_PUBLIC_PROVIDERS=true`: enable provider probes (synthetic prompts only).
+- `JASSIM_ALLOW_EXTERNAL_CHAT=true`: explicitly allow actual user messages to be sent to public providers when local Ollama is unavailable. This is OFF by default. Do not enable it for confidential conversations.
+
+The initial public candidates are JarvisClaw and OVHcloud AI Endpoints. Provider availability, quotas, and terms can change; scores are routing heuristics, not proof of factual correctness. The system learns routing preferences from measured outcomes; it does not retrain model weights or rewrite its own source code. Source changes still require tests and a reviewed deployment.
