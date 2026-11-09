@@ -6,6 +6,8 @@ import sqlite3
 import threading
 import time
 import re
+import select
+import socket
 import hmac
 import urllib.request
 import urllib.error
@@ -314,6 +316,19 @@ def generate_answer(messages):
 class Handler(BaseHTTPRequestHandler):
     server_version = "JASSIM-AI/0.4.0"
 
+    def client_disconnected(self):
+        """Detect a closed downstream TCP connection before persisting a streamed turn."""
+        try:
+            readable, _, _ = select.select([self.connection], [], [], 0)
+            if not readable:
+                return False
+            flags = socket.MSG_PEEK | getattr(socket, "MSG_DONTWAIT", 0)
+            return self.connection.recv(1, flags) == b""
+        except (BlockingIOError, InterruptedError):
+            return False
+        except OSError:
+            return True
+
     def send_sse_headers(self):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
@@ -380,6 +395,8 @@ class Handler(BaseHTTPRequestHandler):
             completed = False
             try:
                 for raw_line in response:
+                    if self.client_disconnected():
+                        return
                     if not raw_line.strip():
                         continue
                     item = json.loads(raw_line.decode("utf-8"))
@@ -394,6 +411,8 @@ class Handler(BaseHTTPRequestHandler):
                         completed = True
                         break
 
+                if self.client_disconnected():
+                    return
                 answer = "".join(answer_parts).strip()
                 if not completed or not answer:
                     raise RuntimeError("ollama_stream_incomplete")
