@@ -1,0 +1,31 @@
+name: Probe anonymous LLM fallback
+on:
+  push:
+    paths:
+      - ".github/workflows/probe-llm-fallback.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe public OpenAI-compatible endpoint
+        run: |
+          set -e
+          curl -fsS --max-time 90 https://api.llmfaucet.dev/v1/models -o /tmp/models.json
+          python - <<'PY'
+          import json
+          x=json.load(open('/tmp/models.json'))
+          print("models endpoint ok; type:", x.get("object"), "count:", len(x.get("data", [])))
+          PY
+          curl -fsS --max-time 120 https://api.llmfaucet.dev/v1/chat/completions \
+            -H 'Authorization: Bearer free' \
+            -H 'Content-Type: application/json' \
+            -d '{"model":"auto:fast","messages":[{"role":"user","content":"Reply with exactly: JASSIM ONLINE"}],"stream":false,"max_tokens":40}' \
+            -o /tmp/chat.json
+          python - <<'PY'
+          import json
+          x=json.load(open('/tmp/chat.json'))
+          print("chat response:", x.get("choices",[{}])[0].get("message",{}).get("content","")[:300])
+          PY
