@@ -9,15 +9,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 COPY backend/server.py /app/server.py
 COPY backend/adaptive.py /app/adaptive.py
+COPY backend/entrypoint.py /app/entrypoint.py
 
 RUN useradd --system --uid 10001 --create-home jassim \
     && mkdir -p /data \
     && chown -R jassim:jassim /app /data
 
-USER jassim
+USER root
 EXPOSE 8787
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/ready', timeout=3)"
 
-CMD ["python", "/app/server.py"]
+CMD ["python", "/app/entrypoint.py"]
