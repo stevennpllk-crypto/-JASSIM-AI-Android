@@ -545,7 +545,9 @@ class Handler(BaseHTTPRequestHandler):
                 "ollama_reachable": model_state["reachable"],
                 "uptime_seconds": int(time.monotonic() - STARTED_AT),
                 "storage": storage.backend_name(),
-                "authentication": "configured" if API_TOKEN else "not-configured"
+                "authentication": "configured" if API_TOKEN else "not-configured",
+                "image_generation_ready": bool(os.environ.get("JASSIM_HF_TOKEN", "").strip()),
+                "image_model": os.environ.get("JASSIM_IMAGE_MODEL", "black-forest-labs/FLUX.1-schnell")
             })
             return
         if parsed.path in ("/api/models", "/api/history", "/api/conversations", "/api/providers", "/api/admin/storage"):
