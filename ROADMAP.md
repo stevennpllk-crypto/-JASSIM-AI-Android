@@ -34,6 +34,7 @@ Build an independent, Arabic-first AI assistant with a polished Android app and 
 - [ ] Stream generated text to Android and web clients (SSE) with cancel support.
 - [x] Restore the active conversation transcript on Android app startup.
 - [x] Conversation list, open, and delete with confirmation; rename, archive, search, and export remain planned.
+- [x] Android long-press message copying and keyboard send action.
 - [ ] Markdown rendering, code blocks, copy buttons, and syntax highlighting.
 - [ ] Regenerate response, edit-and-resend, stop generation, and retry.
 - [ ] Per-user accounts and short-lived revocable sessions; remove the shared-token-only limitation.
