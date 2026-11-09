@@ -618,7 +618,10 @@ class Handler(BaseHTTPRequestHandler):
                 answer = "تم مسح ذاكرة هذه المحادثة."
                 save_message(conversation_id, "user", message)
                 save_message(conversation_id, "assistant", answer)
-                self.send_json(200, {"answer": answer, "reply": answer, "conversation_id": conversation_id, "engine": "memory"})
+                if streaming:
+                    self.send_sse_static(answer, conversation_id, "memory")
+                else:
+                    self.send_json(200, {"answer": answer, "reply": answer, "conversation_id": conversation_id, "engine": "memory"})
                 return
             previous = history(conversation_id, max(1, HISTORY_MESSAGES - 1))
             saved_memory = get_memory(conversation_id)
