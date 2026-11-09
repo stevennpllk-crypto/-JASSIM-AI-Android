@@ -10,6 +10,9 @@ import android.view.View;
 import android.view.inputmethod.InputMethodManager;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.view.inputmethod.EditorInfo;
 import android.widget.*;
 import org.json.JSONObject;
 import org.json.JSONArray;
@@ -183,6 +186,14 @@ public class MainActivity extends Activity {
         input.setBackgroundColor(panel);
         input.setPadding(14, 8, 14, 8);
         input.setTextDirection(View.TEXT_DIRECTION_RTL);
+        input.setImeOptions(EditorInfo.IME_ACTION_SEND);
+        input.setOnEditorActionListener((view, actionId, event) -> {
+            if (actionId == EditorInfo.IME_ACTION_SEND) {
+                sendMessage();
+                return true;
+            }
+            return false;
+        });
         composer.addView(input, new LinearLayout.LayoutParams(0, -2, 1));
 
         Button send = new Button(this);
@@ -201,7 +212,16 @@ public class MainActivity extends Activity {
         bubble.setTextDirection(View.TEXT_DIRECTION_RTL);
         bubble.setGravity(Gravity.RIGHT);
         bubble.setPadding(14, 12, 14, 12);
-        bubble.setBackgroundColor(panel);
+        bubble.setBackgroundColor("أنت".equals(who) ? Color.rgb(39, 45, 69) : panel);
+        bubble.setOnLongClickListener(v -> {
+            ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            if (clipboard != null) {
+                clipboard.setPrimaryClip(ClipData.newPlainText("JASSIM AI", text));
+                Toast.makeText(this, "تم نسخ الرسالة", Toast.LENGTH_SHORT).show();
+            }
+            return true;
+        });
+        bubble.setContentDescription(who + ": " + text + " — اضغط مطولاً للنسخ");
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
         lp.setMargins(0, 7, 0, 7);
         messages.addView(bubble, lp);
