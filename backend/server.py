@@ -78,7 +78,7 @@ SYSTEM_PROMPT = """أنت JASSIM AI، مساعد مستقل عالي الجود�
 
 def connect_db():
     db = storage.connect(sqlite_path=DB_PATH)
-    storage.ensure_schema(db)
+    storage.ensure_schema(db, sqlite_path=DB_PATH)
     return db
 
 def history(conversation_id, limit=12):
