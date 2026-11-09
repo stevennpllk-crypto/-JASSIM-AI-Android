@@ -38,6 +38,10 @@ public class MainActivity extends Activity {
     private ScrollView scroll;
     private TextView status;
     private SharedPreferences prefs;
+    private Button sendButton;
+    private Button stopButton;
+    private volatile HttpURLConnection activeChatConnection;
+    private volatile boolean cancelRequested;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private static final String KEY_ALIAS = "jassim_api_token_v1";
 
@@ -196,15 +200,21 @@ public class MainActivity extends Activity {
         });
         composer.addView(input, new LinearLayout.LayoutParams(0, -2, 1));
 
-        Button send = new Button(this);
-        send.setText("إرسال");
-        send.setOnClickListener(v -> sendMessage());
-        composer.addView(send);
+        stopButton = new Button(this);
+        stopButton.setText("إيقاف");
+        stopButton.setEnabled(false);
+        stopButton.setOnClickListener(v -> stopGeneration());
+        composer.addView(stopButton);
+
+        sendButton = new Button(this);
+        sendButton.setText("إرسال");
+        sendButton.setOnClickListener(v -> sendMessage());
+        composer.addView(sendButton);
         root.addView(composer);
         setContentView(root);
     }
 
-    private void addMessage(String who, String text) {
+    private TextView addMessage(String who, String text) {
         TextView bubble = new TextView(this);
         bubble.setText(who + "\n" + text);
         bubble.setTextColor(Color.WHITE);
@@ -226,6 +236,7 @@ public class MainActivity extends Activity {
         lp.setMargins(0, 7, 0, 7);
         messages.addView(bubble, lp);
         if (scroll != null) scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));
+        return bubble;
     }
 
     private String baseUrl() {
@@ -449,6 +460,15 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void stopGeneration() {
+        cancelRequested = true;
+        HttpURLConnection connection = activeChatConnection;
+        if (connection != null) connection.disconnect();
+        if (stopButton != null) stopButton.setEnabled(false);
+        status.setText("● جارٍ إيقاف التوليد...");
+        status.setTextColor(0xFFFFC36B);
+    }
+
     private void sendMessage() {
         String message = input.getText().toString().trim();
         if (message.isEmpty()) return;
@@ -456,8 +476,6 @@ public class MainActivity extends Activity {
         ((InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE))
             .hideSoftInputFromWindow(input.getWindowToken(), 0);
         if (baseUrl().isEmpty()) {
-            // Keep the user's prompt in the composer without adding a fake
-            // assistant reply or implying that a remote model received it.
             status.setText("● غير متصل — رسالتك محفوظة في مربع الكتابة");
             status.setTextColor(0xFFFFC36B);
             if (input.getText().toString().trim().isEmpty()) {
@@ -471,15 +489,22 @@ public class MainActivity extends Activity {
         }
 
         addMessage("أنت", message);
-        status.setText("● جارٍ إرسال الرسالة إلى JASSIM AI...");
+        final TextView responseBubble = addMessage("JASSIM AI", "...");
+        cancelRequested = false;
+        if (sendButton != null) sendButton.setEnabled(false);
+        if (stopButton != null) stopButton.setEnabled(false);
+        status.setText("● جارٍ الاتصال بـ JASSIM AI...");
         status.setTextColor(0xFFFFC36B);
         String conversationId = ensureConversationId();
 
         executor.execute(() -> {
             HttpURLConnection connection = null;
+            StringBuilder answer = new StringBuilder();
             try {
-                connection = openConnection("/api/chat", "POST");
+                connection = openConnection("/api/chat/stream", "POST");
+                activeChatConnection = connection;
                 connection.setDoOutput(true);
+                connection.setRequestProperty("Accept", "text/event-stream");
                 connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
                 JSONObject body = new JSONObject();
                 body.put("message", message);
@@ -487,32 +512,79 @@ public class MainActivity extends Activity {
                 try (OutputStream out = connection.getOutputStream()) {
                     out.write(body.toString().getBytes(StandardCharsets.UTF_8));
                 }
-                JSONObject json = readJsonResponse(connection);
-                String answer = json.optString("answer", json.optString("reply", ""));
-                if (answer.isEmpty()) answer = "وصل رد من الخادم لكن لم أجد الحقل answer أو reply.";
-                final String result = answer;
-                final String engine = json.optString("engine", "متصل");
+                int responseCode = connection.getResponseCode();
+                if (responseCode < 200 || responseCode >= 300) {
+                    readJsonResponse(connection);
+                    throw new IOException("HTTP " + responseCode);
+                }
                 runOnUiThread(() -> {
-                    status.setText("● متصل بالخادم — " + engine);
+                    if (stopButton != null) stopButton.setEnabled(true);
+                    status.setText("● JASSIM AI يكتب الآن...");
+                    status.setTextColor(0xFFFFC36B);
+                });
+
+                String engine = "ollama";
+                boolean completed = false;
+                try (BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        if (!line.startsWith("data: ")) continue;
+                        JSONObject event = new JSONObject(line.substring(6));
+                        String type = event.optString("type", "");
+                        if ("token".equals(type)) {
+                            answer.append(event.optString("token", ""));
+                            final String partial = answer.toString();
+                            runOnUiThread(() -> responseBubble.setText("JASSIM AI\\n" + partial));
+                        } else if ("done".equals(type)) {
+                            engine = event.optString("engine", "ollama");
+                            completed = true;
+                            break;
+                        } else if ("error".equals(type)) {
+                            throw new IOException("تعذر إكمال التوليد على الخادم");
+                        }
+                    }
+                }
+                if (cancelRequested) return;
+                if (!completed || answer.length() == 0) {
+                    throw new IOException("انتهى اتصال البث قبل اكتمال الإجابة");
+                }
+                final String result = answer.toString();
+                final String finalEngine = engine;
+                runOnUiThread(() -> {
+                    responseBubble.setText("JASSIM AI\\n" + result);
+                    status.setText("● متصل بالخادم — " + finalEngine);
                     status.setTextColor(0xFF62DCA8);
-                    addMessage("JASSIM AI", result);
                 });
             } catch (Exception e) {
-                final String error = e.getMessage() == null ? "خطأ اتصال" : e.getMessage();
-                runOnUiThread(() -> {
-                    status.setText("● فشل الاتصال — يمكنك إعادة المحاولة");
-                    status.setTextColor(0xFFFF7777);
-                    addMessage("JASSIM AI", "تعذر إكمال الطلب: " + error
-                        + "\nتحقق من أن جلسة Colab والنفق ما زالا يعملان. احتفظت برسالتك لتتمكن من إعادة إرسالها.");
-                    // Restore the failed prompt only when the user has not started
-                    // composing another message while the network request was running.
-                    if (input.getText().toString().trim().isEmpty()) {
-                        input.setText(message);
-                        input.setSelection(input.length());
-                    }
-                });
+                if (cancelRequested) {
+                    runOnUiThread(() -> {
+                        if (answer.length() == 0) {
+                            responseBubble.setText("JASSIM AI\\nتم إيقاف التوليد قبل وصول الإجابة.");
+                        }
+                        status.setText("● تم إيقاف التوليد — الإجابة الجزئية لم تُحفظ");
+                        status.setTextColor(0xFFFFC36B);
+                    });
+                } else {
+                    final String error = e.getMessage() == null ? "خطأ اتصال" : e.getMessage();
+                    runOnUiThread(() -> {
+                        status.setText("● فشل الاتصال — يمكنك إعادة المحاولة");
+                        status.setTextColor(0xFFFF7777);
+                        responseBubble.setText("JASSIM AI\\nتعذر إكمال الطلب: " + error
+                            + "\\nاحتفظت برسالتك لتتمكن من إعادة إرسالها.");
+                        if (input.getText().toString().trim().isEmpty()) {
+                            input.setText(message);
+                            input.setSelection(input.length());
+                        }
+                    });
+                }
             } finally {
                 if (connection != null) connection.disconnect();
+                activeChatConnection = null;
+                runOnUiThread(() -> {
+                    if (sendButton != null) sendButton.setEnabled(true);
+                    if (stopButton != null) stopButton.setEnabled(false);
+                });
             }
         });
     }
