@@ -8,7 +8,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 DATA_DIR = Path(os.environ.get("JASSIM_DATA_DIR", str(Path(__file__).resolve().parent / "data"))).expanduser()
 SQLITE_PATH = DATA_DIR / "jassim.db"
 _SCHEMA_LOCK = threading.Lock()
-_SCHEMA_READY = False
+_SCHEMA_READY_KEY = None
 
 
 class PostgresConnection:
@@ -42,12 +42,13 @@ def connect(sqlite_path=None):
     return db
 
 
-def ensure_schema(db):
-    global _SCHEMA_READY
+def ensure_schema(db, sqlite_path=None):
+    global _SCHEMA_READY_KEY
     with _SCHEMA_LOCK:
-        if _SCHEMA_READY:
-            return
         postgres = bool(os.environ.get("DATABASE_URL", "").strip())
+        schema_key = "postgres:" + os.environ.get("DATABASE_URL", "").strip() if postgres else "sqlite:" + str(Path(sqlite_path) if sqlite_path is not None else SQLITE_PATH)
+        if _SCHEMA_READY_KEY == schema_key:
+            return
         if postgres:
             statements = [
                 """CREATE TABLE IF NOT EXISTS messages (
@@ -107,7 +108,7 @@ def ensure_schema(db):
         db.commit()
         if postgres:
             _migrate_sqlite_once(db)
-        _SCHEMA_READY = True
+        _SCHEMA_READY_KEY = schema_key
 
 
 def _migrate_sqlite_once(target):
