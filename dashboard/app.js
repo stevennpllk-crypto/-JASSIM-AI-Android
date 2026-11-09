@@ -24,7 +24,7 @@
     btn.disabled=false;btn.textContent="إيقاف ■";btn.classList.add("stop-active");
     const answerBubble=addBubble("","ai");let received=false,done=false;
     try{
-      const response=await fetch(state.endpoint.replace(/\\/$/,"")+"/api/chat/stream",{
+      const response=await fetch(state.endpoint.replace(/[/]+$/,"")+"/api/chat/stream",{
         method:"POST",signal:controller.signal,
         headers:{"Content-Type":"application/json","Accept":"text/event-stream","Authorization":"Bearer "+state.token},
         body:JSON.stringify({message,conversation_id:state.conversation})
@@ -35,9 +35,9 @@
       while(true){
         const part=await reader.read();if(part.done)break;
         buffer+=decoder.decode(part.value,{stream:true});let boundary;
-        while((boundary=buffer.indexOf("\\n\\n"))>=0){
+        while((boundary=buffer.indexOf("\n\n"))>=0){
           const block=buffer.slice(0,boundary);buffer=buffer.slice(boundary+2);
-          const data=block.split(/\\r?\\n/).filter(line=>line.startsWith("data:")).map(line=>line.slice(5).trim()).join("\\n");
+          const data=block.split(/\r?\n/).filter(line=>line.startsWith("data:")).map(line=>line.slice(5).trim()).join("\n");
           if(!data)continue;let event;try{event=JSON.parse(data)}catch(_){continue}
           if(event.type==="token"){answerBubble.textContent+=event.token||"";received=true;$("messages").scrollTop=$("messages").scrollHeight}
           else if(event.type==="done"){done=true;if(event.engine){$("engineStat").textContent=event.engine;$("engineDetail").textContent="المحرك المستخدم في آخر رد"}}
@@ -46,8 +46,8 @@
       }
       if(!received)answerBubble.textContent=done?"اكتمل الطلب دون نص.":"انتهى الاتصال دون وصول رد.";
     }catch(err){
-      if(err.name==="AbortError")answerBubble.textContent=received?answerBubble.textContent+"\\n\\n[تم إيقاف التوليد]":"تم إيقاف التوليد.";
-      else answerBubble.textContent=(received?answerBubble.textContent+"\\n\\n":"")+"تعذر إكمال الرد: "+err.message;
+      if(err.name==="AbortError")answerBubble.textContent=received?answerBubble.textContent+"\n\n[تم إيقاف التوليد]":"تم إيقاف التوليد.";
+      else answerBubble.textContent=(received?answerBubble.textContent+"\n\n":"")+"تعذر إكمال الرد: "+err.message;
     }finally{state.activeController=null;btn.textContent="إرسال ↑";btn.classList.remove("stop-active");btn.disabled=false}
   });
   $("clearChat").addEventListener("click",()=>{state.conversation="web-"+Math.random().toString(36).slice(2,10);$("conversationId").textContent=state.conversation;$("messages").innerHTML="";const w=document.createElement("div");w.className="welcome";w.innerHTML="<div class='welcome-icon'>✳</div><b>بدأت محادثة جديدة</b><p>اكتب رسالتك للمتابعة.</p>";$("messages").appendChild(w)});
