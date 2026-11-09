@@ -643,14 +643,13 @@ public class MainActivity extends Activity {
         HttpURLConnection connection = null;
         StringBuilder answer = new StringBuilder();
         try {
-            URL url = new URL("https://api.llmfaucet.dev/v1/chat/completions");
+            URL url = new URL("https://api.jarvisclaw.ai/v1/chat/completions");
             connection = (HttpURLConnection) url.openConnection();
             activeChatConnection = connection;
             connection.setRequestMethod("POST");
             connection.setConnectTimeout(25000);
             connection.setReadTimeout(180000);
             connection.setDoOutput(true);
-            connection.setRequestProperty("Authorization", "Bearer free");
             connection.setRequestProperty("Accept", "text/event-stream");
             connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
 
@@ -665,7 +664,7 @@ public class MainActivity extends Activity {
             chatMessages.put(user);
 
             JSONObject body = new JSONObject();
-            body.put("model", "auto:smart");
+            body.put("model", "auto/free");
             body.put("messages", chatMessages);
             body.put("stream", true);
             body.put("max_tokens", 1200);
