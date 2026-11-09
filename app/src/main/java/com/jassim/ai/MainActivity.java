@@ -518,6 +518,36 @@ public class MainActivity extends Activity {
         status.setTextColor(0xFFFFC36B);
     }
 
+    // Build a short in-memory transcript for public fallback providers.
+    // The pending assistant bubble is excluded; the current user message is included.
+    private JSONArray buildFallbackHistory(TextView pendingBubble) {
+        JSONArray history = new JSONArray();
+        java.util.ArrayList<JSONObject> recent = new java.util.ArrayList<>();
+        for (int i = 0; i < messages.getChildCount(); i++) {
+            View child = messages.getChildAt(i);
+            if (!(child instanceof TextView) || child == pendingBubble) continue;
+            String value = ((TextView) child).getText().toString();
+            int newline = value.indexOf('\\n');
+            if (newline < 0) continue;
+            String header = value.substring(0, newline).trim();
+            String content = value.substring(newline + 1).trim();
+            if (content.isEmpty()) continue;
+            String role;
+            if ("أنت".equals(header)) role = "user";
+            else if ("JASSIM AI".equals(header)) role = "assistant";
+            else continue;
+            try {
+                JSONObject item = new JSONObject();
+                item.put("role", role);
+                item.put("content", content);
+                recent.add(item);
+            } catch (Exception ignored) { }
+        }
+        int start = Math.max(0, recent.size() - 16);
+        for (int i = start; i < recent.size(); i++) history.put(recent.get(i));
+        return history;
+    }
+
     private void sendMessage() {
         String message = input.getText().toString().trim();
         if (message.isEmpty()) return;
@@ -527,12 +557,13 @@ public class MainActivity extends Activity {
         if (baseUrl().isEmpty()) {
             addMessage("أنت", message);
             final TextView fallbackBubble = addMessage("JASSIM AI", "جارٍ الاتصال بالخدمة الاحتياطية...");
+            final JSONArray fallbackHistory = buildFallbackHistory(fallbackBubble);
             cancelRequested = false;
             if (sendButton != null) sendButton.setEnabled(false);
             if (stopButton != null) stopButton.setEnabled(false);
             status.setText("● نتصل بخدمة الذكاء الاصطناعي الاحتياطية...");
             status.setTextColor(0xFFFFC36B);
-            executor.execute(() -> sendAnonymousFallback(message, fallbackBubble));
+            executor.execute(() -> sendAnonymousFallback(fallbackHistory, fallbackBubble));
             return;
         }
 
@@ -639,7 +670,7 @@ public class MainActivity extends Activity {
 
     // Public, keyless fallback. The user's private JASSIM token is never sent here.
     // Requests go to a third-party gateway; users should not submit sensitive information.
-    private String requestAnonymousProvider(String endpoint, String model, String message,
+    private String requestAnonymousProvider(String endpoint, String model, JSONArray history,
                                             TextView responseBubble) throws Exception {
         HttpURLConnection connection = null;
         StringBuilder answer = new StringBuilder();
@@ -659,10 +690,17 @@ public class MainActivity extends Activity {
             system.put("role", "system");
             system.put("content", "أنت JASSIM AI، مساعد عربي مفيد ودقيق. أجب بالعربية الواضحة، وافهم اللهجة التونسية. لا تختلق معلومات، واذكر حدود معرفتك.");
             chatMessages.put(system);
-            JSONObject user = new JSONObject();
-            user.put("role", "user");
-            user.put("content", message);
-            chatMessages.put(user);
+            if (history != null) {
+                for (int i = 0; i < history.length(); i++) {
+                    JSONObject item = history.optJSONObject(i);
+                    if (item == null) continue;
+                    String role = item.optString("role", "");
+                    String content = item.optString("content", "");
+                    if (("user".equals(role) || "assistant".equals(role)) && !content.isEmpty()) {
+                        chatMessages.put(item);
+                    }
+                }
+            }
 
             JSONObject body = new JSONObject();
             body.put("model", model);
@@ -720,7 +758,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void sendAnonymousFallback(String message, TextView responseBubble) {
+    private void sendAnonymousFallback(JSONArray history, TextView responseBubble) {
         try {
             runOnUiThread(() -> {
                 if (stopButton != null) stopButton.setEnabled(true);
@@ -732,7 +770,7 @@ public class MainActivity extends Activity {
             try {
                 result = requestAnonymousProvider(
                     "https://api.jarvisclaw.ai/v1/chat/completions",
-                    "auto/free", message, responseBubble);
+                    "auto/free", history, responseBubble);
                 provider = "JarvisClaw";
             } catch (Exception firstError) {
                 if (cancelRequested) return;
@@ -743,7 +781,7 @@ public class MainActivity extends Activity {
                 try {
                     result = requestAnonymousProvider(
                         "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions",
-                        "Meta-Llama-3_3-70B-Instruct", message, responseBubble);
+                        "Meta-Llama-3_3-70B-Instruct", history, responseBubble);
                     provider = "OVHcloud";
                 } catch (Exception secondError) {
                     throw new IOException("لم يستجب أي من المزودين المجانيين. الأول: "
