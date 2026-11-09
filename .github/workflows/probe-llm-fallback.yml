@@ -1,4 +1,4 @@
-name: Probe anonymous LLM fallback
+name: Probe anonymous LLM providers
 on:
   push:
     paths:
@@ -10,22 +10,35 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe public OpenAI-compatible endpoint
+      - name: Probe JarvisClaw free anonymous model
+        continue-on-error: true
         run: |
-          set -e
-          curl -fsS --max-time 90 https://api.llmfaucet.dev/v1/models -o /tmp/models.json
           python - <<'PY'
-          import json
-          x=json.load(open('/tmp/models.json'))
-          print("models endpoint ok; type:", x.get("object"), "count:", len(x.get("data", [])))
+          import json, urllib.request
+          url = "https://api.jarvisclaw.ai/v1/chat/completions"
+          body = json.dumps({"model":"auto/free","messages":[{"role":"user","content":"Reply exactly: JASSIM ONLINE"}],"stream":False,"max_tokens":40}).encode()
+          req = urllib.request.Request(url,data=body,headers={"Content-Type":"application/json"})
+          try:
+              with urllib.request.urlopen(req,timeout=90) as r:
+                  x=json.loads(r.read())
+                  print("JARVISCLAW_OK:",x["choices"][0]["message"]["content"][:300])
+          except Exception as e:
+              print("JARVISCLAW_FAIL:",repr(e))
+              raise
           PY
-          curl -fsS --max-time 120 https://api.llmfaucet.dev/v1/chat/completions \
-            -H 'Authorization: Bearer free' \
-            -H 'Content-Type: application/json' \
-            -d '{"model":"auto:fast","messages":[{"role":"user","content":"Reply with exactly: JASSIM ONLINE"}],"stream":false,"max_tokens":40}' \
-            -o /tmp/chat.json
+      - name: Probe OVH anonymous model
+        continue-on-error: true
+        run: |
           python - <<'PY'
-          import json
-          x=json.load(open('/tmp/chat.json'))
-          print("chat response:", x.get("choices",[{}])[0].get("message",{}).get("content","")[:300])
+          import json, urllib.request
+          url = "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions"
+          body = json.dumps({"model":"Meta-Llama-3_3-70B-Instruct","messages":[{"role":"user","content":"Reply exactly: JASSIM ONLINE"}],"stream":False,"max_tokens":40}).encode()
+          req = urllib.request.Request(url,data=body,headers={"Content-Type":"application/json"})
+          try:
+              with urllib.request.urlopen(req,timeout=90) as r:
+                  x=json.loads(r.read())
+                  print("OVH_OK:",x["choices"][0]["message"]["content"][:300])
+          except Exception as e:
+              print("OVH_FAIL:",repr(e))
+              raise
           PY
