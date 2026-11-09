@@ -31,6 +31,11 @@ EVALUATION_CASES = [
 
 
 def _db():
+    if os.environ.get("DATABASE_URL", "").strip():
+        import storage
+        db = storage.connect()
+        storage.ensure_schema(db)
+        return db
     db = sqlite3.connect(DB_PATH, timeout=20)
     db.execute("""CREATE TABLE IF NOT EXISTS provider_scores (
         provider_id TEXT PRIMARY KEY,
