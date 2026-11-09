@@ -8,6 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 COPY backend/server.py /app/server.py
+COPY backend/adaptive.py /app/adaptive.py
 
 RUN useradd --system --uid 10001 --create-home jassim \
     && mkdir -p /data \
