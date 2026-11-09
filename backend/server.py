@@ -509,7 +509,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, {
                 "ok": True,
                 "service": "JASSIM AI",
-                "version": "0.5.0",
+                "version": "0.6.0",
                 "engine": "adaptive-router",
                 "external_provider_ready": external_ready,
                 "model": OLLAMA_MODEL,
@@ -517,11 +517,11 @@ class Handler(BaseHTTPRequestHandler):
                 "model_loaded": model_state["model_loaded"],
                 "ollama_reachable": model_state["reachable"],
                 "uptime_seconds": int(time.monotonic() - STARTED_AT),
-                "storage": "sqlite",
+                "storage": storage.backend_name(),
                 "authentication": "configured" if API_TOKEN else "not-configured"
             })
             return
-        if parsed.path in ("/api/models", "/api/history", "/api/conversations", "/api/providers"):
+        if parsed.path in ("/api/models", "/api/history", "/api/conversations", "/api/providers", "/api/admin/storage"):
             if not self.authorized():
                 self.send_json(401, {"error": "unauthorized"})
                 return
@@ -532,6 +532,22 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, {
                     "external_chat_enabled": adaptive.external_chat_enabled(),
                     "providers": adaptive.provider_stats()
+                })
+                return
+            if parsed.path == "/api/admin/storage":
+                db = connect_db()
+                try:
+                    counts = {
+                        "messages": db.execute("SELECT COUNT(*) FROM messages").fetchone()[0],
+                        "memories": db.execute("SELECT COUNT(*) FROM memories").fetchone()[0],
+                        "provider_scores": db.execute("SELECT COUNT(*) FROM provider_scores").fetchone()[0]
+                    }
+                finally:
+                    db.close()
+                self.send_json(200, {
+                    "backend": storage.backend_name(),
+                    "migration": "sqlite_to_postgres_v1",
+                    "counts": counts
                 })
                 return
             if parsed.path == "/api/models":
