@@ -668,7 +668,7 @@ public class MainActivity extends Activity {
             if (stopButton != null) stopButton.setEnabled(false);
             status.setText("● نتصل بخدمة الذكاء الاصطناعي الاحتياطية...");
             status.setTextColor(0xFFFFC36B);
-            executor.execute(() -> sendAnonymousFallback(fallbackHistory, fallbackBubble));
+            executor.execute(() -> sendAnonymousFallback(fallbackHistory, fallbackBubble, message));
             return;
         }
 
@@ -863,7 +863,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void sendAnonymousFallback(JSONArray history, TextView responseBubble) {
+    private void sendAnonymousFallback(JSONArray history, TextView responseBubble, String userMessage) {
         try {
             runOnUiThread(() -> {
                 if (stopButton != null) stopButton.setEnabled(true);
@@ -913,7 +913,7 @@ public class MainActivity extends Activity {
                     status.setText("● تعذر الاتصال بالخدمات الاحتياطية");
                     status.setTextColor(0xFFFF7777);
                     if (input.getText().toString().trim().isEmpty()) {
-                        input.setText(message);
+                        input.setText(userMessage);
                         input.setSelection(input.length());
                     }
                 });
