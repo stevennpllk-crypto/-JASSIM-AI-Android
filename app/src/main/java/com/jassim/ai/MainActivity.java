@@ -503,6 +503,7 @@ public class MainActivity extends Activity {
             try {
                 connection = openConnection("/api/chat/stream", "POST");
                 activeChatConnection = connection;
+                connection.setReadTimeout(300000);
                 runOnUiThread(() -> {
                     if (stopButton != null) stopButton.setEnabled(true);
                     status.setText("● JASSIM AI يكتب الآن...");
