@@ -9,9 +9,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 COPY backend/server.py /app/server.py
 COPY backend/adaptive.py /app/adaptive.py
+COPY backend/storage.py /app/storage.py
 COPY backend/entrypoint.py /app/entrypoint.py
 
-RUN useradd --system --uid 10001 --create-home jassim \
+RUN pip install --no-cache-dir 'psycopg[binary]>=3.2,<4' \
+    && useradd --system --uid 10001 --create-home jassim \
     && mkdir -p /data \
     && chown -R jassim:jassim /app /data
 
