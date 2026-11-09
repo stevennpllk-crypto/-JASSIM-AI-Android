@@ -38,6 +38,28 @@ jobs:
       - name: Test self-hosted backend
         run: python -m unittest discover -s backend -p 'test_*.py' -v
 
+      - name: Verify deployed JASSIM server health
+        run: |
+          python - <<'PY'
+          import json, time, urllib.request
+          url = "https://jassim-ai-core-final-production.up.railway.app/health"
+          last_error = None
+          for attempt in range(12):
+              try:
+                  with urllib.request.urlopen(url, timeout=15) as response:
+                      data = json.loads(response.read().decode("utf-8"))
+                  if not data.get("ok"):
+                      raise RuntimeError(f"Unexpected health payload: {data}")
+                  print("JASSIM_SERVER_ONLINE:", data.get("version"), data.get("engine"))
+                  break
+              except Exception as exc:
+                  last_error = exc
+                  if attempt == 11:
+                      raise
+                  print(f"Health check attempt {attempt + 1}/12 failed: {exc}")
+                  time.sleep(5)
+          PY
+
       - name: Probe anonymous JarvisClaw fallback
         continue-on-error: true
         run: |
