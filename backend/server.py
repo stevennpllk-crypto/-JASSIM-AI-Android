@@ -16,6 +16,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
+import adaptive
+
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = Path(os.environ.get("JASSIM_DATA_DIR", str(ROOT / "data"))).expanduser()
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -305,11 +307,16 @@ def generate_answer(messages):
         try:
             return ask_ollama(messages), "ollama"
         except (urllib.error.URLError, TimeoutError, ValueError, RuntimeError, OSError):
-            return (
-                "محرك الذكاء الاصطناعي غير متاح حالياً. "
-                "الخادم استقبل طلبك، لكن لم يتمكن من توليد إجابة من النموذج. "
-                "تحقق من تشغيل Ollama وتحميل النموذج ثم أعد المحاولة."
-            ), "fallback"
+            try:
+                answer, provider = adaptive.answer_with_provider(
+                    [{"role": "system", "content": SYSTEM_PROMPT}] + messages
+                )
+                return answer, provider
+            except RuntimeError:
+                return (
+                    "محرك الذكاء الاصطناعي غير متاح حالياً. "
+                    "لم يتمكن الخادم من الوصول إلى Ollama أو إلى مزود احتياطي مفعّل."
+                ), "fallback"
     finally:
         INFERENCE_SEMAPHORE.release()
 
@@ -382,12 +389,20 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 response = urllib.request.urlopen(request, timeout=OLLAMA_TIMEOUT)
             except (urllib.error.URLError, TimeoutError, ValueError, OSError):
-                self.send_json(503, {
-                    "error": "model_unavailable",
-                    "message": "محرك الذكاء الاصطناعي غير متاح حالياً. تحقق من تشغيل Ollama ثم أعد المحاولة.",
-                    "retry_after_seconds": 30,
-                    "conversation_id": conversation_id
-                })
+                try:
+                    answer, provider = adaptive.answer_with_provider(
+                        [{"role": "system", "content": SYSTEM_PROMPT}] + context
+                    )
+                    save_message(conversation_id, "user", message)
+                    save_message(conversation_id, "assistant", answer)
+                    self.send_sse_static(answer, conversation_id, provider)
+                except RuntimeError:
+                    self.send_json(503, {
+                        "error": "model_unavailable",
+                        "message": "محرك الذكاء الاصطناعي غير متاح. لم يُفعّل مزود خارجي أو تعذر الوصول إليه.",
+                        "retry_after_seconds": 30,
+                        "conversation_id": conversation_id
+                    })
                 return
 
             self.send_sse_headers()
@@ -491,20 +506,25 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path in ("/health", "/ready"):
             model_state = ollama_status()
-            ready = bool(API_TOKEN and model_state["reachable"] and model_state["model_ready"])
+            external_ready = adaptive.external_chat_enabled()
+            ready = bool(API_TOKEN and (
+                (model_state["reachable"] and model_state["model_ready"]) or external_ready
+            ))
             if parsed.path == "/ready":
                 self.send_json(200 if ready else 503, {
                     "ready": ready,
                     "api_token_configured": bool(API_TOKEN),
                     "ollama_reachable": model_state["reachable"],
-                    "model_ready": model_state["model_ready"]
+                    "model_ready": model_state["model_ready"],
+                    "external_provider_ready": external_ready
                 })
                 return
             self.send_json(200, {
                 "ok": True,
                 "service": "JASSIM AI",
-                "version": "0.4.0",
-                "engine": "ollama",
+                "version": "0.5.0",
+                "engine": "adaptive-router",
+                "external_provider_ready": external_ready,
                 "model": OLLAMA_MODEL,
                 "model_ready": model_state["model_ready"],
                 "model_loaded": model_state["model_loaded"],
@@ -514,12 +534,18 @@ class Handler(BaseHTTPRequestHandler):
                 "authentication": "configured" if API_TOKEN else "not-configured"
             })
             return
-        if parsed.path in ("/api/models", "/api/history", "/api/conversations"):
+        if parsed.path in ("/api/models", "/api/history", "/api/conversations", "/api/providers"):
             if not self.authorized():
                 self.send_json(401, {"error": "unauthorized"})
                 return
             if self.rate_limited():
                 self.send_json(429, {"error": "rate_limit_exceeded", "retry_after_seconds": 60})
+                return
+            if parsed.path == "/api/providers":
+                self.send_json(200, {
+                    "external_chat_enabled": adaptive.external_chat_enabled(),
+                    "providers": adaptive.provider_stats()
+                })
                 return
             if parsed.path == "/api/models":
                 request = urllib.request.Request(OLLAMA_URL.rstrip("/") + "/api/tags", method="GET")
@@ -579,7 +605,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         request_path = urlparse(self.path).path
         streaming = request_path == "/api/chat/stream"
-        if request_path not in ("/api/chat", "/api/chat/stream"):
+        if request_path not in ("/api/chat", "/api/chat/stream", "/api/admin/evaluate"):
             self.send_json(404, {"error": "not_found"})
             return
         if not self.authorized():
@@ -587,6 +613,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self.rate_limited():
             self.send_json(429, {"error": "rate_limit_exceeded", "retry_after_seconds": 60})
+            return
+        if request_path == "/api/admin/evaluate":
+            result = adaptive.evaluate_providers()
+            self.send_json(200, result)
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -672,7 +702,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     connect_db().close()
-    print(f"JASSIM AI API v0.4.0 listening on http://{HOST}:{PORT}")
+    print(f"JASSIM AI API v0.5.0 listening on http://{HOST}:{PORT}")
     print(f"Persistent database: {DB_PATH}")
     print(f"Ollama model: {OLLAMA_MODEL} ({OLLAMA_URL})")
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
