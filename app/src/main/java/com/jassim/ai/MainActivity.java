@@ -161,7 +161,12 @@ public class MainActivity extends Activity {
                         ? "● تعذر تحديث الرابط — نجرب آخر عنوان محفوظ"
                         : "● تم اكتشاف الخادم تلقائياً — جارٍ الاتصال...");
                     checkHealth();
-                    loadHistory();
+                    if (readApiToken().isEmpty()) {
+                        status.setText("● الخادم جاهز — أدخل رمز الوصول من الإعدادات لتفعيل المحادثة");
+                        status.setTextColor(0xFFFFC36B);
+                    } else {
+                        loadHistory();
+                    }
                 }
             });
         });
