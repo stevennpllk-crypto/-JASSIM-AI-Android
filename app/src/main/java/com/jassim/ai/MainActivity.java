@@ -527,7 +527,7 @@ public class MainActivity extends Activity {
             View child = messages.getChildAt(i);
             if (!(child instanceof TextView) || child == pendingBubble) continue;
             String value = ((TextView) child).getText().toString();
-            int newline = value.indexOf('\\n');
+            int newline = value.indexOf('\n');
             if (newline < 0) continue;
             String header = value.substring(0, newline).trim();
             String content = value.substring(newline + 1).trim();
