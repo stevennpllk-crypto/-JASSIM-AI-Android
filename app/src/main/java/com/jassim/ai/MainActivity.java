@@ -366,12 +366,6 @@ public class MainActivity extends Activity {
 
     private TextView addMessage(String who, String text) {
         boolean isUser = "أنت".equals(who);
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(isUser ? Gravity.RIGHT : Gravity.LEFT);
-        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, -2);
-        rowLp.setMargins(0, dp(4), 0, dp(4));
-
         TextView bubble = new TextView(this);
         bubble.setText(who + "\\n" + text);
         bubble.setTextColor(0xFFF1F4FF);
@@ -391,8 +385,10 @@ public class MainActivity extends Activity {
             return true;
         });
         bubble.setContentDescription(who + ": " + text + " — اضغط مطولاً للنسخ");
-        row.addView(bubble, new LinearLayout.LayoutParams(-2, -2));
-        messages.addView(row, rowLp);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+        lp.gravity = isUser ? Gravity.RIGHT : Gravity.LEFT;
+        lp.setMargins(0, dp(4), 0, dp(4));
+        messages.addView(bubble, lp);
         if (scroll != null) scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));
         return bubble;
     }
