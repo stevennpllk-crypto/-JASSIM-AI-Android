@@ -10,7 +10,7 @@ See [ROADMAP.md](ROADMAP.md) for the complete staged plan: streaming chat, user-
 
 - `app/`: native Android client (Java). Configure the server URL and API token in the app's Settings. The active conversation transcript is restored from the authenticated history endpoint on startup.
 - `DEPLOYMENT.md`: restartable Docker deployment, persistent model/database volumes, readiness checks, and HTTPS guidance.
-- `backend/server.py`: Python standard-library API (v0.3.1) with SQLite persistence, Bearer authentication, input-size checks, per-IP rate limiting, model readiness checks, and an authenticated model inventory endpoint.
+- `backend/server.py`: Python standard-library API (v0.4.0) with SQLite persistence, Bearer authentication, input-size checks, per-IP rate limiting, model readiness checks, an authenticated model inventory endpoint, and an SSE streaming route.
 - `dashboard/`: Arabic RTL dashboard for health checks and chat.
 - `.github/workflows/android.yml`: backend smoke tests, debug APK build, ZIP integrity/required-entry verification, and artifact upload.
 - `.github/workflows/pages.yml`: GitHub Pages deployment workflow for the dashboard.
@@ -69,6 +69,18 @@ curl -X POST "http://127.0.0.1:8787/api/chat" \
   -H "Authorization: Bearer $JASSIM_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"message":"عرّف بنفسك","conversation_id":"test"}'
+```
+
+The legacy `/api/chat` route continues to return a complete JSON response. Android now uses `/api/chat/stream`, which returns Server-Sent Events with JSON payloads: `type=token` for each generated piece, followed by `type=done` when the full answer is saved. A client can cancel delivery by closing its HTTP connection; incomplete generations are not saved when the server detects the disconnect.
+
+Example streaming request:
+
+```sh
+curl -N -X POST "http://127.0.0.1:8787/api/chat/stream" \
+  -H "Authorization: Bearer $JASSIM_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Accept: text/event-stream" \
+  -d '{"message":"عرّف بنفسك","conversation_id":"stream-test"}'
 ```
 
 ## Google Colab / temporary tunnels
