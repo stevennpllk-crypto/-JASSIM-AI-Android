@@ -312,7 +312,111 @@ def generate_answer(messages):
         INFERENCE_SEMAPHORE.release()
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "JASSIM-AI/0.3.1"
+    server_version = "JASSIM-AI/0.4.0"
+
+    def send_sse_headers(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache, no-transform")
+        self.send_header("Connection", "keep-alive")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+
+    def send_sse_event(self, payload):
+        raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        self.wfile.write(b"data: " + raw + b"\\n\\n")
+        self.wfile.flush()
+
+    def send_sse_static(self, answer, conversation_id, engine):
+        self.send_sse_headers()
+        self.send_sse_event({"type": "token", "token": answer})
+        self.send_sse_event({"type": "done", "conversation_id": conversation_id, "engine": engine})
+
+    def stream_chat_response(self, conversation_id, message, context):
+        if not INFERENCE_SEMAPHORE.acquire(timeout=OLLAMA_QUEUE_TIMEOUT):
+            self.send_json(503, {
+                "error": "model_busy",
+                "message": "محرك الذكاء الاصطناعي مشغول بطلب آخر. انتظر قليلاً ثم أعد المحاولة.",
+                "retry_after_seconds": 5,
+                "conversation_id": conversation_id
+            })
+            return
+
+        response = None
+        try:
+            payload = json.dumps({
+                "model": OLLAMA_MODEL,
+                "messages": [{"role": "system", "content": SYSTEM_PROMPT}] + context,
+                "stream": True,
+                "keep_alive": OLLAMA_KEEP_ALIVE,
+                "options": {
+                    "num_ctx": OLLAMA_NUM_CTX,
+                    "num_predict": OLLAMA_NUM_PREDICT,
+                    "temperature": 0.45,
+                    "top_p": 0.9,
+                    "top_k": 40,
+                    "repeat_penalty": 1.08
+                }
+            }).encode("utf-8")
+            request = urllib.request.Request(
+                OLLAMA_URL.rstrip("/") + "/api/chat",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST"
+            )
+            try:
+                response = urllib.request.urlopen(request, timeout=OLLAMA_TIMEOUT)
+            except (urllib.error.URLError, TimeoutError, ValueError, OSError):
+                self.send_json(503, {
+                    "error": "model_unavailable",
+                    "message": "محرك الذكاء الاصطناعي غير متاح حالياً. تحقق من تشغيل Ollama ثم أعد المحاولة.",
+                    "retry_after_seconds": 30,
+                    "conversation_id": conversation_id
+                })
+                return
+
+            self.send_sse_headers()
+            answer_parts = []
+            completed = False
+            try:
+                for raw_line in response:
+                    if not raw_line.strip():
+                        continue
+                    item = json.loads(raw_line.decode("utf-8"))
+                    if item.get("error"):
+                        raise RuntimeError("ollama_stream_error")
+                    message_data = item.get("message") or {}
+                    token = message_data.get("content", "")
+                    if token:
+                        answer_parts.append(token)
+                        self.send_sse_event({"type": "token", "token": token})
+                    if item.get("done"):
+                        completed = True
+                        break
+
+                answer = "".join(answer_parts).strip()
+                if not completed or not answer:
+                    raise RuntimeError("ollama_stream_incomplete")
+                save_message(conversation_id, "user", message)
+                save_message(conversation_id, "assistant", answer)
+                self.send_sse_event({
+                    "type": "done",
+                    "conversation_id": conversation_id,
+                    "engine": "ollama"
+                })
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                # Closing the client connection cancels delivery and closes the
+                # upstream Ollama stream. Incomplete answers are never persisted.
+                return
+            except (UnicodeDecodeError, json.JSONDecodeError, RuntimeError):
+                try:
+                    self.send_sse_event({"type": "error", "error": "generation_failed"})
+                except (BrokenPipeError, ConnectionResetError, OSError):
+                    pass
+        finally:
+            if response is not None:
+                response.close()
+            INFERENCE_SEMAPHORE.release()
 
     def log_message(self, fmt, *args):
         print("[JASSIM] " + (fmt % args))
@@ -380,7 +484,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, {
                 "ok": True,
                 "service": "JASSIM AI",
-                "version": "0.3.1",
+                "version": "0.4.0",
                 "engine": "ollama",
                 "model": OLLAMA_MODEL,
                 "model_ready": model_state["model_ready"],
@@ -454,7 +558,9 @@ class Handler(BaseHTTPRequestHandler):
         })
 
     def do_POST(self):
-        if urlparse(self.path).path != "/api/chat":
+        request_path = urlparse(self.path).path
+        streaming = request_path == "/api/chat/stream"
+        if request_path not in ("/api/chat", "/api/chat/stream"):
             self.send_json(404, {"error": "not_found"})
             return
         if not self.authorized():
@@ -492,7 +598,10 @@ class Handler(BaseHTTPRequestHandler):
                 answer = "حفظت هذه المعلومة في ذاكرة هذه المحادثة. يمكنك عرضها بقول «ماذا تتذكر عني؟» أو مسحها بقول «انسَ ذاكرتي»."
                 save_message(conversation_id, "user", message)
                 save_message(conversation_id, "assistant", answer)
-                self.send_json(200, {"answer": answer, "reply": answer, "conversation_id": conversation_id, "engine": "memory"})
+                if streaming:
+                    self.send_sse_static(answer, conversation_id, "memory")
+                else:
+                    self.send_json(200, {"answer": answer, "reply": answer, "conversation_id": conversation_id, "engine": "memory"})
                 return
             if command == "show":
                 saved_memory = get_memory(conversation_id)
@@ -513,6 +622,9 @@ class Handler(BaseHTTPRequestHandler):
             if saved_memory:
                 previous.insert(0, {"role": "system", "content": "معلومات اختار المستخدم حفظها صراحةً في ذاكرة JASSIM المشتركة لهذا الخادم، استخدمها فقط عندما تكون ذات صلة ولا تفترض أنها حقائق خارج هذا السياق: " + saved_memory})
             context = fit_history_to_budget(previous + [{"role": "user", "content": message}])
+            if streaming:
+                self.stream_chat_response(conversation_id, message, context)
+                return
             answer, engine = generate_answer(context)
             if engine in ("busy", "fallback"):
                 # Do not return a fake successful chat response when no model
