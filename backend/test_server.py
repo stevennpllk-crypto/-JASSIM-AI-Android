@@ -50,7 +50,7 @@ class FakeOllamaHandler(BaseHTTPRequestHandler):
             self.end_headers()
             for index, chunk in enumerate(("مرحباً! أنا JASSIM AI، ", "وهذه إجابة اختبار حقيقية من محرك Ollama التجريبي.")):
                 raw = json.dumps({"message": {"content": chunk}, "done": False}, ensure_ascii=False).encode()
-                self.wfile.write(raw + b"\\n")
+                self.wfile.write(raw + b"\n")
                 self.wfile.flush()
                 if index == 0 and FakeOllamaHandler.stream_slow:
                     time.sleep(0.5)
