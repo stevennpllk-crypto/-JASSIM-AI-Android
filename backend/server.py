@@ -2,7 +2,7 @@
 """JASSIM AI self-hosted API. Standard-library only; safe localhost default."""
 import json
 import os
-import sqlite3
+import storage
 import threading
 import time
 import re
@@ -77,21 +77,8 @@ SYSTEM_PROMPT = """أنت JASSIM AI، مساعد مستقل عالي الجود�
 """
 
 def connect_db():
-    db = sqlite3.connect(DB_PATH, timeout=20)
-    db.execute("PRAGMA journal_mode=WAL")
-    db.execute("""CREATE TABLE IF NOT EXISTS messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        conversation_id TEXT NOT NULL,
-        role TEXT NOT NULL,
-        content TEXT NOT NULL,
-        created_at TEXT NOT NULL
-    )""")
-    db.execute("CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, id)")
-    db.execute("""CREATE TABLE IF NOT EXISTS memories (
-        conversation_id TEXT PRIMARY KEY,
-        content TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-    )""")
+    db = storage.connect(sqlite_path=DB_PATH)
+    storage.ensure_schema(db)
     return db
 
 def history(conversation_id, limit=12):
@@ -321,7 +308,7 @@ def generate_answer(messages):
         INFERENCE_SEMAPHORE.release()
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "JASSIM-AI/0.4.0"
+    server_version = "JASSIM-AI/0.6.0"
 
     def client_disconnected(self):
         """Detect a closed downstream TCP connection before persisting a streamed turn."""
@@ -702,8 +689,8 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     connect_db().close()
-    print(f"JASSIM AI API v0.5.0 listening on http://{HOST}:{PORT}")
-    print(f"Persistent database: {DB_PATH}")
+    print(f"JASSIM AI API v0.6.0 listening on http://{HOST}:{PORT}")
+    print(f"Persistent database backend: {storage.backend_name()}")
     print(f"Ollama model: {OLLAMA_MODEL} ({OLLAMA_URL})")
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
 
