@@ -104,3 +104,12 @@ Enable GitHub Pages for this repository and choose GitHub Actions as the deploym
 - One shared Bearer token; no user registration, per-user permissions, or token revocation UI yet.
 - No guaranteed always-on GPU hosting is included.
 - `/health` reports API liveness and model diagnostics; `/ready` confirms the configured model is installed and reachable, but only a successful authenticated chat request proves a generation completed.
+
+## Image generation
+
+The Arabic dashboard includes an authenticated image studio at `/api/images/generate`.
+It uses Hugging Face Inference Providers with `black-forest-labs/FLUX.1-schnell` by default.
+Configure `JASSIM_HF_TOKEN` as a Railway secret with Inference Providers permission; optionally set `JASSIM_IMAGE_MODEL` and `JASSIM_IMAGE_TIMEOUT`.
+Never put the Hugging Face token in dashboard JavaScript, Android source, GitHub, or a public URL.
+Image generation is a hosted pretrained model call; it does not train or fine-tune a model. Fine-tuning requires a curated licensed image dataset and a GPU training environment.
+Adobe Firefly/Photoshop Services can be added as a separate provider, but requires Adobe Developer Console credentials and an eligible Firefly Services contract.
