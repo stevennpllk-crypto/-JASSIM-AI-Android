@@ -102,7 +102,6 @@ public class MainActivity extends Activity {
         ensureConversationId();
         buildUi();
         // Discover the current Colab tunnel from the stable GitHub Pages registry.
-        addMessage("JASSIM AI", "أهلاً بك! جارٍ البحث تلقائياً عن خادم JASSIM AI...");
         status.setText("● جارٍ اكتشاف عنوان الخادم...");
         status.setTextColor(0xFFFFC36B);
         autoConnect();
