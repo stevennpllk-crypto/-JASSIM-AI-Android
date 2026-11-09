@@ -639,11 +639,12 @@ public class MainActivity extends Activity {
 
     // Public, keyless fallback. The user's private JASSIM token is never sent here.
     // Requests go to a third-party gateway; users should not submit sensitive information.
-    private void sendAnonymousFallback(String message, TextView responseBubble) {
+    private String requestAnonymousProvider(String endpoint, String model, String message,
+                                            TextView responseBubble) throws Exception {
         HttpURLConnection connection = null;
         StringBuilder answer = new StringBuilder();
         try {
-            URL url = new URL("https://api.jarvisclaw.ai/v1/chat/completions");
+            URL url = new URL(endpoint);
             connection = (HttpURLConnection) url.openConnection();
             activeChatConnection = connection;
             connection.setRequestMethod("POST");
@@ -664,7 +665,7 @@ public class MainActivity extends Activity {
             chatMessages.put(user);
 
             JSONObject body = new JSONObject();
-            body.put("model", "auto/free");
+            body.put("model", model);
             body.put("messages", chatMessages);
             body.put("stream", true);
             body.put("max_tokens", 1200);
@@ -677,21 +678,15 @@ public class MainActivity extends Activity {
                 InputStream err = connection.getErrorStream();
                 StringBuilder detail = new StringBuilder();
                 if (err != null) {
-                    try (BufferedReader reader = new BufferedReader(new InputStreamReader(err, StandardCharsets.UTF_8))) {
+                    try (BufferedReader reader = new BufferedReader(
+                            new InputStreamReader(err, StandardCharsets.UTF_8))) {
                         String line;
                         while ((line = reader.readLine()) != null) detail.append(line);
                     }
                 }
-                throw new IOException("الخدمة الاحتياطية رفضت الطلب (HTTP " + code + "): " + detail);
+                throw new IOException("HTTP " + code + ": " + detail);
             }
 
-            runOnUiThread(() -> {
-                if (stopButton != null) stopButton.setEnabled(true);
-                status.setText("● الخدمة الاحتياطية تكتب الآن...");
-                status.setTextColor(0xFFFFC36B);
-            });
-
-            boolean completed = false;
             try (BufferedReader reader = new BufferedReader(
                     new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
@@ -700,10 +695,7 @@ public class MainActivity extends Activity {
                     if (!line.startsWith("data:")) continue;
                     String data = line.substring(5).trim();
                     if (data.isEmpty()) continue;
-                    if ("[DONE]".equals(data)) {
-                        completed = true;
-                        break;
-                    }
+                    if ("[DONE]".equals(data)) break;
                     JSONObject event = new JSONObject(data);
                     JSONArray choices = event.optJSONArray("choices");
                     if (choices == null || choices.length() == 0) continue;
@@ -719,31 +711,71 @@ public class MainActivity extends Activity {
                     }
                 }
             }
+            if (cancelRequested) return "";
+            if (answer.length() == 0) throw new IOException("لم تُرجع الخدمة أي نص");
+            return answer.toString();
+        } finally {
+            if (connection != null) connection.disconnect();
+            if (activeChatConnection == connection) activeChatConnection = null;
+        }
+    }
+
+    private void sendAnonymousFallback(String message, TextView responseBubble) {
+        try {
+            runOnUiThread(() -> {
+                if (stopButton != null) stopButton.setEnabled(true);
+                status.setText("● نجرب مزود الذكاء الاصطناعي الأول...");
+                status.setTextColor(0xFFFFC36B);
+            });
+            String result;
+            String provider;
+            try {
+                result = requestAnonymousProvider(
+                    "https://api.jarvisclaw.ai/v1/chat/completions",
+                    "auto/free", message, responseBubble);
+                provider = "JarvisClaw";
+            } catch (Exception firstError) {
+                if (cancelRequested) return;
+                runOnUiThread(() -> {
+                    responseBubble.setText("JASSIM AI\nتعذر الوصول إلى المزود الأول؛ نجرب خادماً احتياطياً آخر...");
+                    status.setText("● نجرب OVHcloud كخيار ثانٍ...");
+                });
+                try {
+                    result = requestAnonymousProvider(
+                        "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions",
+                        "Meta-Llama-3_3-70B-Instruct", message, responseBubble);
+                    provider = "OVHcloud";
+                } catch (Exception secondError) {
+                    throw new IOException("لم يستجب أي من المزودين المجانيين. الأول: "
+                        + firstError.getMessage() + " | الثاني: " + secondError.getMessage());
+                }
+            }
             if (cancelRequested) {
                 runOnUiThread(() -> status.setText("● تم إيقاف الإجابة"));
                 return;
             }
-            if (answer.length() == 0) throw new IOException("لم تُرجع الخدمة أي نص");
-            final String result = answer.toString();
+            final String answer = result;
+            final String usedProvider = provider;
             runOnUiThread(() -> {
-                responseBubble.setText("JASSIM AI\n" + result);
-                status.setText("● متصل بخدمة احتياطية عامة — لا يوجد سجل سحابي خاص");
+                responseBubble.setText("JASSIM AI\n" + answer);
+                status.setText("● متصل عبر " + usedProvider + " — الخدمة العامة المجانية");
                 status.setTextColor(0xFFFFC36B);
             });
         } catch (Exception e) {
-            String error = e.getMessage() == null ? "تعذر الاتصال بالخدمة الاحتياطية" : e.getMessage();
-            runOnUiThread(() -> {
-                responseBubble.setText("JASSIM AI\nتعذر الاتصال بالخدمة الاحتياطية: " + error
-                    + "\nاحتفظت برسالتك؛ يمكنك إعادة المحاولة لاحقاً.");
-                status.setText("● تعذر الاتصال بالخدمة الاحتياطية");
-                status.setTextColor(0xFFFF7777);
-                if (input.getText().toString().trim().isEmpty()) {
-                    input.setText(message);
-                    input.setSelection(input.length());
-                }
-            });
+            if (!cancelRequested) {
+                String error = e.getMessage() == null ? "تعذر الاتصال بالخدمات الاحتياطية" : e.getMessage();
+                runOnUiThread(() -> {
+                    responseBubble.setText("JASSIM AI\nتعذر الاتصال بالخدمات الاحتياطية: " + error
+                        + "\nاحتفظت برسالتك؛ يمكنك إعادة المحاولة لاحقاً.");
+                    status.setText("● تعذر الاتصال بالخدمات الاحتياطية");
+                    status.setTextColor(0xFFFF7777);
+                    if (input.getText().toString().trim().isEmpty()) {
+                        input.setText(message);
+                        input.setSelection(input.length());
+                    }
+                });
+            }
         } finally {
-            if (connection != null) connection.disconnect();
             activeChatConnection = null;
             runOnUiThread(() -> {
                 if (sendButton != null) sendButton.setEnabled(true);
