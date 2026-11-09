@@ -38,20 +38,19 @@ jobs:
       - name: Test self-hosted backend
         run: python -m unittest discover -s backend -p 'test_*.py' -v
 
-      - name: Probe anonymous public LLM fallback
+      - name: Probe anonymous JarvisClaw fallback
         continue-on-error: true
         run: |
           python - <<'PY'
           import json, urllib.request, urllib.error
-          url = "https://api.llmfaucet.dev/v1/chat/completions"
+          url = "https://api.jarvisclaw.ai/v1/chat/completions"
           body = json.dumps({
-              "model": "auto:fast",
+              "model": "auto/free",
               "messages": [{"role": "user", "content": "Reply exactly: JASSIM ONLINE"}],
               "stream": False,
               "max_tokens": 40
           }).encode()
           req = urllib.request.Request(url, data=body, headers={
-              "Authorization": "Bearer free",
               "Content-Type": "application/json"
           })
           try:
