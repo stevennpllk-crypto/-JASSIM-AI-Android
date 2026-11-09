@@ -608,7 +608,10 @@ class Handler(BaseHTTPRequestHandler):
                 answer = ("المحفوظ في ذاكرة هذه المحادثة: " + saved_memory) if saved_memory else "لا توجد معلومات محفوظة في ذاكرة هذه المحادثة."
                 save_message(conversation_id, "user", message)
                 save_message(conversation_id, "assistant", answer)
-                self.send_json(200, {"answer": answer, "reply": answer, "conversation_id": conversation_id, "engine": "memory"})
+                if streaming:
+                    self.send_sse_static(answer, conversation_id, "memory")
+                else:
+                    self.send_json(200, {"answer": answer, "reply": answer, "conversation_id": conversation_id, "engine": "memory"})
                 return
             if command == "clear":
                 clear_memory(conversation_id)
@@ -647,7 +650,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     connect_db().close()
-    print(f"JASSIM AI API v0.3.1 listening on http://{HOST}:{PORT}")
+    print(f"JASSIM AI API v0.4.0 listening on http://{HOST}:{PORT}")
     print(f"Persistent database: {DB_PATH}")
     print(f"Ollama model: {OLLAMA_MODEL} ({OLLAMA_URL})")
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
