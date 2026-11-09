@@ -307,6 +307,33 @@ def generate_answer(messages):
     finally:
         INFERENCE_SEMAPHORE.release()
 
+def generate_image_hf(prompt, width=1024, height=1024):
+    """Generate an image through Hugging Face Inference Providers; secrets stay server-side."""
+    token = os.environ.get("JASSIM_HF_TOKEN", "").strip()
+    if not token:
+        raise RuntimeError("image_provider_not_configured")
+    model = os.environ.get("JASSIM_IMAGE_MODEL", "black-forest-labs/FLUX.1-schnell").strip()
+    payload = json.dumps({"inputs": prompt, "parameters": {"width": width, "height": height}}).encode("utf-8")
+    request = urllib.request.Request(
+        "https://router.huggingface.co/hf-inference/models/" + model, data=payload,
+        headers={"Authorization": "Bearer " + token, "Content-Type": "application/json", "Accept": "image/png"},
+        method="POST"
+    )
+    timeout = max(30, min(int(os.environ.get("JASSIM_IMAGE_TIMEOUT", "180")), 300))
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        image_bytes = response.read(12 * 1024 * 1024 + 1)
+        content_type = response.headers.get("Content-Type", "image/png").split(";")[0].strip()
+    if len(image_bytes) > 12 * 1024 * 1024:
+        raise RuntimeError("generated_image_too_large")
+    if not content_type.startswith("image/"):
+        try:
+            detail = json.loads(image_bytes.decode("utf-8")).get("error", "provider_error")
+        except Exception:
+            detail = "provider_returned_non_image"
+        raise RuntimeError(str(detail)[:240])
+    import base64
+    return base64.b64encode(image_bytes).decode("ascii"), content_type, model
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "JASSIM-AI/0.6.0"
 
@@ -608,7 +635,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         request_path = urlparse(self.path).path
         streaming = request_path == "/api/chat/stream"
-        if request_path not in ("/api/chat", "/api/chat/stream", "/api/admin/evaluate"):
+        if request_path not in ("/api/chat", "/api/chat/stream", "/api/admin/evaluate", "/api/images/generate"):
             self.send_json(404, {"error": "not_found"})
             return
         if not self.authorized():
@@ -616,6 +643,39 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self.rate_limited():
             self.send_json(429, {"error": "rate_limit_exceeded", "retry_after_seconds": 60})
+            return
+        if request_path == "/api/images/generate":
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length < 2 or length > 10000:
+                    self.send_json(413, {"error": "invalid_body_size"})
+                    return
+                body = json.loads(self.rfile.read(length).decode("utf-8"))
+                prompt = str(body.get("prompt", "")).strip() if isinstance(body, dict) else ""
+                if not prompt:
+                    self.send_json(400, {"error": "prompt_required"})
+                    return
+                if len(prompt) > 1800:
+                    self.send_json(413, {"error": "prompt_too_long", "limit": 1800})
+                    return
+                try:
+                    image_b64, mime, model = generate_image_hf(prompt)
+                except RuntimeError as exc:
+                    reason = str(exc)
+                    status = 503 if reason == "image_provider_not_configured" else 502
+                    self.send_json(status, {
+                        "error": "image_provider_not_configured" if status == 503 else "image_generation_failed",
+                        "detail": reason
+                    })
+                    return
+                self.send_json(200, {
+                    "ok": True, "provider": "huggingface-inference",
+                    "model": model, "mime_type": mime, "image_base64": image_b64
+                })
+            except (UnicodeDecodeError, json.JSONDecodeError, AttributeError, TypeError, ValueError) as exc:
+                self.send_json(400, {"error": "bad_request", "detail": str(exc)[:160]})
+            except (urllib.error.URLError, TimeoutError, OSError) as exc:
+                self.send_json(502, {"error": "image_generation_failed", "detail": type(exc).__name__})
             return
         if request_path == "/api/admin/evaluate":
             result = adaptive.evaluate_providers()
