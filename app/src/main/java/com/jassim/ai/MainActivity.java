@@ -117,11 +117,12 @@ public class MainActivity extends Activity {
             String discovered = "";
             HttpURLConnection discovery = null;
             try {
-                discovery = (HttpURLConnection) new URL(DISCOVERY_URL).openConnection();
+                discovery = (HttpURLConnection) new URL(DISCOVERY_URL + "?t=" + System.currentTimeMillis()).openConnection();
                 discovery.setRequestMethod("GET");
                 discovery.setConnectTimeout(12000);
                 discovery.setReadTimeout(12000);
                 discovery.setRequestProperty("Accept", "application/json");
+                discovery.setRequestProperty("Cache-Control", "no-cache");
                 int code = discovery.getResponseCode();
                 if (code == 200) {
                     StringBuilder body = new StringBuilder();
