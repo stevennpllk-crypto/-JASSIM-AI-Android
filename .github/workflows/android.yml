@@ -38,6 +38,32 @@ jobs:
       - name: Test self-hosted backend
         run: python -m unittest discover -s backend -p 'test_*.py' -v
 
+      - name: Probe anonymous public LLM fallback
+        continue-on-error: true
+        run: |
+          python - <<'PY'
+          import json, urllib.request, urllib.error
+          url = "https://api.llmfaucet.dev/v1/chat/completions"
+          body = json.dumps({
+              "model": "auto:fast",
+              "messages": [{"role": "user", "content": "Reply exactly: JASSIM ONLINE"}],
+              "stream": False,
+              "max_tokens": 40
+          }).encode()
+          req = urllib.request.Request(url, data=body, headers={
+              "Authorization": "Bearer free",
+              "Content-Type": "application/json"
+          })
+          try:
+              with urllib.request.urlopen(req, timeout=90) as response:
+                  data = json.loads(response.read())
+                  answer = data["choices"][0]["message"]["content"]
+                  print("ANONYMOUS_LLM_OK:", answer[:300])
+          except Exception as exc:
+              print("ANONYMOUS_LLM_UNAVAILABLE:", repr(exc))
+              raise
+          PY
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
