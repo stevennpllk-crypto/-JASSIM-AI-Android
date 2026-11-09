@@ -14,6 +14,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 class FakeOllamaHandler(BaseHTTPRequestHandler):
     last_chat_payload = None
     offline = False
+    stream_slow = False
 
     def log_message(self, fmt, *args):
         pass
@@ -47,10 +48,12 @@ class FakeOllamaHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/x-ndjson")
             self.end_headers()
-            for chunk in ("مرحباً! أنا JASSIM AI، ", "وهذه إجابة اختبار حقيقية من محرك Ollama التجريبي."):
+            for index, chunk in enumerate(("مرحباً! أنا JASSIM AI، ", "وهذه إجابة اختبار حقيقية من محرك Ollama التجريبي.")):
                 raw = json.dumps({"message": {"content": chunk}, "done": False}, ensure_ascii=False).encode()
-                self.wfile.write(raw + b"\n")
+                self.wfile.write(raw + b"\\n")
                 self.wfile.flush()
+                if index == 0 and FakeOllamaHandler.stream_slow:
+                    time.sleep(0.5)
             final = json.dumps({"message": {"content": ""}, "done": True}).encode()
             self.wfile.write(final + b"\n")
             self.wfile.flush()
@@ -383,7 +386,32 @@ class ServerSmokeTest(unittest.TestCase):
                 self.assertEqual(len(stream_history), 2)
                 self.assertEqual(stream_history[0]["content"], "اختبار البث المباشر")
                 self.assertEqual(stream_history[1]["content"], streamed_answer)
+
+                # A disconnected Android client must not leave a partial turn in SQLite.
+                FakeOllamaHandler.stream_slow = True
+                cancel_payload = json.dumps({
+                    "message": "اختبار إلغاء البث",
+                    "conversation_id": "stream-cancel"
+                }).encode()
+                cancel_req = Request(
+                    api_base + "/api/chat/stream",
+                    data=cancel_payload,
+                    headers={"Content-Type": "application/json", **headers}
+                )
+                with urlopen(cancel_req, timeout=10) as cancel_response:
+                    first_event = cancel_response.readline().decode("utf-8")
+                    self.assertTrue(first_event.startswith("data: "))
+                    cancel_response.readline()
+                time.sleep(0.8)
+                FakeOllamaHandler.stream_slow = False
+                cancel_history_req = Request(
+                    api_base + "/api/history?conversation_id=stream-cancel",
+                    headers=headers
+                )
+                with urlopen(cancel_history_req, timeout=5) as cancel_history_response:
+                    self.assertEqual(json.loads(cancel_history_response.read())["messages"], [])
             finally:
+                FakeOllamaHandler.stream_slow = False
                 FakeOllamaHandler.offline = False
                 proc.terminate()
                 proc.wait(timeout=5)
