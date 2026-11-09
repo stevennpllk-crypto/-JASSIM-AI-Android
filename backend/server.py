@@ -324,7 +324,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def send_sse_event(self, payload):
         raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        self.wfile.write(b"data: " + raw + b"\\n\\n")
+        self.wfile.write(b"data: " + raw + b"\n\n")
         self.wfile.flush()
 
     def send_sse_static(self, answer, conversation_id, engine):
