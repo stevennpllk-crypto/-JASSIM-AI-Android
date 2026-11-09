@@ -8,7 +8,7 @@
   async function request(path,options={}){if(!state.endpoint)throw new Error("أدخل عنوان الخادم أولاً");const url=state.endpoint.replace(/\/$/,"")+path;const response=await fetch(url,{...options,headers:{"Content-Type":"application/json",...(state.token?{"Authorization":"Bearer "+state.token}:{}),...(options.headers||{})}});if(!response.ok)throw new Error("HTTP "+response.status);return response.json()}
   async function checkHealth(){if(!state.endpoint){setStatus(false,"لم يتم إعداد الخادم");$("engineStat").textContent="غير معروف";$("storageStat").textContent="—";return}try{const h=await request("/health");state.health=h;setStatus(!!h.ok,h.ok?"الخادم متصل":"الخادم غير جاهز");$("engineStat").textContent=h.model||h.engine||"غير معروف";$("engineDetail").textContent=h.model_ready?"النموذج جاهز للطلبات":(h.ollama_reachable?"Ollama متصل لكن النموذج غير محمّل":"محرك Ollama غير متاح");$("storageStat").textContent=h.storage||"غير معروف";$("checkedStat").textContent=new Date().toLocaleTimeString("ar-TN");$("systemEngine").textContent=h.engine||"غير معروف";$("systemStorage").textContent=h.storage||"غير معروف";$("serverUrlText").textContent=state.endpoint}catch(e){setStatus(false,"تعذر الاتصال");$("apiDetail").textContent=e.message;toast("فشل فحص الخادم: "+e.message)}}
   function addBubble(text,who){const box=document.createElement("div");box.className="bubble "+who;box.textContent=text; $("messages").appendChild(box); $("messages").scrollTop=$("messages").scrollHeight;return box}
-  function showView(id){document.querySelectorAll(".view").forEach(x=>x.classList.toggle("active",x.id===id));document.querySelectorAll(".nav").forEach(x=>x.classList.toggle("active",x.dataset.view===id));const names={overview:"نظرة عامة",chat:"مركز المحادثة",memory:"الذاكرة والسجل",systems:"الخادم والمحركات"};$("pageTitle").textContent=names[id]||"JASSIM AI"}
+  function showView(id){document.querySelectorAll(".view").forEach(x=>x.classList.toggle("active",x.id===id));document.querySelectorAll(".nav").forEach(x=>x.classList.toggle("active",x.dataset.view===id));const names={overview:"نظرة عامة",chat:"مركز المحادثة",memory:"الذاكرة والسجل",images:"استوديو الصور",systems:"الخادم والمحركات"};$("pageTitle").textContent=names[id]||"JASSIM AI"}
   document.querySelectorAll(".nav").forEach(b=>b.addEventListener("click",()=>showView(b.dataset.view)));
   document.querySelectorAll("[data-open]").forEach(b=>b.addEventListener("click",()=>showView(b.dataset.open)));
   $("settingsBtn").addEventListener("click",openSettings);$("heroConnect").addEventListener("click",openSettings);$("systemSettings").addEventListener("click",openSettings);$("refreshBtn").addEventListener("click",checkHealth);
@@ -51,6 +51,19 @@
     }finally{state.activeController=null;btn.textContent="إرسال ↑";btn.classList.remove("stop-active");btn.disabled=false}
   });
   $("clearChat").addEventListener("click",()=>{state.conversation="web-"+Math.random().toString(36).slice(2,10);$("conversationId").textContent=state.conversation;$("messages").innerHTML="";const w=document.createElement("div");w.className="welcome";w.innerHTML="<div class='welcome-icon'>✳</div><b>بدأت محادثة جديدة</b><p>اكتب رسالتك للمتابعة.</p>";$("messages").appendChild(w)});
+  $("generateImage").addEventListener("click",async()=>{
+    const prompt=$("imagePrompt").value.trim();if(!prompt){toast("اكتب وصف الصورة أولاً");return}
+    if(!state.endpoint||!state.token){toast("اربط الخادم وأدخل رمز الوصول أولاً");return}
+    const btn=$("generateImage"),status=$("imageStatus"),result=$("imageResult");
+    btn.disabled=true;btn.textContent="جارٍ التوليد…";status.textContent="قد يستغرق التوليد بعض الوقت.";result.innerHTML="";
+    try{
+      const data=await request("/api/images/generate",{method:"POST",body:JSON.stringify({prompt})});
+      const img=document.createElement("img");img.alt="الصورة التي أنشأها JASSIM AI";img.src="data:"+data.mime_type+";base64,"+data.image_base64;result.appendChild(img);
+      const link=document.createElement("a");link.href=img.src;link.download="jassim-ai-image.png";link.textContent="تنزيل الصورة";link.className="secondary image-download";result.appendChild(link);
+      status.textContent="تم التوليد بواسطة "+data.model;
+    }catch(e){status.textContent="تعذر التوليد: "+e.message;toast("فشل توليد الصورة")}
+    finally{btn.disabled=false;btn.textContent="توليد الصورة ✦"}
+  });
   $("loadHistory").addEventListener("click",async()=>{try{const h=await request("/api/history?conversation_id="+encodeURIComponent(state.conversation));$("historyOutput").textContent=JSON.stringify(h,null,2)}catch(e){$("historyOutput").textContent="تعذر تحميل السجل: "+e.message}});
   $("serverUrlText").textContent=state.endpoint||"لم يتم الإعداد";checkHealth();
 })();
