@@ -42,7 +42,20 @@ class FakeOllamaHandler(BaseHTTPRequestHandler):
             return
         length = int(self.headers.get("Content-Length", "0"))
         FakeOllamaHandler.last_chat_payload = json.loads(self.rfile.read(length))
-        raw = json.dumps({"message": {"content": "مرحباً! أنا JASSIM AI، وهذه إجابة اختبار حقيقية من محرك Ollama التجريبي."}}).encode()
+        answer = "مرحباً! أنا JASSIM AI، وهذه إجابة اختبار حقيقية من محرك Ollama التجريبي."
+        if FakeOllamaHandler.last_chat_payload.get("stream"):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-ndjson")
+            self.end_headers()
+            for chunk in ("مرحباً! أنا JASSIM AI، ", "وهذه إجابة اختبار حقيقية من محرك Ollama التجريبي."):
+                raw = json.dumps({"message": {"content": chunk}, "done": False}, ensure_ascii=False).encode()
+                self.wfile.write(raw + b"\n")
+                self.wfile.flush()
+            final = json.dumps({"message": {"content": ""}, "done": True}).encode()
+            self.wfile.write(final + b"\n")
+            self.wfile.flush()
+            return
+        raw = json.dumps({"message": {"content": answer}}).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(raw)))
@@ -339,6 +352,37 @@ class ServerSmokeTest(unittest.TestCase):
                     urlopen(Request(api_base + "/api/history?conversation_id=bad%2Fid", headers=headers), timeout=5)
                 with self.assertRaises(Exception):
                     urlopen(Request(api_base + "/api/conversations?limit=abc", headers=headers), timeout=5)
+                stream_payload = json.dumps({
+                    "message": "اختبار البث المباشر",
+                    "conversation_id": "stream-smoke"
+                }).encode()
+                stream_req = Request(
+                    api_base + "/api/chat/stream",
+                    data=stream_payload,
+                    headers={"Content-Type": "application/json", **headers}
+                )
+                with urlopen(stream_req, timeout=10) as stream_response:
+                    self.assertIn("text/event-stream", stream_response.headers.get("Content-Type", ""))
+                    stream_body = stream_response.read().decode("utf-8")
+                stream_events = [
+                    json.loads(line[6:])
+                    for line in stream_body.splitlines()
+                    if line.startswith("data: ")
+                ]
+                token_events = [event for event in stream_events if event.get("type") == "token"]
+                self.assertGreaterEqual(len(token_events), 2)
+                self.assertTrue(any(event.get("type") == "done" for event in stream_events))
+                streamed_answer = "".join(event["token"] for event in token_events)
+                self.assertIn("إجابة اختبار حقيقية", streamed_answer)
+                stream_history_req = Request(
+                    api_base + "/api/history?conversation_id=stream-smoke",
+                    headers=headers
+                )
+                with urlopen(stream_history_req, timeout=5) as stream_history_response:
+                    stream_history = json.loads(stream_history_response.read())["messages"]
+                self.assertEqual(len(stream_history), 2)
+                self.assertEqual(stream_history[0]["content"], "اختبار البث المباشر")
+                self.assertEqual(stream_history[1]["content"], streamed_answer)
             finally:
                 FakeOllamaHandler.offline = False
                 proc.terminate()
