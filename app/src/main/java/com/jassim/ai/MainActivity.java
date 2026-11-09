@@ -503,6 +503,11 @@ public class MainActivity extends Activity {
             try {
                 connection = openConnection("/api/chat/stream", "POST");
                 activeChatConnection = connection;
+                runOnUiThread(() -> {
+                    if (stopButton != null) stopButton.setEnabled(true);
+                    status.setText("● JASSIM AI يكتب الآن...");
+                    status.setTextColor(0xFFFFC36B);
+                });
                 connection.setDoOutput(true);
                 connection.setRequestProperty("Accept", "text/event-stream");
                 connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
@@ -517,12 +522,6 @@ public class MainActivity extends Activity {
                     readJsonResponse(connection);
                     throw new IOException("HTTP " + responseCode);
                 }
-                runOnUiThread(() -> {
-                    if (stopButton != null) stopButton.setEnabled(true);
-                    status.setText("● JASSIM AI يكتب الآن...");
-                    status.setTextColor(0xFFFFC36B);
-                });
-
                 String engine = "ollama";
                 boolean completed = false;
                 try (BufferedReader reader = new BufferedReader(
@@ -535,7 +534,7 @@ public class MainActivity extends Activity {
                         if ("token".equals(type)) {
                             answer.append(event.optString("token", ""));
                             final String partial = answer.toString();
-                            runOnUiThread(() -> responseBubble.setText("JASSIM AI\\n" + partial));
+                            runOnUiThread(() -> responseBubble.setText("JASSIM AI\n" + partial));
                         } else if ("done".equals(type)) {
                             engine = event.optString("engine", "ollama");
                             completed = true;
@@ -552,7 +551,7 @@ public class MainActivity extends Activity {
                 final String result = answer.toString();
                 final String finalEngine = engine;
                 runOnUiThread(() -> {
-                    responseBubble.setText("JASSIM AI\\n" + result);
+                    responseBubble.setText("JASSIM AI\n" + result);
                     status.setText("● متصل بالخادم — " + finalEngine);
                     status.setTextColor(0xFF62DCA8);
                 });
@@ -560,9 +559,9 @@ public class MainActivity extends Activity {
                 if (cancelRequested) {
                     runOnUiThread(() -> {
                         if (answer.length() == 0) {
-                            responseBubble.setText("JASSIM AI\\nتم إيقاف التوليد قبل وصول الإجابة.");
+                            responseBubble.setText("JASSIM AI\nتم إيقاف التوليد قبل وصول الإجابة.");
                         }
-                        status.setText("● تم إيقاف التوليد — الإجابة الجزئية لم تُحفظ");
+                        status.setText("● تم إيقاف عرض الإجابة");
                         status.setTextColor(0xFFFFC36B);
                     });
                 } else {
@@ -570,8 +569,8 @@ public class MainActivity extends Activity {
                     runOnUiThread(() -> {
                         status.setText("● فشل الاتصال — يمكنك إعادة المحاولة");
                         status.setTextColor(0xFFFF7777);
-                        responseBubble.setText("JASSIM AI\\nتعذر إكمال الطلب: " + error
-                            + "\\nاحتفظت برسالتك لتتمكن من إعادة إرسالها.");
+                        responseBubble.setText("JASSIM AI\nتعذر إكمال الطلب: " + error
+                            + "\nاحتفظت برسالتك لتتمكن من إعادة إرسالها.");
                         if (input.getText().toString().trim().isEmpty()) {
                             input.setText(message);
                             input.setSelection(input.length());
