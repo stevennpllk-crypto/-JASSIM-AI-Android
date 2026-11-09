@@ -101,19 +101,68 @@ public class MainActivity extends Activity {
         prefs = getSharedPreferences("jassim", MODE_PRIVATE);
         ensureConversationId();
         buildUi();
-        // Always open directly into the chat. Server setup must never block the
-        // primary conversation screen.
-        if (!prefs.getString("endpoint", "").trim().isEmpty()) {
-            // Let the history response populate the screen. Adding a welcome
-            // bubble here would trigger the "do not overwrite user messages"
-            // guard in loadHistory() and silently prevent history restoration.
-            checkHealth();
-            loadHistory();
-        } else {
-            addMessage("JASSIM AI", "أهلاً بك! أنا JASSIM AI. اكتب رسالتك وسأكون جاهزاً لمساعدتك.");
-            status.setText("● المحادثة جاهزة — خدمة الذكاء الاصطناعي غير متصلة بعد");
-            status.setTextColor(0xFFFFC36B);
-        }
+        // Discover the current Colab tunnel from the stable GitHub Pages registry.
+        addMessage("JASSIM AI", "أهلاً بك! جارٍ البحث تلقائياً عن خادم JASSIM AI...");
+        status.setText("● جارٍ اكتشاف عنوان الخادم...");
+        status.setTextColor(0xFFFFC36B);
+        autoConnect();
+    }
+
+    // Stable discovery URL: Colab updates this small public JSON file whenever
+    // its temporary Cloudflare tunnel starts or changes. It contains no API token.
+    private static final String DISCOVERY_URL =
+        "https://stevennpllk-crypto.github.io/-JASSIM-AI-Android/connection.json";
+
+    private void autoConnect() {
+        executor.execute(() -> {
+            String discovered = "";
+            HttpURLConnection discovery = null;
+            try {
+                discovery = (HttpURLConnection) new URL(DISCOVERY_URL).openConnection();
+                discovery.setRequestMethod("GET");
+                discovery.setConnectTimeout(12000);
+                discovery.setReadTimeout(12000);
+                discovery.setRequestProperty("Accept", "application/json");
+                int code = discovery.getResponseCode();
+                if (code == 200) {
+                    StringBuilder body = new StringBuilder();
+                    try (BufferedReader reader = new BufferedReader(
+                            new InputStreamReader(discovery.getInputStream(), StandardCharsets.UTF_8))) {
+                        String line;
+                        while ((line = reader.readLine()) != null) body.append(line);
+                    }
+                    JSONObject registry = new JSONObject(body.toString());
+                    String candidate = registry.optString("url", "").trim();
+                    if ("online".equals(registry.optString("status", "")) &&
+                            candidate.startsWith("https://") &&
+                            candidate.length() <= 300) {
+                        discovered = candidate;
+                    }
+                }
+            } catch (Exception ignored) {
+                // Use the last known endpoint if the discovery service is temporarily unavailable.
+            } finally {
+                if (discovery != null) discovery.disconnect();
+            }
+
+            final String endpoint = discovered;
+            if (!endpoint.isEmpty()) {
+                prefs.edit().putString("endpoint", endpoint).apply();
+            }
+            runOnUiThread(() -> {
+                if (baseUrl().isEmpty()) {
+                    addMessage("JASSIM AI", "لم أجد خادماً نشطاً الآن. افتح دفتر Colab وشغّل خلايا التشغيل، ثم أعد المحاولة من الإعدادات.");
+                    status.setText("● لا يوجد خادم نشط — أعد المحاولة لاحقاً");
+                    status.setTextColor(0xFFFFC36B);
+                } else {
+                    status.setText(endpoint.isEmpty()
+                        ? "● تعذر تحديث الرابط — نجرب آخر عنوان محفوظ"
+                        : "● تم اكتشاف الخادم تلقائياً — جارٍ الاتصال...");
+                    checkHealth();
+                    loadHistory();
+                }
+            });
+        });
     }
 
     private String ensureConversationId() {
