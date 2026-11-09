@@ -181,64 +181,131 @@ public class MainActivity extends Activity {
         addMessage("JASSIM AI", "بدأنا محادثة جديدة. رسائلك الجديدة ستحفظ في سجل مستقل.");
     }
 
+    private int dp(float value) {
+        return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    private android.graphics.drawable.GradientDrawable rounded(int color, int radiusDp) {
+        android.graphics.drawable.GradientDrawable shape =
+            new android.graphics.drawable.GradientDrawable();
+        shape.setColor(color);
+        shape.setCornerRadius(dp(radiusDp));
+        return shape;
+    }
+
+    private Button actionButton(String label, String description, Runnable action) {
+        Button button = new Button(this);
+        button.setText(label);
+        button.setTextColor(0xFFE8ECFF);
+        button.setTextSize(12);
+        button.setAllCaps(false);
+        button.setMinWidth(0);
+        button.setMinimumWidth(0);
+        button.setMinHeight(dp(38));
+        button.setMinimumHeight(dp(38));
+        button.setPadding(dp(8), 0, dp(8), 0);
+        button.setBackground(rounded(0xFF252B42, 12));
+        button.setContentDescription(description);
+        button.setOnClickListener(v -> action.run());
+        return button;
+    }
+
     private void buildUi() {
+        final int surface = 0xFF171D30;
+        final int muted = 0xFF9BA8C8;
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(18, 18, 18, 12);
-        root.setBackgroundColor(bg);
+        root.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        root.setPadding(dp(14), dp(14), dp(14), dp(12));
+        root.setBackgroundColor(0xFF0B1020);
 
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setPadding(0, 0, 0, dp(12));
 
+        TextView logo = new TextView(this);
+        logo.setText("J");
+        logo.setTextColor(Color.WHITE);
+        logo.setTextSize(25);
+        logo.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        logo.setGravity(Gravity.CENTER);
+        android.graphics.drawable.GradientDrawable logoBg =
+            new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                new int[] { 0xFF248BFF, 0xFF7548E8 });
+        logoBg.setCornerRadius(dp(16));
+        logo.setBackground(logoBg);
+        header.addView(logo, new LinearLayout.LayoutParams(dp(46), dp(46)));
+
+        LinearLayout brand = new LinearLayout(this);
+        brand.setOrientation(LinearLayout.VERTICAL);
+        brand.setPadding(dp(10), 0, dp(6), 0);
         TextView title = new TextView(this);
         title.setText("JASSIM AI");
         title.setTextColor(Color.WHITE);
-        title.setTextSize(23);
+        title.setTextSize(19);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        header.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView tagline = new TextView(this);
+        tagline.setText("مساعدك الذكي");
+        tagline.setTextColor(muted);
+        tagline.setTextSize(11);
+        brand.addView(title);
+        brand.addView(tagline);
+        header.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
 
-        Button historyButton = new Button(this);
-        historyButton.setText("السجل");
-        historyButton.setOnClickListener(v -> showConversations());
-        header.addView(historyButton);
-
-        Button newChat = new Button(this);
-        newChat.setText("محادثة جديدة");
-        newChat.setOnClickListener(v -> newConversation());
-        header.addView(newChat);
-
-        Button settings = new Button(this);
-        settings.setText("الإعدادات");
-        settings.setOnClickListener(v -> endpointDialog());
-        header.addView(settings);
+        Button historyButton = actionButton("السجل", "سجل المحادثات", () -> showConversations());
+        header.addView(historyButton, new LinearLayout.LayoutParams(-2, dp(38)));
+        Button newChat = actionButton("+", "محادثة جديدة", () -> newConversation());
+        LinearLayout.LayoutParams newLp = new LinearLayout.LayoutParams(dp(40), dp(38));
+        newLp.setMargins(dp(5), 0, 0, 0);
+        header.addView(newChat, newLp);
+        Button settings = actionButton("⚙", "إعدادات الاتصال", () -> endpointDialog());
+        LinearLayout.LayoutParams settingsLp = new LinearLayout.LayoutParams(dp(40), dp(38));
+        settingsLp.setMargins(dp(5), 0, 0, 0);
+        header.addView(settings, settingsLp);
         root.addView(header);
 
         status = new TextView(this);
-        status.setText("● غير متصل بالخادم");
+        status.setText("● جارٍ فحص الاتصال...");
         status.setTextColor(0xFFFFC36B);
-        status.setPadding(0, 8, 0, 10);
-        root.addView(status);
+        status.setTextSize(12);
+        status.setGravity(Gravity.CENTER_VERTICAL);
+        status.setPadding(dp(13), dp(9), dp(13), dp(9));
+        status.setBackground(rounded(0xFF20263A, 13));
+        LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(-1, -2);
+        statusLp.setMargins(0, 0, 0, dp(12));
+        root.addView(status, statusLp);
 
         scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setClipToPadding(false);
         messages = new LinearLayout(this);
         messages.setOrientation(LinearLayout.VERTICAL);
-        scroll.addView(messages);
+        messages.setPadding(0, dp(3), 0, dp(12));
+        scroll.addView(messages, new ScrollView.LayoutParams(-1, -2));
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
-        LinearLayout composer = new LinearLayout(this);
-        composer.setGravity(Gravity.CENTER_VERTICAL);
-        composer.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout composerShell = new LinearLayout(this);
+        composerShell.setOrientation(LinearLayout.HORIZONTAL);
+        composerShell.setGravity(Gravity.CENTER_VERTICAL);
+        composerShell.setPadding(dp(7), dp(6), dp(7), dp(6));
+        composerShell.setBackground(rounded(surface, 20));
+        LinearLayout.LayoutParams shellLp = new LinearLayout.LayoutParams(-1, -2);
+        shellLp.setMargins(0, dp(10), 0, 0);
 
         input = new EditText(this);
         input.setSingleLine(false);
-        input.setMaxLines(3);
-        input.setHint("اكتب رسالتك...");
+        input.setMaxLines(4);
+        input.setMinLines(1);
+        input.setHint("اكتب رسالتك هنا...");
         input.setTextColor(Color.WHITE);
-        input.setHintTextColor(0xFF9DA3B8);
-        input.setBackgroundColor(panel);
-        input.setPadding(14, 8, 14, 8);
+        input.setHintTextColor(0xFF8995B2);
+        input.setTextSize(14);
+        input.setBackgroundColor(Color.TRANSPARENT);
+        input.setPadding(dp(10), dp(8), dp(10), dp(8));
         input.setTextDirection(View.TEXT_DIRECTION_RTL);
+        input.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
         input.setImeOptions(EditorInfo.IME_ACTION_SEND);
         input.setOnEditorActionListener((view, actionId, event) -> {
             if (actionId == EditorInfo.IME_ACTION_SEND) {
@@ -247,31 +314,74 @@ public class MainActivity extends Activity {
             }
             return false;
         });
-        composer.addView(input, new LinearLayout.LayoutParams(0, -2, 1));
+        composerShell.addView(input, new LinearLayout.LayoutParams(0, -2, 1));
 
         stopButton = new Button(this);
         stopButton.setText("إيقاف");
+        stopButton.setTextSize(11);
+        stopButton.setTextColor(0xFFFFB7B7);
+        stopButton.setAllCaps(false);
+        stopButton.setMinWidth(0);
+        stopButton.setMinimumWidth(0);
+        stopButton.setMinHeight(dp(38));
+        stopButton.setMinimumHeight(dp(38));
+        stopButton.setPadding(dp(5), 0, dp(5), 0);
+        stopButton.setBackground(rounded(0xFF3A2635, 12));
         stopButton.setEnabled(false);
         stopButton.setOnClickListener(v -> stopGeneration());
-        composer.addView(stopButton);
+        composerShell.addView(stopButton);
 
         sendButton = new Button(this);
         sendButton.setText("إرسال");
+        sendButton.setTextSize(12);
+        sendButton.setTextColor(Color.WHITE);
+        sendButton.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        sendButton.setAllCaps(false);
+        sendButton.setMinWidth(0);
+        sendButton.setMinimumWidth(0);
+        sendButton.setMinHeight(dp(40));
+        sendButton.setMinimumHeight(dp(40));
+        sendButton.setPadding(dp(12), 0, dp(12), 0);
+        android.graphics.drawable.GradientDrawable sendBg =
+            new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[] { 0xFF267EFF, 0xFF7048E8 });
+        sendBg.setCornerRadius(dp(14));
+        sendButton.setBackground(sendBg);
         sendButton.setOnClickListener(v -> sendMessage());
-        composer.addView(sendButton);
-        root.addView(composer);
+        LinearLayout.LayoutParams sendLp = new LinearLayout.LayoutParams(-2, dp(40));
+        sendLp.setMargins(dp(5), 0, 0, 0);
+        composerShell.addView(sendButton, sendLp);
+        root.addView(composerShell, shellLp);
+
+        TextView footer = new TextView(this);
+        footer.setText("JASSIM AI  •  محادثاتك تبدأ من هنا");
+        footer.setTextColor(0xFF687492);
+        footer.setTextSize(10);
+        footer.setGravity(Gravity.CENTER);
+        footer.setPadding(0, dp(7), 0, 0);
+        root.addView(footer);
         setContentView(root);
     }
 
     private TextView addMessage(String who, String text) {
+        boolean isUser = "أنت".equals(who);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(isUser ? Gravity.RIGHT : Gravity.LEFT);
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, -2);
+        rowLp.setMargins(0, dp(4), 0, dp(4));
+
         TextView bubble = new TextView(this);
-        bubble.setText(who + "\n" + text);
-        bubble.setTextColor(Color.WHITE);
-        bubble.setTextSize(15);
+        bubble.setText(who + "\\n" + text);
+        bubble.setTextColor(0xFFF1F4FF);
+        bubble.setTextSize(14);
         bubble.setTextDirection(View.TEXT_DIRECTION_RTL);
         bubble.setGravity(Gravity.RIGHT);
-        bubble.setPadding(14, 12, 14, 12);
-        bubble.setBackgroundColor("أنت".equals(who) ? Color.rgb(39, 45, 69) : panel);
+        bubble.setLineSpacing(dp(2), 1.0f);
+        bubble.setPadding(dp(14), dp(11), dp(14), dp(11));
+        bubble.setMaxWidth((int)(getResources().getDisplayMetrics().widthPixels * 0.82f));
+        bubble.setBackground(rounded(isUser ? 0xFF263C69 : 0xFF1B2338, 17));
         bubble.setOnLongClickListener(v -> {
             ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
             if (clipboard != null) {
@@ -281,9 +391,8 @@ public class MainActivity extends Activity {
             return true;
         });
         bubble.setContentDescription(who + ": " + text + " — اضغط مطولاً للنسخ");
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.setMargins(0, 7, 0, 7);
-        messages.addView(bubble, lp);
+        row.addView(bubble, new LinearLayout.LayoutParams(-2, -2));
+        messages.addView(row, rowLp);
         if (scroll != null) scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));
         return bubble;
     }
