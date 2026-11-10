@@ -171,21 +171,21 @@ def delete_conversation(conversation_id, user_id="legacy-owner"):
 
 def _ensure_conversation_owner(db, conversation_id, user_id):
     now = datetime.now(timezone.utc).isoformat()
+    # Atomic insert avoids two workers racing to create the same conversation.
+    db.execute(
+        """INSERT INTO conversations(conversation_id,user_id,created_at,updated_at)
+           VALUES(?,?,?,?) ON CONFLICT(conversation_id) DO NOTHING""",
+        (conversation_id, user_id, now, now)
+    )
     row = db.execute(
         "SELECT user_id FROM conversations WHERE conversation_id=?", (conversation_id,)
     ).fetchone()
-    if row:
-        if row[0] != user_id:
-            raise PermissionError("conversation_not_owned")
-        db.execute(
-            "UPDATE conversations SET updated_at=? WHERE conversation_id=? AND user_id=?",
-            (now, conversation_id, user_id)
-        )
-    else:
-        db.execute(
-            "INSERT INTO conversations(conversation_id,user_id,created_at,updated_at) VALUES(?,?,?,?)",
-            (conversation_id, user_id, now, now)
-        )
+    if not row or row[0] != user_id:
+        raise PermissionError("conversation_not_owned")
+    db.execute(
+        "UPDATE conversations SET updated_at=? WHERE conversation_id=? AND user_id=?",
+        (now, conversation_id, user_id)
+    )
     return now
 
 
@@ -568,9 +568,15 @@ class Handler(BaseHTTPRequestHandler):
         supplied = self.headers.get("Authorization", "")
         return supplied[7:].strip() if supplied.startswith("Bearer ") else ""
 
-    def rate_limited(self):
+    def rate_limited(self, identity=None):
         now = time.time()
-        client = self.client_address[0]
+        if identity:
+            # Do not make unrelated customers share one bucket behind Railway's proxy.
+            client = "user:" + str(identity["user_id"])
+        else:
+            # Railway forwards the original client address; use it for public auth routes.
+            forwarded = self.headers.get("X-Forwarded-For", "")
+            client = "ip:" + (forwarded.split(",")[0].strip() or self.client_address[0])
         with RATE_LOCK:
             hits = [stamp for stamp in RATE_BUCKETS.get(client, []) if now - stamp < RATE_WINDOW]
             if len(hits) >= RATE_LIMIT:
@@ -634,7 +640,7 @@ class Handler(BaseHTTPRequestHandler):
             if not identity:
                 self.send_json(401, {"error": "unauthorized"})
                 return
-            if self.rate_limited():
+            if self.rate_limited(identity):
                 self.send_json(429, {"error": "rate_limit_exceeded", "retry_after_seconds": 60})
                 return
             if parsed.path == "/api/providers":
@@ -701,7 +707,7 @@ class Handler(BaseHTTPRequestHandler):
         if not identity:
             self.send_json(401, {"error": "unauthorized"})
             return
-        if self.rate_limited():
+        if self.rate_limited(identity):
             self.send_json(429, {"error": "rate_limit_exceeded", "retry_after_seconds": 60})
             return
         conversation_id = parse_qs(parsed.query).get("conversation_id", [""])[0]
@@ -782,7 +788,7 @@ class Handler(BaseHTTPRequestHandler):
         if request_path == "/api/admin/evaluate" and identity["role"] != "admin":
             self.send_json(403, {"error": "admin_required"})
             return
-        if self.rate_limited():
+        if self.rate_limited(identity):
             self.send_json(429, {"error": "rate_limit_exceeded", "retry_after_seconds": 60})
             return
         if request_path == "/api/images/generate":
