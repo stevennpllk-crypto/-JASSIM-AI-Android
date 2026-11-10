@@ -272,7 +272,7 @@ public class MainActivity extends Activity {
         title.setTextSize(19);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         TextView tagline = new TextView(this);
-        tagline.setText("ذكاء اصطناعي ... بإبداع تونسي");
+        tagline.setText(uiText("ذكاء اصطناعي ... بإبداع تونسي", "Artificial intelligence ... Tunisian creativity", "Intelligence artificielle ... créativité tunisienne"));
         tagline.setTextColor(muted);
         tagline.setTextSize(11);
         brand.addView(title);
@@ -1025,6 +1025,31 @@ public class MainActivity extends Activity {
     private String transientSessionToken = "";
     private boolean rememberSession = true;
 
+    private String uiText(String arabic, String english, String french) {
+        String language = prefs.getString("ui_language", "ar");
+        if ("en".equals(language)) return english;
+        if ("fr".equals(language)) return french;
+        return arabic;
+    }
+
+    private String uiLanguageLabel() {
+        return uiText("العربية", "English", "Français");
+    }
+
+    private void chooseUiLanguage(Dialog currentDialog) {
+        String[] languages = {"العربية", "English", "Français"};
+        new AlertDialog.Builder(this)
+            .setTitle(uiText("اختر لغة الواجهة", "Choose interface language", "Choisir la langue"))
+            .setItems(languages, (picker, which) -> {
+                String selected = which == 1 ? "en" : which == 2 ? "fr" : "ar";
+                prefs.edit().putString("ui_language", selected).apply();
+                currentDialog.dismiss();
+                accountDialog();
+            })
+            .setNegativeButton(uiText("إلغاء", "Cancel", "Annuler"), null)
+            .show();
+    }
+
     private void accountDialog() {
         Dialog dialog = new Dialog(this);
         dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
@@ -1042,10 +1067,10 @@ public class MainActivity extends Activity {
 
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
-        Button language = actionButton("العربية  ▾", "تغيير لغة الواجهة", () ->
-            Toast.makeText(this, "واجهة Mahdia AI متاحة بالعربية حالياً", Toast.LENGTH_SHORT).show());
+        Button language = actionButton(uiLanguageLabel() + "  ▾", uiText("تغيير لغة الواجهة", "Change interface language", "Changer la langue"), () ->
+            chooseUiLanguage(dialog));
         top.addView(language, new LinearLayout.LayoutParams(0, dp(42), 1));
-        Button settings = actionButton("⚙", "إعدادات الاتصال", () -> {
+        Button settings = actionButton("⚙", uiText("إعدادات الاتصال", "Connection settings", "Paramètres de connexion"), () -> {
             dialog.dismiss();
             endpointDialog();
         });
@@ -1056,7 +1081,7 @@ public class MainActivity extends Activity {
         mascot.setImageResource(R.drawable.mahdia_hero_v2);
         mascot.setScaleType(ImageView.ScaleType.FIT_CENTER);
         mascot.setAdjustViewBounds(true);
-        mascot.setContentDescription("روبوت Mahdia AI وقلعة المهدية");
+        mascot.setContentDescription(uiText("روبوت Mahdia AI وقلعة المهدية", "Mahdia AI robot and Mahdia fortress", "Robot Mahdia AI et fort de Mahdia"));
         LinearLayout.LayoutParams mascotLp = new LinearLayout.LayoutParams(-1, dp(112));
         mascotLp.setMargins(0, dp(8), 0, dp(4));
         page.addView(mascot, mascotLp);
@@ -1089,7 +1114,7 @@ public class MainActivity extends Activity {
         card.setBackground(cardBg);
 
         TextView heading = new TextView(this);
-        heading.setText("مرحباً بك في Mahdia AI");
+        heading.setText(uiText("مرحباً بك في Mahdia AI", "Welcome to Mahdia AI", "Bienvenue sur Mahdia AI"));
         heading.setTextColor(Color.WHITE);
         heading.setTextSize(24);
         heading.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
@@ -1097,7 +1122,7 @@ public class MainActivity extends Activity {
         card.addView(heading);
 
         TextView subheading = new TextView(this);
-        subheading.setText("سجّل الدخول إلى حسابك للمتابعة");
+        subheading.setText(uiText("سجّل الدخول إلى حسابك للمتابعة", "Sign in to your account to continue", "Connectez-vous pour continuer"));
         subheading.setTextColor(0xFFD2D9F4);
         subheading.setTextSize(15);
         subheading.setGravity(Gravity.CENTER);
@@ -1106,7 +1131,7 @@ public class MainActivity extends Activity {
 
         EditText emailField = new EditText(this);
         emailField.setSingleLine(true);
-        emailField.setHint("البريد الإلكتروني");
+        emailField.setHint(uiText("البريد الإلكتروني", "Email address", "Adresse e-mail"));
         emailField.setHintTextColor(0xFFB6C2E5);
         emailField.setTextColor(Color.WHITE);
         emailField.setTextSize(16);
@@ -1123,7 +1148,7 @@ public class MainActivity extends Activity {
         passwordRow.setBackground(loginFieldBackground());
         EditText passwordField = new EditText(this);
         passwordField.setSingleLine(true);
-        passwordField.setHint("كلمة المرور");
+        passwordField.setHint(uiText("كلمة المرور", "Password", "Mot de passe"));
         passwordField.setHintTextColor(0xFFB6C2E5);
         passwordField.setTextColor(Color.WHITE);
         passwordField.setTextSize(16);
@@ -1133,7 +1158,7 @@ public class MainActivity extends Activity {
         passwordField.setPadding(dp(15), dp(10), dp(8), dp(10));
         passwordRow.addView(passwordField, new LinearLayout.LayoutParams(0, -1, 1));
         final Button[] revealHolder = new Button[1];
-        Button reveal = actionButton("◉", "إظهار أو إخفاء كلمة المرور", () -> {
+        Button reveal = actionButton("◉", uiText("إظهار أو إخفاء كلمة المرور", "Show or hide password", "Afficher ou masquer le mot de passe"), () -> {
             boolean visible = (passwordField.getInputType() & 0xFFF)
                 == (android.text.InputType.TYPE_CLASS_TEXT
                     | android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
@@ -1153,7 +1178,7 @@ public class MainActivity extends Activity {
         LinearLayout options = new LinearLayout(this);
         options.setGravity(Gravity.CENTER_VERTICAL);
         CheckBox remember = new CheckBox(this);
-        remember.setText("تذكّرني");
+        remember.setText(uiText("تذكّرني", "Remember me", "Se souvenir de moi"));
         remember.setTextColor(Color.WHITE);
         remember.setButtonTintList(android.content.res.ColorStateList.valueOf(0xFF9B5CFF));
         remember.setChecked(prefs.getBoolean("remember_session", true));
@@ -1167,15 +1192,15 @@ public class MainActivity extends Activity {
                 prefs.edit().remove("api_token_enc").remove("api_token_iv").remove("api_token").apply();
             }
         });
-        Button forgot = actionButton("نسيت كلمة المرور؟", "استعادة كلمة المرور", () ->
+        Button forgot = actionButton(uiText("نسيت كلمة المرور؟", "Forgot password?", "Mot de passe oublié ?"), uiText("استعادة كلمة المرور", "Password recovery", "Récupération du mot de passe"), () ->
             new AlertDialog.Builder(this)
-                .setTitle("استعادة كلمة المرور")
-                .setMessage("استعادة كلمة المرور عبر البريد الإلكتروني غير مفعّلة على الخادم حالياً. لن نرسل رابطاً وهمياً.")
-                .setPositiveButton("حسناً", null).show());
+                .setTitle(uiText("استعادة كلمة المرور", "Password recovery", "Récupération du mot de passe"))
+                .setMessage(uiText("استعادة كلمة المرور عبر البريد الإلكتروني غير مفعّلة على الخادم حالياً. لن نرسل رابطاً وهمياً.", "Email password recovery is not configured on the server yet. No fake link will be sent.", "La récupération par e-mail n'est pas encore configurée sur le serveur. Aucun faux lien ne sera envoyé."))
+                .setPositiveButton(uiText("حسناً", "OK", "OK"), null).show());
         options.addView(forgot);
         card.addView(options);
 
-        Button login = actionButton("دخول   ➜", "تسجيل الدخول", () ->
+        Button login = actionButton(uiText("دخول   ➜", "Sign in   ➜", "Connexion   ➜"), uiText("تسجيل الدخول", "Sign in", "Connexion"), () ->
             authenticateAccount(emailField.getText().toString(),
                 passwordField.getText().toString(), false, dialog));
         login.setTextSize(18);
@@ -1186,45 +1211,45 @@ public class MainActivity extends Activity {
         card.addView(login, loginLp);
 
         TextView or = new TextView(this);
-        or.setText("أو");
+        or.setText(uiText("أو", "OR", "OU"));
         or.setTextColor(Color.WHITE);
         or.setTextSize(15);
         or.setGravity(Gravity.CENTER);
         card.addView(or);
 
-        Button google = actionButton("G   الدخول عبر Google", "تسجيل الدخول عبر Google", () ->
+        Button google = actionButton("G   " + uiText("الدخول عبر Google", "Continue with Google", "Continuer avec Google"), uiText("تسجيل الدخول عبر Google", "Sign in with Google", "Connexion avec Google"), () ->
             new AlertDialog.Builder(this)
                 .setTitle("Google")
-                .setMessage("تسجيل Google غير مهيأ بعد: يتطلب إعداد OAuth موثوقاً في الخادم. لم نضع زرّاً وهمياً.")
-                .setPositiveButton("حسناً", null).show());
+                .setMessage(uiText("تسجيل Google غير مهيأ بعد: يتطلب إعداد OAuth موثوقاً في الخادم. لم نضع زرّاً وهمياً.", "Google sign-in is not configured yet; secure server-side OAuth setup is required.", "La connexion Google n'est pas encore configurée ; une configuration OAuth sécurisée côté serveur est nécessaire."))
+                .setPositiveButton(uiText("حسناً", "OK", "OK"), null).show());
         google.setTextSize(16);
         google.setBackground(loginOutline());
         LinearLayout.LayoutParams googleLp = new LinearLayout.LayoutParams(-1, dp(54));
         googleLp.setMargins(0, dp(10), 0, dp(12));
         card.addView(google, googleLp);
 
-        Button register = actionButton("إنشاء حساب جديد", "إنشاء حساب", () ->
+        Button register = actionButton(uiText("إنشاء حساب جديد", "Create new account", "Créer un compte"), uiText("إنشاء حساب", "Create account", "Créer un compte"), () ->
             authenticateAccount(emailField.getText().toString(),
                 passwordField.getText().toString(), true, dialog));
         register.setTextColor(0xFFD58BFF);
         card.addView(register);
 
         TextView secure = new TextView(this);
-        secure.setText("◈ تسجيل آمن وخصوصي");
+        secure.setText(uiText("◈ تسجيل آمن وخصوصي", "◈ Secure and private sign-in", "◈ Connexion sécurisée et privée"));
         secure.setTextColor(0xFFD7E2FF);
         secure.setGravity(Gravity.CENTER);
         secure.setPadding(0, dp(14), 0, 0);
         card.addView(secure);
 
         if (readApiToken().startsWith("jss_")) {
-            Button logout = actionButton("تسجيل الخروج", "تسجيل الخروج من الحساب", () ->
+            Button logout = actionButton(uiText("تسجيل الخروج", "Sign out", "Se déconnecter"), uiText("تسجيل الخروج من الحساب", "Sign out of account", "Se déconnecter du compte"), () ->
                 logoutAccount(new AlertDialog.Builder(this).create()));
             card.addView(logout);
         }
 
         page.addView(card);
         TextView footer = new TextView(this);
-        footer.setText("Mahdia AI  •  شريكك الذكي في عالم المعرفة  ♥");
+        footer.setText(uiText("Mahdia AI  •  شريكك الذكي في عالم المعرفة  ♥", "Mahdia AI  •  Your smart knowledge partner  ♥", "Mahdia AI  •  Votre partenaire intelligent du savoir  ♥"));
         footer.setTextColor(0xFFC49AFF);
         footer.setTextSize(13);
         footer.setGravity(Gravity.CENTER);
