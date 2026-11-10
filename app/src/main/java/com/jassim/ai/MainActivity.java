@@ -493,15 +493,14 @@ public class MainActivity extends Activity {
                 JSONObject result = readJsonResponse(connection);
                 boolean ok = result.optBoolean("ok", false);
                 boolean modelReady = result.optBoolean("model_ready", false);
-                boolean adaptiveReady = result.optBoolean("external_provider_ready", false);
-                boolean ready = modelReady || adaptiveReady;
+                boolean externalChatEnabled = result.optBoolean("external_provider_ready", false);
                 String engine = result.optString("model", result.optString("engine", "غير معروف"));
                 runOnUiThread(() -> {
-                    status.setText(!ok ? "● الخادم غير جاهز"
-                        : modelReady ? "● الخادم متصل — النموذج المحلي جاهز"
-                        : adaptiveReady ? "● الخادم متصل — التوجيه الذكي جاهز"
-                        : "● الخادم متصل — النموذج غير جاهز (" + engine + ")");
-                    status.setTextColor(!ok ? 0xFFFF7777 : ready ? 0xFF62DCA8 : 0xFFFFC36B);
+                    status.setText(!ok ? uiText("● الخادم غير جاهز", "● Server unavailable", "● Serveur indisponible")
+                        : modelReady ? uiText("● النموذج المحلي جاهز", "● Local model ready", "● Modèle local prêt")
+                        : externalChatEnabled ? uiText("⚠ النموذج المحلي غير متاح؛ قد تُرسل رسائلك إلى مزوّد خارجي", "⚠ Local model unavailable; your messages may be sent to an external AI provider", "⚠ Modèle local indisponible ; vos messages peuvent être envoyés à un fournisseur externe")
+                        : uiText("● الخادم متصل لكن النموذج غير جاهز (" + engine + ")", "● Server connected but model is not ready (" + engine + ")", "● Serveur connecté mais modèle non prêt (" + engine + ")"));
+                    status.setTextColor(!ok ? 0xFFFF7777 : modelReady ? 0xFF62DCA8 : 0xFFFFC36B);
                 });
             } catch (Exception e) {
                 String error = e.getMessage() == null ? "تعذر فحص الخادم" : e.getMessage();
