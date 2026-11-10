@@ -1083,7 +1083,7 @@ public class MainActivity extends Activity {
 
         ImageView mascot = new ImageView(this);
         mascot.setImageResource(R.drawable.mahdia_hero_v2);
-        mascot.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        mascot.setScaleType(ImageView.ScaleType.FIT_XY);
         mascot.setAdjustViewBounds(true);
         mascot.setContentDescription(uiText("روبوت Mahdia AI وقلعة المهدية", "Mahdia AI robot and Mahdia fortress", "Robot Mahdia AI et fort de Mahdia"));
         LinearLayout.LayoutParams mascotLp = new LinearLayout.LayoutParams(-1, dp(148));
@@ -1275,17 +1275,17 @@ public class MainActivity extends Activity {
             window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS
                 | android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);
             window.setDimAmount(0.88f);
-            window.setStatusBarColor(Color.TRANSPARENT);
+            window.setStatusBarColor(0xFF050B25);
             window.setNavigationBarColor(0xFF050B25);
             window.getDecorView().setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
             window.setLayout(-1, -1);
         }
         dialog.show();
         if (dialog.getWindow() != null) {
             dialog.getWindow().setLayout(-1, -1);
             dialog.getWindow().setDimAmount(0.88f);
-            dialog.getWindow().setStatusBarColor(Color.TRANSPARENT);
+            dialog.getWindow().setStatusBarColor(0xFF050B25);
             dialog.getWindow().setNavigationBarColor(0xFF050B25);
             dialog.getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
