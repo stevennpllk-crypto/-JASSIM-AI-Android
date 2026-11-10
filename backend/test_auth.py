@@ -3,6 +3,11 @@ import os
 import sys
 import tempfile
 import unittest
+import json
+import threading
+from http.server import ThreadingHTTPServer
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parent
@@ -63,6 +68,55 @@ class MultiUserAuthTest(unittest.TestCase):
         self.assertEqual(self.server.delete_conversation("private-first", second["id"]), 0)
         with self.assertRaises(PermissionError):
             self.server.save_message("private-first", "user", "اختراق", second["id"])
+
+    def test_http_registration_and_cross_account_access(self):
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), self.server.Handler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        base = "http://127.0.0.1:" + str(httpd.server_port)
+
+        def call(path, method="GET", token=None, body=None):
+            headers = {"Content-Type": "application/json"}
+            if token:
+                headers["Authorization"] = "Bearer " + token
+            data = json.dumps(body).encode("utf-8") if body is not None else None
+            request = Request(base + path, data=data, headers=headers, method=method)
+            with urlopen(request, timeout=5) as response:
+                return response.status, json.loads(response.read().decode("utf-8"))
+
+        try:
+            _, first = call("/api/auth/register", "POST", body={
+                "email": "http-first@example.com", "password": "first-password-123"
+            })
+            _, second = call("/api/auth/register", "POST", body={
+                "email": "http-second@example.com", "password": "second-password-123"
+            })
+            first_token, second_token = first["token"], second["token"]
+            self.assertEqual(call("/api/auth/me", token=first_token)[1]["user"]["email"],
+                             "http-first@example.com")
+
+            _, saved = call("/api/chat", "POST", first_token, {
+                "conversation_id": "http-private-first",
+                "message": "تذكر أن هذه معلومة خاصة بالحساب الأول"
+            })
+            self.assertEqual(saved["engine"], "memory")
+            first_history = call("/api/history?conversation_id=http-private-first", token=first_token)[1]
+            second_history = call("/api/history?conversation_id=http-private-first", token=second_token)[1]
+            self.assertEqual(len(first_history["messages"]), 2)
+            self.assertEqual(second_history["messages"], [])
+
+            with self.assertRaises(HTTPError) as denied:
+                call("/api/conversations?conversation_id=http-private-first", "DELETE", second_token)
+            self.assertEqual(denied.exception.code, 404)
+
+            call("/api/auth/logout", "POST", first_token, {})
+            with self.assertRaises(HTTPError) as revoked:
+                call("/api/auth/me", token=first_token)
+            self.assertEqual(revoked.exception.code, 401)
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=3)
 
     def test_old_conversations_remain_with_legacy_owner(self):
         self.server.save_message("legacy-chat", "user", "بيانات قديمة")
