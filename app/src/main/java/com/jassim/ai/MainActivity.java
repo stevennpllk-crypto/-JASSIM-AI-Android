@@ -40,6 +40,7 @@ public class MainActivity extends Activity {
     private SharedPreferences prefs;
     private Button sendButton;
     private Button stopButton;
+    private Switch externalProviderSwitch;
     private volatile HttpURLConnection activeChatConnection;
     private volatile boolean cancelRequested;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -299,6 +300,24 @@ public class MainActivity extends Activity {
         messages.setPadding(0, dp(3), 0, dp(12));
         scroll.addView(messages, new ScrollView.LayoutParams(-1, -2));
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        LinearLayout privacyRow = new LinearLayout(this);
+        privacyRow.setGravity(Gravity.CENTER_VERTICAL);
+        privacyRow.setPadding(dp(4), dp(4), dp(4), 0);
+        TextView privacyLabel = new TextView(this);
+        privacyLabel.setText("السماح بمزوّد خارجي لهذه الرسالة");
+        privacyLabel.setTextColor(0xFFB8C4DE);
+        privacyLabel.setTextSize(11);
+        privacyRow.addView(privacyLabel, new LinearLayout.LayoutParams(0, -2, 1));
+        externalProviderSwitch = new Switch(this);
+        externalProviderSwitch.setText("موافقة");
+        externalProviderSwitch.setTextColor(0xFFFFC36B);
+        externalProviderSwitch.setTextSize(11);
+        externalProviderSwitch.setChecked(prefs.getBoolean("allow_external_provider", false));
+        externalProviderSwitch.setOnCheckedChangeListener((button, checked) ->
+            prefs.edit().putBoolean("allow_external_provider", checked).apply());
+        privacyRow.addView(externalProviderSwitch);
+        root.addView(privacyRow);
 
         LinearLayout composerShell = new LinearLayout(this);
         composerShell.setOrientation(LinearLayout.HORIZONTAL);
@@ -717,6 +736,8 @@ public class MainActivity extends Activity {
                 JSONObject body = new JSONObject();
                 body.put("message", message);
                 body.put("conversation_id", conversationId);
+                body.put("allow_external_provider",
+                    externalProviderSwitch != null && externalProviderSwitch.isChecked());
                 try (OutputStream out = connection.getOutputStream()) {
                     out.write(body.toString().getBytes(StandardCharsets.UTF_8));
                 }
