@@ -862,8 +862,8 @@ class Handler(BaseHTTPRequestHandler):
             if command == "show":
                 saved_memory = get_memory(conversation_id, identity["user_id"])
                 answer = ("المحفوظ في ذاكرة هذه المحادثة: " + saved_memory) if saved_memory else "لا توجد معلومات محفوظة في ذاكرة هذه المحادثة."
-                save_message(conversation_id, "user", message)
-                save_message(conversation_id, "assistant", answer)
+                save_message(conversation_id, "user", message, identity["user_id"])
+                save_message(conversation_id, "assistant", answer, identity["user_id"])
                 if streaming:
                     self.send_sse_static(answer, conversation_id, "memory")
                 else:
@@ -872,8 +872,8 @@ class Handler(BaseHTTPRequestHandler):
             if command == "clear":
                 clear_memory(conversation_id, identity["user_id"])
                 answer = "تم مسح ذاكرة هذه المحادثة."
-                save_message(conversation_id, "user", message)
-                save_message(conversation_id, "assistant", answer)
+                save_message(conversation_id, "user", message, identity["user_id"])
+                save_message(conversation_id, "assistant", answer, identity["user_id"])
                 if streaming:
                     self.send_sse_static(answer, conversation_id, "memory")
                 else:
