@@ -8,7 +8,7 @@ See [ROADMAP.md](ROADMAP.md) for the complete staged plan: streaming chat, user-
 
 ## Components
 
-- `app/`: native Android client (Java). Configure the server URL and API token in the app's Settings. The active conversation transcript is restored from the authenticated history endpoint on startup.
+- `app/`: native Android client (Java) with individual email/password account registration and sign-in. Configure the HTTPS server URL in Settings; ordinary users sign in with their account, while the optional legacy API token is reserved for owner/admin access. Session tokens are stored encrypted with Android Keystore.
 - `DEPLOYMENT.md`: restartable Docker deployment, persistent model/database volumes, readiness checks, and HTTPS guidance.
 - `backend/server.py`: Python standard-library API (v0.4.0) with SQLite persistence, Bearer authentication, input-size checks, per-IP rate limiting, model readiness checks, an authenticated model inventory endpoint, and an SSE streaming route.
 - `dashboard/`: Arabic RTL dashboard for health checks and chat.
@@ -22,8 +22,10 @@ See [ROADMAP.md](ROADMAP.md) for the complete staged plan: streaming chat, user-
 - The dashboard stores its endpoint in browser local storage and its token in session storage. Use it only on a trusted device and close the browser session when finished.
 - Use HTTPS for any server reachable over the internet. The Android app intentionally rejects plain HTTP endpoints.
 - Keep the API bound to `127.0.0.1` behind a trusted HTTPS reverse proxy/tunnel. Do not expose the Python HTTP server directly to the public internet.
-- The shared Bearer token currently represents one shared API identity, not individual user accounts. Rotate it if it was ever exposed. A multi-user login/session system is a separate next step.
-- `/health` is a public liveness/diagnostics endpoint. `/ready` returns HTTP 503 unless the token is configured and Ollama can see the configured model. A successful chat request remains the definitive inference test.
+- Regular users authenticate through `/api/auth/register`, `/api/auth/login`, `/api/auth/me`, and `/api/auth/logout`. Passwords are stored as PBKDF2-HMAC-SHA256 hashes; opaque session-token hashes are stored server-side. The optional `JASSIM_API_TOKEN` remains a legacy owner/admin credential and should never be embedded in the APK.
+- Google OAuth and email-based password recovery are not implemented/configured yet; the Android UI marks both unavailable rather than pretending they work.
+- Image generation requires `JASSIM_HF_TOKEN` on the server. Without it, the image endpoint returns `image_provider_not_configured`.
+- `/health` is a public liveness/diagnostics endpoint. `/ready` returns HTTP 200 when either the configured Ollama model is ready or the explicitly enabled external provider route is available; it separately reports whether the legacy API token is configured. A successful authenticated chat request remains the definitive inference test.
 
 ## Run the API
 
