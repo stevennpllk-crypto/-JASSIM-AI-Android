@@ -82,6 +82,18 @@ def connect_db():
     storage.ensure_schema(db, sqlite_path=DB_PATH)
     return db
 
+def conversation_belongs_to_other_user(conversation_id, user_id):
+    db = connect_db()
+    try:
+        row = db.execute(
+            "SELECT user_id FROM conversations WHERE conversation_id=?",
+            (conversation_id,)
+        ).fetchone()
+        return bool(row and row[0] != user_id)
+    finally:
+        db.close()
+
+
 def history(conversation_id, limit=12, user_id="legacy-owner"):
     with DB_LOCK:
         db = connect_db()
@@ -824,6 +836,9 @@ class Handler(BaseHTTPRequestHandler):
             if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", conversation_id):
                 self.send_json(400, {"error": "invalid_conversation_id"})
                 return
+            if conversation_belongs_to_other_user(conversation_id, identity["user_id"]):
+                self.send_json(404, {"error": "conversation_not_found"})
+                return
             if not message:
                 self.send_json(400, {"error": "message_required"})
                 return
@@ -837,8 +852,8 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 set_memory(conversation_id, memory_text, identity["user_id"])
                 answer = "حفظت هذه المعلومة في ذاكرة هذه المحادثة. يمكنك عرضها بقول «ماذا تتذكر عني؟» أو مسحها بقول «انسَ ذاكرتي»."
-                save_message(conversation_id, "user", message)
-                save_message(conversation_id, "assistant", answer)
+                save_message(conversation_id, "user", message, identity["user_id"])
+                save_message(conversation_id, "assistant", answer, identity["user_id"])
                 if streaming:
                     self.send_sse_static(answer, conversation_id, "memory")
                 else:
@@ -865,7 +880,7 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(200, {"answer": answer, "reply": answer, "conversation_id": conversation_id, "engine": "memory"})
                 return
             previous = history(conversation_id, max(1, HISTORY_MESSAGES - 1), identity["user_id"])
-            saved_memory = get_memory(conversation_id)
+            saved_memory = get_memory(conversation_id, identity["user_id"])
             if saved_memory:
                 previous.insert(0, {"role": "system", "content": "معلومات اختار المستخدم حفظها صراحةً في ذاكرة JASSIM المشتركة لهذا الخادم، استخدمها فقط عندما تكون ذات صلة ولا تفترض أنها حقائق خارج هذا السياق: " + saved_memory})
             context = fit_history_to_budget(previous + [{"role": "user", "content": message}])
