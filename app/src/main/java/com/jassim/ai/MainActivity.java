@@ -41,6 +41,8 @@ public class MainActivity extends Activity {
     private SharedPreferences prefs;
     private Button sendButton;
     private Button stopButton;
+    private Button improveButton;
+    private volatile boolean adminSession;
     private volatile HttpURLConnection activeChatConnection;
     private volatile boolean cancelRequested;
     private volatile boolean localModelReady;
@@ -303,10 +305,11 @@ public class MainActivity extends Activity {
         newLp.setMargins(0, 0, dp(4), 0);
         actionsRow.addView(newChat, newLp);
 
-        Button improve = actionButton("⚡", "اختبار وتحسين الخادم", () -> runProviderEvaluation());
+        improveButton = actionButton("⚡", "اختبار وتحسين الخادم (للمسؤول فقط)", () -> runProviderEvaluation());
+        improveButton.setVisibility(View.GONE);
         LinearLayout.LayoutParams improveLp = new LinearLayout.LayoutParams(dp(40), dp(38));
         improveLp.setMargins(0, 0, dp(4), 0);
-        actionsRow.addView(improve, improveLp);
+        actionsRow.addView(improveButton, improveLp);
 
         Button settings = actionButton("⚙", "إعدادات الاتصال", () -> endpointDialog());
         actionsRow.addView(settings, new LinearLayout.LayoutParams(dp(40), dp(38)));
@@ -483,6 +486,7 @@ public class MainActivity extends Activity {
 
     private void checkHealth() {
         if (baseUrl().isEmpty()) {
+            setAdminCapability(false);
             status.setText("● غير متصل بالخادم");
             status.setTextColor(0xFFFFC36B);
             return;
@@ -515,6 +519,36 @@ public class MainActivity extends Activity {
             } finally {
                 if (connection != null) connection.disconnect();
             }
+            refreshAdminCapability();
+        });
+    }
+
+    private void setAdminCapability(boolean enabled) {
+        adminSession = enabled;
+        runOnUiThread(() -> {
+            if (improveButton != null) improveButton.setVisibility(enabled ? View.VISIBLE : View.GONE);
+        });
+    }
+
+    private void refreshAdminCapability() {
+        if (baseUrl().isEmpty() || readApiToken().trim().isEmpty()) {
+            setAdminCapability(false);
+            return;
+        }
+        executor.execute(() -> {
+            HttpURLConnection connection = null;
+            boolean isAdmin = false;
+            try {
+                connection = openConnection("/api/auth/me", "GET");
+                JSONObject result = readJsonResponse(connection);
+                JSONObject user = result.optJSONObject("user");
+                isAdmin = user != null && "admin".equalsIgnoreCase(user.optString("role", "user"));
+            } catch (Exception ignored) {
+                isAdmin = false;
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+            setAdminCapability(isAdmin);
         });
     }
 
@@ -990,9 +1024,8 @@ public class MainActivity extends Activity {
     }
 
     private void runProviderEvaluation() {
-        if (readApiToken().trim().isEmpty()) {
-            Toast.makeText(this, "أدخل رمز الخادم أولاً من الإعدادات", Toast.LENGTH_LONG).show();
-            endpointDialog();
+        if (!adminSession) {
+            Toast.makeText(this, "هذه الميزة متاحة لمسؤول الخادم فقط", Toast.LENGTH_LONG).show();
             return;
         }
         status.setText("● يختبر الخادم مزودي الذكاء الاصطناعي...");
@@ -1377,6 +1410,7 @@ public class MainActivity extends Activity {
                 String token = result.optString("token", "");
                 if (!token.startsWith("jss_")) throw new IOException("لم يُرجع الخادم رمز جلسة صالحاً");
                 saveApiToken(token);
+                refreshAdminCapability();
                 runOnUiThread(() -> {
                     dialog.dismiss();
                     newConversation();
@@ -1406,6 +1440,7 @@ public class MainActivity extends Activity {
                 }
                 readJsonResponse(connection);
                 saveApiToken("");
+                refreshAdminCapability();
                 runOnUiThread(() -> {
                     dialog.dismiss();
                     newConversation();
