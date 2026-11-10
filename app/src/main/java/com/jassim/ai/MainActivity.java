@@ -1106,7 +1106,7 @@ public class MainActivity extends Activity {
 
         EditText emailField = new EditText(this);
         emailField.setSingleLine(true);
-        emailField.setHint("البريد الإلكتروني أو اسم المستخدم");
+        emailField.setHint("البريد الإلكتروني");
         emailField.setHintTextColor(0xFFB6C2E5);
         emailField.setTextColor(Color.WHITE);
         emailField.setTextSize(16);
@@ -1372,7 +1372,7 @@ public class MainActivity extends Activity {
         tokenField.setText(readApiToken());
         fields.addView(tokenField);
 
-        new AlertDialog.Builder(this)
+        AlertDialog connectionDialog = new AlertDialog.Builder(this)
             .setTitle("اتصال خادم Mahdia AI")
             .setMessage("المستخدم العادي لا يحتاج رمز API؛ استخدم زر حساب لتسجيل الدخول. هذا الحقل اختياري للمطور فقط.")
             .setView(fields)
@@ -1392,11 +1392,20 @@ public class MainActivity extends Activity {
                     if (!token.isEmpty()) saveApiToken(token);
                     prefs.edit().putString("endpoint", value).apply();
                     checkHealth();
-                    loadHistory();
+                    if (!readApiToken().isEmpty()) {
+                        loadHistory();
+                    } else {
+                        status.setText("● الخادم جاهز — سجّل الدخول للمتابعة");
+                        status.setTextColor(0xFFFFC36B);
+                    }
                 } catch (Exception e) {
                     Toast.makeText(this, "تعذر حفظ الرمز بأمان على هذا الجهاز", Toast.LENGTH_LONG).show();
                 }
-            }).show();
+            }).create();
+        connectionDialog.setOnDismissListener(d -> {
+            if (readApiToken().isEmpty() && !isFinishing()) accountDialog();
+        });
+        connectionDialog.show();
     }
 
     @Override protected void onDestroy() {
