@@ -127,9 +127,15 @@ model is `openai/gpt-oss-20b`; model availability and free-tier quotas can chang
   does not send users' conversations to Groq.
 - `JASSIM_ENABLE_PUBLIC_PROVIDERS=true` allows synthetic benchmark probes only;
   the evaluator uses fixed test prompts, not users' chat history.
-- Real chat is sent to a public provider only after the operator explicitly sets
-  `JASSIM_ALLOW_EXTERNAL_CHAT=true`. This is a global server-side switch, not
-  a per-account preference in the current version.
+- Real chat requires two independent gates: the operator must set
+  `JASSIM_ALLOW_EXTERNAL_CHAT=true`, and the user must explicitly enable
+  **"السماح بمزوّد خارجي لهذه الرسالة"** in the Android composer. The switch is
+  off by default and is sent with that message only; omitted values always deny
+  external processing. The user can turn it off again at any time.
+- When the local Ollama model is unavailable and the per-message switch is off,
+  JASSIM returns a clear unavailable error and does not send the prompt to a
+  public provider. The external provider is not a ChatGPT-equivalent model
+  guarantee; quality, uptime, retention, and quotas depend on that provider.
 - Groq's Free tier is rate-limited, not an unlimited production guarantee.
   Check current quotas and billing settings; do not upgrade to a paid tier without
   explicit authorization.
