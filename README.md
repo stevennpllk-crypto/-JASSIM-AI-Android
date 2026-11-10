@@ -4,7 +4,7 @@ JASSIM AI contains a native Android client, a Python API, SQLite or PostgreSQL c
 
 ## Product direction
 
-See [ROADMAP.md](ROADMAP.md) for the complete staged plan: streaming chat, user-controlled memory, file knowledge, search/tools, multimodal support, multi-user security, and reliable deployment. These are planned capabilities, not claims that they are already shipped.
+See [ROADMAP.md](ROADMAP.md) for shipped and planned capabilities. Individual email/password accounts, revocable sessions, per-user conversation ownership, streaming chat, and conversation-scoped memory are implemented. Google OAuth, email password recovery, session refresh, richer memory controls, and other roadmap items remain planned.
 
 ## Components
 
@@ -21,11 +21,12 @@ See [ROADMAP.md](ROADMAP.md) for the complete staged plan: streaming chat, user-
 - The Android client stores its API token encrypted with Android Keystore (AES-GCM); the token is entered on the device and is not compiled into the APK.
 - The dashboard stores its endpoint in browser local storage and its token in session storage. Use it only on a trusted device and close the browser session when finished.
 - Use HTTPS for any server reachable over the internet. The Android app intentionally rejects plain HTTP endpoints.
-- Keep the API bound to `127.0.0.1` behind a trusted HTTPS reverse proxy/tunnel. Do not expose the Python HTTP server directly to the public internet.
+- For self-hosted Docker, bind the API to `127.0.0.1` behind a trusted HTTPS reverse proxy/tunnel. On managed platforms such as Railway, bind to the platform-required interface only behind the provider's HTTPS edge; do not expose the raw Python server port directly.
 - Regular users create accounts and authenticate through `/api/auth/register`, `/api/auth/login`, `/api/auth/me`, and `/api/auth/logout`. Passwords are stored as PBKDF2-HMAC-SHA256 hashes; random session tokens are returned once and only their SHA-256 hashes are stored server-side. Conversations are assigned to an account and access is checked server-side. The optional `JASSIM_API_TOKEN` remains a legacy owner/admin credential for maintenance and migration; it is not required for ordinary account sign-in and must never be embedded in the APK.
 - Google OAuth and email-based password recovery are not implemented/configured yet; the Android UI marks both unavailable rather than pretending they work.
 - Image generation requires `JASSIM_HF_TOKEN` on the server. Without it, the image endpoint returns `image_provider_not_configured`.
-- `/health` is a public liveness/diagnostics endpoint. `/ready` returns HTTP 200 when either the configured Ollama model is ready or the explicitly enabled external provider route is available; it separately reports whether the legacy API token is configured. A successful authenticated chat request remains the definitive inference test.
+- `/health` is a public liveness/diagnostics endpoint. `/ready` returns HTTP 200 when the configured Ollama model is reachable and installed OR external-chat routing is enabled. The external flag means the route is enabled, not that a provider is currently reachable; `api_token_configured` is informational. A successful authenticated chat request remains the definitive inference test.
+- If both `JASSIM_ALLOW_EXTERNAL_CHAT` and `JASSIM_ENABLE_PUBLIC_PROVIDERS` are enabled while local Ollama is unavailable, user prompts may be sent to public external AI providers. This is not local-only/private inference; disable the external-chat opt-in if prompts must remain on your own infrastructure.
 
 ## Run the API
 
