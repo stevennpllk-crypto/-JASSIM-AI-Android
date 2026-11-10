@@ -1262,7 +1262,7 @@ public class MainActivity extends Activity {
         return shape;
     }
 
-    private void authenticateAccount(String email, String password, boolean register, AlertDialog dialog) {
+    private void authenticateAccount(String email, String password, boolean register, Dialog dialog) {
         final String cleanEmail = email == null ? "" : email.trim();
         if (cleanEmail.isEmpty() || password == null || password.length() < 10) {
             Toast.makeText(this, "أدخل بريداً صحيحاً وكلمة مرور من 10 أحرف على الأقل", Toast.LENGTH_LONG).show();
@@ -1318,7 +1318,7 @@ public class MainActivity extends Activity {
         });
     }
 
-    private void logoutAccount(AlertDialog dialog) {
+    private void logoutAccount(Dialog dialog) {
         executor.execute(() -> {
             HttpURLConnection connection = null;
             try {
