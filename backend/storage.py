@@ -162,7 +162,7 @@ def ensure_schema(db, sqlite_path=None):
         db.execute(
             """INSERT INTO conversations(conversation_id,user_id,created_at,updated_at)
                SELECT m.conversation_id,'legacy-owner',MIN(m.created_at),MAX(m.created_at)
-               FROM messages m GROUP BY m.conversation_id
+               FROM messages m WHERE 1=1 GROUP BY m.conversation_id
                ON CONFLICT(conversation_id) DO NOTHING"""
         )
         db.execute(
