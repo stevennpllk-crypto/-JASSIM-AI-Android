@@ -63,15 +63,14 @@ def create_user(db, email, password):
     password_hash = hash_password(password)
     user_id = secrets.token_hex(16)
     created_at = datetime.now(timezone.utc).isoformat()
-    existing = db.execute(
-        "SELECT id FROM users WHERE email_normalized=?", (email,)
-    ).fetchone()
-    if existing:
-        raise ValueError("email_already_registered")
-    db.execute(
-        "INSERT INTO users(id,email_normalized,password_hash,role,created_at) VALUES(?,?,?,?,?)",
+    cursor = db.execute(
+        """INSERT INTO users(id,email_normalized,password_hash,role,created_at)
+           VALUES(?,?,?,?,?) ON CONFLICT(email_normalized) DO NOTHING""",
         (user_id, email, password_hash, "user", created_at),
     )
+    if cursor.rowcount != 1:
+        db.rollback()
+        raise ValueError("email_already_registered")
     db.commit()
     return {"id": user_id, "email": email, "role": "user"}
 
