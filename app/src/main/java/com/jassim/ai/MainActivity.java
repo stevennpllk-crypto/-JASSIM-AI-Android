@@ -227,10 +227,15 @@ public class MainActivity extends Activity {
         root.setPadding(dp(14), dp(14), dp(14), dp(12));
         root.setBackgroundColor(0xFF0B1020);
 
+        // Use two compact rows so the header remains usable on narrow phones.
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setOrientation(LinearLayout.VERTICAL);
         header.setPadding(0, 0, 0, dp(12));
+
+        LinearLayout brandRow = new LinearLayout(this);
+        brandRow.setGravity(Gravity.CENTER_VERTICAL);
+        brandRow.setOrientation(LinearLayout.HORIZONTAL);
 
         TextView logo = new TextView(this);
         logo.setText("J");
@@ -244,7 +249,7 @@ public class MainActivity extends Activity {
                 new int[] { 0xFF248BFF, 0xFF7548E8 });
         logoBg.setCornerRadius(dp(16));
         logo.setBackground(logoBg);
-        header.addView(logo, new LinearLayout.LayoutParams(dp(46), dp(46)));
+        brandRow.addView(logo, new LinearLayout.LayoutParams(dp(46), dp(46)));
 
         LinearLayout brand = new LinearLayout(this);
         brand.setOrientation(LinearLayout.VERTICAL);
@@ -260,24 +265,38 @@ public class MainActivity extends Activity {
         tagline.setTextSize(11);
         brand.addView(title);
         brand.addView(tagline);
-        header.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
+        brandRow.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
+        header.addView(brandRow, new LinearLayout.LayoutParams(-1, dp(46)));
+
+        LinearLayout actionsRow = new LinearLayout(this);
+        actionsRow.setGravity(Gravity.CENTER_VERTICAL);
+        actionsRow.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams actionsLp = new LinearLayout.LayoutParams(-1, dp(38));
+        actionsLp.setMargins(0, dp(8), 0, 0);
 
         Button accountButton = actionButton("حساب", "تسجيل الدخول أو إنشاء حساب", () -> accountDialog());
-        header.addView(accountButton, new LinearLayout.LayoutParams(-2, dp(38)));
+        LinearLayout.LayoutParams accountLp = new LinearLayout.LayoutParams(0, dp(38), 1);
+        accountLp.setMargins(0, 0, dp(4), 0);
+        actionsRow.addView(accountButton, accountLp);
+
         Button historyButton = actionButton("السجل", "سجل المحادثات", () -> showConversations());
-        header.addView(historyButton, new LinearLayout.LayoutParams(-2, dp(38)));
+        LinearLayout.LayoutParams historyLp = new LinearLayout.LayoutParams(0, dp(38), 1);
+        historyLp.setMargins(0, 0, dp(4), 0);
+        actionsRow.addView(historyButton, historyLp);
+
         Button newChat = actionButton("+", "محادثة جديدة", () -> newConversation());
         LinearLayout.LayoutParams newLp = new LinearLayout.LayoutParams(dp(40), dp(38));
-        newLp.setMargins(dp(5), 0, 0, 0);
-        header.addView(newChat, newLp);
+        newLp.setMargins(0, 0, dp(4), 0);
+        actionsRow.addView(newChat, newLp);
+
         Button improve = actionButton("⚡", "اختبار وتحسين الخادم", () -> runProviderEvaluation());
         LinearLayout.LayoutParams improveLp = new LinearLayout.LayoutParams(dp(40), dp(38));
-        improveLp.setMargins(dp(5), 0, 0, 0);
-        header.addView(improve, improveLp);
+        improveLp.setMargins(0, 0, dp(4), 0);
+        actionsRow.addView(improve, improveLp);
+
         Button settings = actionButton("⚙", "إعدادات الاتصال", () -> endpointDialog());
-        LinearLayout.LayoutParams settingsLp = new LinearLayout.LayoutParams(dp(40), dp(38));
-        settingsLp.setMargins(dp(5), 0, 0, 0);
-        header.addView(settings, settingsLp);
+        actionsRow.addView(settings, new LinearLayout.LayoutParams(dp(40), dp(38)));
+        header.addView(actionsRow, actionsLp);
         root.addView(header);
 
         status = new TextView(this);
