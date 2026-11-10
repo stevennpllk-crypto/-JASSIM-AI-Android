@@ -1143,7 +1143,7 @@ public class MainActivity extends Activity {
 
         EditText tokenField = new EditText(this);
         tokenField.setSingleLine(true);
-        tokenField.setHint("رمز الوصول API Token");
+        tokenField.setHint("رمز إداري قديم (اختياري للمطور)");
         tokenField.setInputType(android.text.InputType.TYPE_CLASS_TEXT
             | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
         tokenField.setText(readApiToken());
@@ -1151,7 +1151,7 @@ public class MainActivity extends Activity {
 
         new AlertDialog.Builder(this)
             .setTitle("اتصال خادم JASSIM AI")
-            .setMessage("أدخل رابط HTTPS ورمز API. لا تستخدم روابط HTTP ولا تشارك الرمز مع أحد.")
+            .setMessage("المستخدم العادي لا يحتاج رمز API؛ استخدم زر حساب لتسجيل الدخول. هذا الحقل اختياري للمطور فقط.")
             .setView(fields)
             .setNegativeButton("إلغاء", null)
             .setPositiveButton("حفظ وفحص", (d, w) -> {
@@ -1161,12 +1161,12 @@ public class MainActivity extends Activity {
                     Toast.makeText(this, "الحماية مفعّلة: يجب استخدام رابط HTTPS فقط", Toast.LENGTH_LONG).show();
                     return;
                 }
-                if (value.isEmpty() || token.isEmpty()) {
-                    Toast.makeText(this, "أدخل رابط الخادم ورمز API معاً", Toast.LENGTH_LONG).show();
+                if (value.isEmpty()) {
+                    Toast.makeText(this, "أدخل رابط الخادم", Toast.LENGTH_LONG).show();
                     return;
                 }
                 try {
-                    saveApiToken(token);
+                    if (!token.isEmpty()) saveApiToken(token);
                     prefs.edit().putString("endpoint", value).apply();
                     checkHealth();
                     loadHistory();
