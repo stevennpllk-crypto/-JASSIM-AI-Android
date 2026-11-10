@@ -19,9 +19,20 @@ ENABLE_PUBLIC_PROVIDERS = os.environ.get("JASSIM_ENABLE_PUBLIC_PROVIDERS", "true
 TIMEOUT = max(8, min(int(os.environ.get("JASSIM_PROVIDER_TIMEOUT", "45")), 120))
 
 PROVIDERS = [
+    # Groq is the preferred managed candidate when an operator configures a key.
+    # Its free tier is rate-limited; no paid upgrade is enabled by this code.
+    {"id": "groq", "name": "Groq", "url": "https://api.groq.com/openai/v1/chat/completions", "model": "openai/gpt-oss-20b", "key_env": "GROQ_API_KEY"},
     {"id": "jarvisclaw", "name": "JarvisClaw", "url": "https://api.jarvisclaw.ai/v1/chat/completions", "model": "auto/free"},
     {"id": "ovh", "name": "OVHcloud AI", "url": "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions", "model": "Meta-Llama-3_3-70B-Instruct"},
 ]
+
+
+def _configured_providers():
+    """Do not advertise or probe credentialed providers until configured."""
+    return [
+        provider for provider in PROVIDERS
+        if not provider.get("key_env") or os.environ.get(provider["key_env"], "").strip()
+    ]
 
 EVALUATION_CASES = [
     {"messages": [{"role": "user", "content": "أجب بالعربية بكلمة واحدة: ما عاصمة تونس؟"}], "needles": ["تونس"]},
@@ -57,10 +68,15 @@ def _request(provider, messages, max_tokens=256):
         "max_tokens": max_tokens,
         "temperature": 0.2
     }).encode("utf-8")
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    key_env = provider.get("key_env")
+    if key_env:
+        api_key = os.environ.get(key_env, "").strip()
+        if not api_key:
+            raise RuntimeError("provider_key_not_configured:" + provider["id"])
+        headers["Authorization"] = "Bearer " + api_key
     request = urllib.request.Request(
-        provider["url"], data=payload,
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
-        method="POST"
+        provider["url"], data=payload, headers=headers, method="POST"
     )
     started = time.monotonic()
     with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
@@ -111,7 +127,7 @@ def provider_stats():
         db.close()
     known = {row[0]: row[1:] for row in rows}
     result = []
-    for provider in PROVIDERS if ENABLE_PUBLIC_PROVIDERS else []:
+    for provider in _configured_providers() if ENABLE_PUBLIC_PROVIDERS else []:
         values = known.get(provider["id"], (0, 0, 0, 0, None, None))
         attempts, successes, latency, quality, last_success, last_error = values
         reliability = successes / attempts if attempts else 0.5
@@ -132,7 +148,7 @@ def evaluate_providers():
     if not ENABLE_PUBLIC_PROVIDERS:
         return {"enabled": False, "tested": 0, "results": [], "message": "Public provider evaluation is disabled."}
     results = []
-    for provider in PROVIDERS:
+    for provider in _configured_providers():
         case_results = []
         for case in EVALUATION_CASES:
             try:
@@ -152,7 +168,7 @@ def answer_with_provider(messages):
     if not ALLOW_EXTERNAL_CHAT or not ENABLE_PUBLIC_PROVIDERS:
         raise RuntimeError("external_chat_disabled")
     ranked = provider_stats()
-    by_id = {item["id"]: item for item in PROVIDERS}
+    by_id = {item["id"]: item for item in _configured_providers()}
     errors = []
     for item in ranked:
         provider = by_id[item["id"]]

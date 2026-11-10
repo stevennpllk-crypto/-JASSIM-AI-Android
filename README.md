@@ -113,3 +113,29 @@ Configure `JASSIM_HF_TOKEN` as a Railway secret with Inference Providers permiss
 Never put the Hugging Face token in dashboard JavaScript, Android source, GitHub, or a public URL.
 Image generation is a hosted pretrained model call; it does not train or fine-tune a model. Fine-tuning requires a curated licensed image dataset and a GPU training environment.
 Adobe Firefly/Photoshop Services can be added as a separate provider, but requires Adobe Developer Console credentials and an eligible Firefly Services contract.
+
+
+## Optional Groq inference provider
+
+Groq can be used as a managed inference candidate when the operator configures
+`GROQ_API_KEY` as a Railway secret. The key is read only by the backend and is
+never included in the Android app or returned by an API endpoint. The candidate
+model is `openai/gpt-oss-20b`; model availability and free-tier quotas can change.
+
+**Privacy and cost safeguards**
+- `JASSIM_ALLOW_EXTERNAL_CHAT=false` remains the default. Adding a key alone
+  does not send users' conversations to Groq.
+- `JASSIM_ENABLE_PUBLIC_PROVIDERS=true` allows synthetic benchmark probes only;
+  the evaluator uses fixed test prompts, not users' chat history.
+- Real chat is sent to a public provider only after the operator explicitly sets
+  `JASSIM_ALLOW_EXTERNAL_CHAT=true`. This is a global server-side switch, not
+  a per-account preference in the current version.
+- Groq's Free tier is rate-limited, not an unlimited production guarantee.
+  Check current quotas and billing settings; do not upgrade to a paid tier without
+  explicit authorization.
+- Groq states inference inputs/outputs are not retained by default, but may be
+  temporarily retained for reliability or abuse investigations (up to 30 days);
+  usage metadata is retained. Review current data controls and terms.
+
+Set `GROQ_API_KEY` as a secret in Railway service variables. Never put it in
+GitHub source, the APK, dashboard JavaScript, or a chat message.

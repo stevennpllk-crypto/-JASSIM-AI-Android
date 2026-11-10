@@ -2,6 +2,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import adaptive
 
@@ -38,16 +39,29 @@ class AdaptiveRouterTests(unittest.TestCase):
         self.assertGreater(scores["jarvisclaw"]["routing_score"],
                            scores["ovh"]["routing_score"])
 
+    def test_groq_is_hidden_without_api_key(self):
+        with patch.dict(os.environ, {"GROQ_API_KEY": ""}):
+            self.assertNotIn("groq", [p["id"] for p in adaptive._configured_providers()])
+
+    def test_groq_is_configured_only_when_api_key_exists(self):
+        with patch.dict(os.environ, {"GROQ_API_KEY": "test-only-placeholder"}):
+            self.assertIn("groq", [p["id"] for p in adaptive._configured_providers()])
+
     def test_evaluator_uses_only_synthetic_cases(self):
         old_enabled = adaptive.ENABLE_PUBLIC_PROVIDERS
         old_providers = adaptive.PROVIDERS
         original_request = adaptive._request
         calls = []
         adaptive.ENABLE_PUBLIC_PROVIDERS = True
-        adaptive.PROVIDERS = [dict(adaptive.PROVIDERS[0])]
+        # This test exercises the evaluator with a credential-free fake provider.
+        provider = dict(adaptive.PROVIDERS[0])
+        provider.pop("key_env", None)
+        adaptive.PROVIDERS = [provider]
+
         def fake_request(provider, messages, max_tokens=256):
             calls.append(messages)
             return "تونس", 123
+
         adaptive._request = fake_request
         try:
             result = adaptive.evaluate_providers()
