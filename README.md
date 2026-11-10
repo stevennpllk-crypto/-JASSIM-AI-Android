@@ -1,6 +1,6 @@
 # JASSIM AI — Android + Self-hosted API + Cloud Dashboard
 
-JASSIM AI contains an Android client, a small Python API, SQLite conversation storage, and an Arabic RTL web dashboard.
+JASSIM AI contains a native Android client, a Python API, SQLite or PostgreSQL conversation storage, individual email/password accounts with revocable sessions, per-user conversation ownership, and an Arabic RTL web dashboard.
 
 ## Product direction
 
@@ -10,7 +10,7 @@ See [ROADMAP.md](ROADMAP.md) for the complete staged plan: streaming chat, user-
 
 - `app/`: native Android client (Java) with individual email/password account registration and sign-in. Configure the HTTPS server URL in Settings; ordinary users sign in with their account, while the optional legacy API token is reserved for owner/admin access. Session tokens are stored encrypted with Android Keystore.
 - `DEPLOYMENT.md`: restartable Docker deployment, persistent model/database volumes, readiness checks, and HTTPS guidance.
-- `backend/server.py`: Python standard-library API (v0.4.0) with SQLite persistence, Bearer authentication, input-size checks, per-IP rate limiting, model readiness checks, an authenticated model inventory endpoint, and an SSE streaming route.
+- `backend/server.py`: Python API (v0.6.0) with SQLite/PostgreSQL storage, individual account registration and login, revocable bearer sessions, per-user conversation ownership, request-size checks, rate limiting, model readiness checks, authenticated model inventory, and SSE chat streaming.
 - `dashboard/`: Arabic RTL dashboard for health checks and chat.
 - `.github/workflows/android.yml`: backend smoke tests, debug APK build, ZIP integrity/required-entry verification, and artifact upload.
 - `.github/workflows/pages.yml`: GitHub Pages deployment workflow for the dashboard.
@@ -22,7 +22,7 @@ See [ROADMAP.md](ROADMAP.md) for the complete staged plan: streaming chat, user-
 - The dashboard stores its endpoint in browser local storage and its token in session storage. Use it only on a trusted device and close the browser session when finished.
 - Use HTTPS for any server reachable over the internet. The Android app intentionally rejects plain HTTP endpoints.
 - Keep the API bound to `127.0.0.1` behind a trusted HTTPS reverse proxy/tunnel. Do not expose the Python HTTP server directly to the public internet.
-- Regular users authenticate through `/api/auth/register`, `/api/auth/login`, `/api/auth/me`, and `/api/auth/logout`. Passwords are stored as PBKDF2-HMAC-SHA256 hashes; opaque session-token hashes are stored server-side. The optional `JASSIM_API_TOKEN` remains a legacy owner/admin credential and should never be embedded in the APK.
+- Regular users create accounts and authenticate through `/api/auth/register`, `/api/auth/login`, `/api/auth/me`, and `/api/auth/logout`. Passwords are stored as PBKDF2-HMAC-SHA256 hashes; random session tokens are returned once and only their SHA-256 hashes are stored server-side. Conversations are assigned to an account and access is checked server-side. The optional `JASSIM_API_TOKEN` remains a legacy owner/admin credential for maintenance and migration; it is not required for ordinary account sign-in and must never be embedded in the APK.
 - Google OAuth and email-based password recovery are not implemented/configured yet; the Android UI marks both unavailable rather than pretending they work.
 - Image generation requires `JASSIM_HF_TOKEN` on the server. Without it, the image endpoint returns `image_provider_not_configured`.
 - `/health` is a public liveness/diagnostics endpoint. `/ready` returns HTTP 200 when either the configured Ollama model is ready or the explicitly enabled external provider route is available; it separately reports whether the legacy API token is configured. A successful authenticated chat request remains the definitive inference test.
@@ -103,9 +103,10 @@ Enable GitHub Pages for this repository and choose GitHub Actions as the deploym
 
 ## Current limitations
 
-- One shared Bearer token; no user registration, per-user permissions, or token revocation UI yet.
-- No guaranteed always-on GPU hosting is included.
-- `/health` reports API liveness and model diagnostics; `/ready` confirms the configured model is installed and reachable, but only a successful authenticated chat request proves a generation completed.
+- Google OAuth and email-based password recovery are not implemented/configured; the Android UI reports these actions as unavailable. Session refresh and a self-service account deletion UI are also not implemented.
+- User-controlled memory currently supports explicit save/show/clear commands scoped to a conversation. Dedicated inspect/edit/disable/export controls and long-term cross-conversation summaries remain planned.
+- Rate-limit buckets are in-memory per API process; they are not a distributed quota across multiple replicas. Deployments with multiple public replicas should add a shared rate-limit store before relying on the current limit as a global abuse-control boundary.
+- No guaranteed always-on GPU hosting is included. `/health` is liveness/diagnostics; `/ready` indicates a model/provider route is ready, but only a successful authenticated chat request proves a generation completed.
 
 ## Image generation
 
