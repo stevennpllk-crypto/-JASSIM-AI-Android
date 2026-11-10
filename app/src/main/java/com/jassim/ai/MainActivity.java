@@ -749,7 +749,7 @@ public class MainActivity extends Activity {
                         if ("token".equals(type)) {
                             answer.append(event.optString("token", ""));
                             final String partial = answer.toString();
-                            runOnUiThread(() -> responseBubble.setText("JASSIM AI\n" + partial));
+                            runOnUiThread(() -> renderMessage(responseBubble, "JASSIM AI", partial));
                         } else if ("done".equals(type)) {
                             engine = event.optString("engine", "ollama");
                             completed = true;
@@ -784,7 +784,7 @@ public class MainActivity extends Activity {
                     runOnUiThread(() -> {
                         status.setText("● فشل الاتصال — يمكنك إعادة المحاولة");
                         status.setTextColor(0xFFFF7777);
-                        responseBubble.setText("JASSIM AI\nتعذر إكمال الطلب: " + error
+                        renderMessage(responseBubble, "JASSIM AI", "تعذر إكمال الطلب: " + error
                             + "\nاحتفظت برسالتك لتتمكن من إعادة إرسالها.");
                         if (input.getText().toString().trim().isEmpty()) {
                             input.setText(message);
@@ -880,7 +880,7 @@ public class MainActivity extends Activity {
                     if (!token.isEmpty()) {
                         answer.append(token);
                         final String partial = answer.toString();
-                        runOnUiThread(() -> responseBubble.setText("JASSIM AI\n" + partial));
+                        runOnUiThread(() -> renderMessage(responseBubble, "JASSIM AI", partial));
                     }
                 }
             }
@@ -938,7 +938,7 @@ public class MainActivity extends Activity {
             if (!cancelRequested) {
                 String error = e.getMessage() == null ? "تعذر الاتصال بالخدمات الاحتياطية" : e.getMessage();
                 runOnUiThread(() -> {
-                    responseBubble.setText("JASSIM AI\nتعذر الاتصال بالخدمات الاحتياطية: " + error
+                    renderMessage(responseBubble, "JASSIM AI", "تعذر الاتصال بالخدمات الاحتياطية: " + error
                         + "\nاحتفظت برسالتك؛ يمكنك إعادة المحاولة لاحقاً.");
                     status.setText("● تعذر الاتصال بالخدمات الاحتياطية");
                     status.setTextColor(0xFFFF7777);
