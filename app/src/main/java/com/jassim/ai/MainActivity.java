@@ -1261,10 +1261,21 @@ public class MainActivity extends Activity {
         android.view.Window window = dialog.getWindow();
         if (window != null) {
             window.setBackgroundDrawableResource(android.R.color.transparent);
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+            window.setStatusBarColor(Color.TRANSPARENT);
+            window.setNavigationBarColor(0xFF050B25);
+            window.getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
             window.setLayout(-1, -1);
         }
         dialog.show();
-        if (dialog.getWindow() != null) dialog.getWindow().setLayout(-1, -1);
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setLayout(-1, -1);
+            dialog.getWindow().setStatusBarColor(Color.TRANSPARENT);
+            dialog.getWindow().setNavigationBarColor(0xFF050B25);
+            dialog.getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
+        }
     }
 
     private android.graphics.drawable.Drawable loginFieldBackground() {
