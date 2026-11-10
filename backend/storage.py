@@ -208,8 +208,7 @@ def _copy_sqlite_data(target, source_path):
             ("memories",
              "SELECT conversation_id,content,updated_at FROM memories",
              """INSERT INTO memories(conversation_id,content,updated_at) VALUES(?,?,?)
-                ON CONFLICT(conversation_id) DO UPDATE SET
-                content=EXCLUDED.content,updated_at=EXCLUDED.updated_at"""),
+                ON CONFLICT(conversation_id) DO NOTHING"""),
             ("provider_scores",
              """SELECT provider_id,attempts,successes,avg_latency_ms,quality_score,last_success,last_error
                 FROM provider_scores""",
