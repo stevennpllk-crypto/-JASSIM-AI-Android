@@ -378,6 +378,7 @@ public class MainActivity extends Activity {
     private void renderMessage(TextView bubble, String who, String content) {
         String safeContent = content == null ? "" : content;
         bubble.setTag(who + "\n" + safeContent);
+        bubble.setContentDescription(who + ": " + safeContent + " — اضغط مطولاً للنسخ");
         android.text.SpannableStringBuilder rendered =
             new android.text.SpannableStringBuilder(who + "\n");
         rendered.setSpan(new android.text.style.StyleSpan(Typeface.BOLD), 0, who.length(),
@@ -403,12 +404,19 @@ public class MainActivity extends Activity {
         bubble.setOnLongClickListener(v -> {
             ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
             if (clipboard != null) {
-                clipboard.setPrimaryClip(ClipData.newPlainText("JASSIM AI", text));
+                Object rawMessage = v.getTag();
+                String copyText = text;
+                if (rawMessage instanceof String) {
+                    String stored = (String) rawMessage;
+                    int separator = stored.indexOf('\\n');
+                    if (separator >= 0) copyText = stored.substring(separator + 1);
+                }
+                clipboard.setPrimaryClip(ClipData.newPlainText("JASSIM AI", copyText));
                 Toast.makeText(this, "تم نسخ الرسالة", Toast.LENGTH_SHORT).show();
             }
             return true;
         });
-        bubble.setContentDescription(who + ": " + text + " — اضغط مطولاً للنسخ");
+
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
         lp.gravity = isUser ? Gravity.RIGHT : Gravity.LEFT;
         lp.setMargins(0, dp(4), 0, dp(4));
