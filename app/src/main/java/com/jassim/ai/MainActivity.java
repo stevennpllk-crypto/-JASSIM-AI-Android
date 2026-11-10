@@ -1058,7 +1058,7 @@ public class MainActivity extends Activity {
         scrollView.setFillViewport(true);
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
-        page.setPadding(dp(22), dp(24), dp(22), dp(22));
+        page.setPadding(dp(18), dp(18), dp(18), dp(16));
         android.graphics.drawable.GradientDrawable pageBg =
             new android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
@@ -1069,20 +1069,24 @@ public class MainActivity extends Activity {
         top.setGravity(Gravity.CENTER_VERTICAL);
         Button language = actionButton(uiLanguageLabel() + "  ▾", uiText("تغيير لغة شاشة الحساب", "Change account screen language", "Changer la langue de connexion"), () ->
             chooseUiLanguage(dialog));
+        language.setBackground(loginOutline());
+        language.setTextSize(14);
         top.addView(language, new LinearLayout.LayoutParams(0, dp(42), 1));
         Button settings = actionButton("⚙", uiText("إعدادات الاتصال", "Connection settings", "Paramètres de connexion"), () -> {
             dialog.dismiss();
             endpointDialog();
         });
+        settings.setBackground(loginOutline());
+        settings.setTextSize(18);
         top.addView(settings, new LinearLayout.LayoutParams(dp(48), dp(42)));
         page.addView(top);
 
         ImageView mascot = new ImageView(this);
         mascot.setImageResource(R.drawable.mahdia_hero_v2);
-        mascot.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        mascot.setScaleType(ImageView.ScaleType.CENTER_CROP);
         mascot.setAdjustViewBounds(true);
         mascot.setContentDescription(uiText("روبوت Mahdia AI وقلعة المهدية", "Mahdia AI robot and Mahdia fortress", "Robot Mahdia AI et fort de Mahdia"));
-        LinearLayout.LayoutParams mascotLp = new LinearLayout.LayoutParams(-1, dp(112));
+        LinearLayout.LayoutParams mascotLp = new LinearLayout.LayoutParams(-1, dp(148));
         mascotLp.setMargins(0, dp(8), 0, dp(4));
         page.addView(mascot, mascotLp);
 
@@ -1170,6 +1174,8 @@ public class MainActivity extends Activity {
             revealHolder[0].setText(visible ? "◉" : "⊘");
         });
         revealHolder[0] = reveal;
+        reveal.setBackgroundColor(Color.TRANSPARENT);
+        reveal.setTextSize(18);
         passwordRow.addView(reveal, new LinearLayout.LayoutParams(dp(48), -1));
         LinearLayout.LayoutParams passwordLp = new LinearLayout.LayoutParams(-1, dp(58));
         passwordLp.setMargins(0, dp(12), 0, 0);
@@ -1197,6 +1203,9 @@ public class MainActivity extends Activity {
                 .setTitle(uiText("استعادة كلمة المرور", "Password recovery", "Récupération du mot de passe"))
                 .setMessage(uiText("استعادة كلمة المرور عبر البريد الإلكتروني غير مفعّلة على الخادم حالياً. لن نرسل رابطاً وهمياً.", "Email password recovery is not configured on the server yet. No fake link will be sent.", "La récupération par e-mail n'est pas encore configurée sur le serveur. Aucun faux lien ne sera envoyé."))
                 .setPositiveButton(uiText("حسناً", "OK", "OK"), null).show());
+        forgot.setBackgroundColor(Color.TRANSPARENT);
+        forgot.setTextColor(0xFF18BDF2);
+        forgot.setTextSize(13);
         options.addView(forgot);
         card.addView(options);
 
@@ -1232,6 +1241,8 @@ public class MainActivity extends Activity {
             authenticateAccount(emailField.getText().toString(),
                 passwordField.getText().toString(), true, dialog));
         register.setTextColor(0xFFD58BFF);
+        register.setBackgroundColor(Color.TRANSPARENT);
+        register.setTextSize(14);
         card.addView(register);
 
         TextView secure = new TextView(this);
@@ -1261,7 +1272,9 @@ public class MainActivity extends Activity {
         android.view.Window window = dialog.getWindow();
         if (window != null) {
             window.setBackgroundDrawableResource(android.R.color.transparent);
-            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS
+                | android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            window.setDimAmount(0.88f);
             window.setStatusBarColor(Color.TRANSPARENT);
             window.setNavigationBarColor(0xFF050B25);
             window.getDecorView().setSystemUiVisibility(
@@ -1271,6 +1284,7 @@ public class MainActivity extends Activity {
         dialog.show();
         if (dialog.getWindow() != null) {
             dialog.getWindow().setLayout(-1, -1);
+            dialog.getWindow().setDimAmount(0.88f);
             dialog.getWindow().setStatusBarColor(Color.TRANSPARENT);
             dialog.getWindow().setNavigationBarColor(0xFF050B25);
             dialog.getWindow().getDecorView().setSystemUiVisibility(
