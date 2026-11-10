@@ -375,10 +375,24 @@ public class MainActivity extends Activity {
         setContentView(root);
     }
 
+    private void renderMessage(TextView bubble, String who, String content) {
+        String safeContent = content == null ? "" : content;
+        bubble.setTag(who + "\n" + safeContent);
+        bubble.setContentDescription(who + ": " + safeContent + " — اضغط مطولاً للنسخ");
+        android.text.SpannableStringBuilder rendered =
+            new android.text.SpannableStringBuilder(who + "\n");
+        rendered.setSpan(new android.text.style.StyleSpan(Typeface.BOLD), 0, who.length(),
+            android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        rendered.append(MarkdownRenderer.render(this, safeContent));
+        bubble.setText(rendered);
+        bubble.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());
+        bubble.setHighlightColor(0x334F8DFF);
+    }
+
     private TextView addMessage(String who, String text) {
         boolean isUser = "أنت".equals(who);
         TextView bubble = new TextView(this);
-        bubble.setText(who + "\\n" + text);
+        renderMessage(bubble, who, text);
         bubble.setTextColor(0xFFF1F4FF);
         bubble.setTextSize(14);
         bubble.setTextDirection(View.TEXT_DIRECTION_RTL);
@@ -390,12 +404,19 @@ public class MainActivity extends Activity {
         bubble.setOnLongClickListener(v -> {
             ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
             if (clipboard != null) {
-                clipboard.setPrimaryClip(ClipData.newPlainText("JASSIM AI", text));
+                Object rawMessage = v.getTag();
+                String copyText = text;
+                if (rawMessage instanceof String) {
+                    String stored = (String) rawMessage;
+                    int separator = stored.indexOf('\n');
+                    if (separator >= 0) copyText = stored.substring(separator + 1);
+                }
+                clipboard.setPrimaryClip(ClipData.newPlainText("JASSIM AI", copyText));
                 Toast.makeText(this, "تم نسخ الرسالة", Toast.LENGTH_SHORT).show();
             }
             return true;
         });
-        bubble.setContentDescription(who + ": " + text + " — اضغط مطولاً للنسخ");
+
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
         lp.gravity = isUser ? Gravity.RIGHT : Gravity.LEFT;
         lp.setMargins(0, dp(4), 0, dp(4));
@@ -646,7 +667,9 @@ public class MainActivity extends Activity {
         for (int i = 0; i < messages.getChildCount(); i++) {
             View child = messages.getChildAt(i);
             if (!(child instanceof TextView) || child == pendingBubble) continue;
-            String value = ((TextView) child).getText().toString();
+            Object rawMessage = child.getTag();
+            String value = rawMessage instanceof String
+                ? (String) rawMessage : ((TextView) child).getText().toString();
             int newline = value.indexOf('\n');
             if (newline < 0) continue;
             String header = value.substring(0, newline).trim();
@@ -734,7 +757,7 @@ public class MainActivity extends Activity {
                         if ("token".equals(type)) {
                             answer.append(event.optString("token", ""));
                             final String partial = answer.toString();
-                            runOnUiThread(() -> responseBubble.setText("JASSIM AI\n" + partial));
+                            runOnUiThread(() -> renderMessage(responseBubble, "JASSIM AI", partial));
                         } else if ("done".equals(type)) {
                             engine = event.optString("engine", "ollama");
                             completed = true;
@@ -751,7 +774,7 @@ public class MainActivity extends Activity {
                 final String result = answer.toString();
                 final String finalEngine = engine;
                 runOnUiThread(() -> {
-                    responseBubble.setText("JASSIM AI\n" + result);
+                    renderMessage(responseBubble, "JASSIM AI", result);
                     status.setText("● متصل بالخادم — " + finalEngine);
                     status.setTextColor(0xFF62DCA8);
                 });
@@ -759,7 +782,7 @@ public class MainActivity extends Activity {
                 if (cancelRequested) {
                     runOnUiThread(() -> {
                         if (answer.length() == 0) {
-                            responseBubble.setText("JASSIM AI\nتم إيقاف التوليد قبل وصول الإجابة.");
+                            renderMessage(responseBubble, "JASSIM AI", "تم إيقاف التوليد قبل وصول الإجابة.");
                         }
                         status.setText("● تم إيقاف عرض الإجابة");
                         status.setTextColor(0xFFFFC36B);
@@ -769,7 +792,7 @@ public class MainActivity extends Activity {
                     runOnUiThread(() -> {
                         status.setText("● فشل الاتصال — يمكنك إعادة المحاولة");
                         status.setTextColor(0xFFFF7777);
-                        responseBubble.setText("JASSIM AI\nتعذر إكمال الطلب: " + error
+                        renderMessage(responseBubble, "JASSIM AI", "تعذر إكمال الطلب: " + error
                             + "\nاحتفظت برسالتك لتتمكن من إعادة إرسالها.");
                         if (input.getText().toString().trim().isEmpty()) {
                             input.setText(message);
@@ -865,7 +888,7 @@ public class MainActivity extends Activity {
                     if (!token.isEmpty()) {
                         answer.append(token);
                         final String partial = answer.toString();
-                        runOnUiThread(() -> responseBubble.setText("JASSIM AI\n" + partial));
+                        runOnUiThread(() -> renderMessage(responseBubble, "JASSIM AI", partial));
                     }
                 }
             }
@@ -895,7 +918,7 @@ public class MainActivity extends Activity {
             } catch (Exception firstError) {
                 if (cancelRequested) return;
                 runOnUiThread(() -> {
-                    responseBubble.setText("JASSIM AI\nتعذر الوصول إلى المزود الأول؛ نجرب خادماً احتياطياً آخر...");
+                    renderMessage(responseBubble, "JASSIM AI", "تعذر الوصول إلى المزود الأول؛ نجرب خادماً احتياطياً آخر...");
                     status.setText("● نجرب OVHcloud كخيار ثانٍ...");
                 });
                 try {
@@ -915,7 +938,7 @@ public class MainActivity extends Activity {
             final String answer = result;
             final String usedProvider = provider;
             runOnUiThread(() -> {
-                responseBubble.setText("JASSIM AI\n" + answer);
+                renderMessage(responseBubble, "JASSIM AI", answer);
                 status.setText("● متصل عبر " + usedProvider + " — الخدمة العامة المجانية");
                 status.setTextColor(0xFFFFC36B);
             });
@@ -923,7 +946,7 @@ public class MainActivity extends Activity {
             if (!cancelRequested) {
                 String error = e.getMessage() == null ? "تعذر الاتصال بالخدمات الاحتياطية" : e.getMessage();
                 runOnUiThread(() -> {
-                    responseBubble.setText("JASSIM AI\nتعذر الاتصال بالخدمات الاحتياطية: " + error
+                    renderMessage(responseBubble, "JASSIM AI", "تعذر الاتصال بالخدمات الاحتياطية: " + error
                         + "\nاحتفظت برسالتك؛ يمكنك إعادة المحاولة لاحقاً.");
                     status.setText("● تعذر الاتصال بالخدمات الاحتياطية");
                     status.setTextColor(0xFFFF7777);
