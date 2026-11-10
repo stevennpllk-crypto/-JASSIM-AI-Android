@@ -1128,8 +1128,9 @@ public class MainActivity extends Activity {
         passwordRow.addView(passwordField, new LinearLayout.LayoutParams(0, -1, 1));
         final Button[] revealHolder = new Button[1];
         Button reveal = actionButton("◉", "إظهار أو إخفاء كلمة المرور", () -> {
-            boolean visible = (passwordField.getInputType()
-                & android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD) != 0;
+            boolean visible = (passwordField.getInputType() & 0xFFF)
+                == (android.text.InputType.TYPE_CLASS_TEXT
+                    | android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
             int cursor = passwordField.getSelectionStart();
             passwordField.setInputType(android.text.InputType.TYPE_CLASS_TEXT
                 | (visible ? android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
