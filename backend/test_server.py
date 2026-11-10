@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from urllib.request import Request, urlopen
 import subprocess
@@ -191,6 +192,37 @@ class ServerSmokeTest(unittest.TestCase):
             finally:
                 proc.terminate()
                 proc.wait(timeout=5)
+
+    def test_external_provider_requires_explicit_per_message_consent(self):
+        import importlib.util
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_external_consent_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+
+        with patch.object(module, "ask_ollama", side_effect=RuntimeError("offline")):
+            with patch.object(module.adaptive, "answer_with_provider",
+                              return_value=("إجابة من مزود خارجي", "jarvisclaw")) as provider:
+                answer, engine = module.generate_answer(
+                    [{"role": "user", "content": "اختبار"}], allow_external_provider=False)
+                self.assertEqual(engine, "fallback")
+                self.assertIn("لم تُرسل رسالتك", answer)
+                provider.assert_not_called()
+
+                answer, engine = module.generate_answer(
+                    [{"role": "user", "content": "اختبار"}], allow_external_provider=True)
+                self.assertEqual(engine, "jarvisclaw")
+                self.assertEqual(answer, "إجابة من مزود خارجي")
+                provider.assert_called_once()
 
     def test_server_health_and_chat(self):
         with tempfile.TemporaryDirectory() as tmp:
