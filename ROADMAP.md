@@ -38,8 +38,8 @@ Build an independent, Arabic-first AI assistant with a polished Android app and 
 - [ ] Markdown rendering, code blocks, copy buttons, and syntax highlighting.
 - [x] Stop the active Android response stream.
 - [ ] Regenerate response, edit-and-resend, and retry.
-- [ ] Per-user accounts and short-lived revocable sessions; remove the shared-token-only limitation.
-- [ ] Server-side conversation ownership and authorization checks.
+- [x] Per-user email/password accounts and revocable 30-day bearer sessions; password hashes use PBKDF2-HMAC-SHA256 and session tokens are stored server-side as SHA-256 hashes.
+- [x] Server-side conversation ownership and authorization checks, including cross-account history isolation and delete protection.
 
 ### Phase 2 — Personal memory and knowledge
 - [ ] User-controlled saved facts with inspect, edit, disable, export, and delete.
@@ -82,7 +82,8 @@ Build an independent, Arabic-first AI assistant with a polished Android app and 
 
 ## Current honest limitations
 
-- The current backend is a single shared Bearer-token service, not a multi-user product.
+- The backend supports individual email/password accounts, hashed passwords, opaque revocable sessions (30-day expiry), and per-user conversation ownership. Google OAuth and email-based password recovery are not implemented/configured yet. Session refresh and user-initiated account deletion are also not implemented.
+- User-controlled memory currently supports explicit save/show/clear commands scoped to a conversation; dedicated memory inspection/edit/disable/export controls and long-term cross-conversation summaries remain planned.
 - The self-hosted API default is Qwen 3.5 4B. The Colab GPU notebook selects Qwen 3.5 9B when it detects an NVIDIA GPU and falls back to 4B otherwise. Stronger answers require a larger capable model and sufficient host RAM/VRAM; model selection is configurable through `JASSIM_OLLAMA_MODEL`. Quality and speed depend on host memory and quantization. Keep-alive applies only while Ollama itself remains running.
 - The legacy `/api/chat` endpoint returns complete JSON responses; `/api/chat/stream` streams token events over SSE and the Android client renders them incrementally. The standard API profile defaults to 8K context / 3K output with a 24K-character recent-history cap; the Colab GPU profile raises recent history to 32K characters. Actual quality still depends on the selected model and available GPU/RAM. Ollama keep-alive holds the model in memory while the process runs. Colab Watchdog and Docker restart policies recover crashed processes, but neither can keep an interrupted Colab session or suspended host alive.
 - Android can list recent conversations, open one, and delete one after confirmation. Rename, archive, search, and export are not implemented yet.
