@@ -162,7 +162,7 @@ public class MainActivity extends Activity {
             }
             runOnUiThread(() -> {
                 if (baseUrl().isEmpty()) {
-                    addMessage("JASSIM AI", "الخادم الخاص غير متصل الآن. يمكنك متابعة المحادثة عبر خدمة ذكاء اصطناعي عامة مجانية؛ قد تتغير سرعتها وحدودها.");
+                    addMessage("Mahdia AI", "الخادم الخاص غير متصل الآن. يمكنك متابعة المحادثة عبر خدمة ذكاء اصطناعي عامة مجانية؛ قد تتغير سرعتها وحدودها.");
                     status.setText("● الخادم الخاص غير متصل — الخدمة الاحتياطية متاحة");
                     status.setTextColor(0xFFFFC36B);
                 } else {
@@ -195,7 +195,7 @@ public class MainActivity extends Activity {
         String id = "android-" + UUID.randomUUID().toString();
         prefs.edit().putString("conversation_id", id).apply();
         messages.removeAllViews();
-        addMessage("JASSIM AI", "بدأنا محادثة جديدة. رسائلك الجديدة ستحفظ في سجل مستقل.");
+        addMessage("Mahdia AI", "بدأنا محادثة جديدة. رسائلك الجديدة ستحفظ في سجل مستقل.");
     }
 
     private int dp(float value) {
@@ -421,7 +421,7 @@ public class MainActivity extends Activity {
         bubble.setOnLongClickListener(v -> {
             ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
             if (clipboard != null) {
-                clipboard.setPrimaryClip(ClipData.newPlainText("JASSIM AI", text));
+                clipboard.setPrimaryClip(ClipData.newPlainText("Mahdia AI", text));
                 Toast.makeText(this, "تم نسخ الرسالة", Toast.LENGTH_SHORT).show();
             }
             return true;
@@ -530,7 +530,7 @@ public class MainActivity extends Activity {
                     if (messages.getChildCount() > 0) return;
                     messages.removeAllViews();
                     if (saved == null || saved.length() == 0) {
-                        addMessage("JASSIM AI", "أهلاً بك! أنا JASSIM AI. اكتب رسالتك لبدء المحادثة.");
+                        addMessage("Mahdia AI", "أهلاً بك! أنا Mahdia AI. اكتب رسالتك لبدء المحادثة.");
                         return;
                     }
                     for (int i = 0; i < saved.length(); i++) {
@@ -539,7 +539,7 @@ public class MainActivity extends Activity {
                         String role = item.optString("role", "");
                         String content = item.optString("content", "");
                         if (content.isEmpty()) continue;
-                        addMessage("assistant".equals(role) ? "JASSIM AI" : "أنت", content);
+                        addMessage("assistant".equals(role) ? "Mahdia AI" : "أنت", content);
                     }
                     status.setText("● تم تحميل سجل المحادثة");
                     status.setTextColor(0xFF62DCA8);
@@ -550,7 +550,7 @@ public class MainActivity extends Activity {
                     if (!conversationId.equals(prefs.getString("conversation_id", ""))) return;
                     status.setText("● تعذر تحميل سجل المحادثة");
                     status.setTextColor(0xFFFFC36B);
-                    addMessage("JASSIM AI", "لم أتمكن من استرجاع السجل من الخادم: " + error);
+                    addMessage("Mahdia AI", "لم أتمكن من استرجاع السجل من الخادم: " + error);
                 });
             } finally {
                 if (connection != null) connection.disconnect();
@@ -685,7 +685,7 @@ public class MainActivity extends Activity {
             if (content.isEmpty()) continue;
             String role;
             if ("أنت".equals(header)) role = "user";
-            else if ("JASSIM AI".equals(header)) role = "assistant";
+            else if ("Mahdia AI".equals(header)) role = "assistant";
             else continue;
             try {
                 JSONObject item = new JSONObject();
@@ -707,7 +707,7 @@ public class MainActivity extends Activity {
             .hideSoftInputFromWindow(input.getWindowToken(), 0);
         if (baseUrl().isEmpty()) {
             addMessage("أنت", message);
-            final TextView fallbackBubble = addMessage("JASSIM AI", "جارٍ الاتصال بالخدمة الاحتياطية...");
+            final TextView fallbackBubble = addMessage("Mahdia AI", "جارٍ الاتصال بالخدمة الاحتياطية...");
             final JSONArray fallbackHistory = buildFallbackHistory(fallbackBubble);
             cancelRequested = false;
             if (sendButton != null) sendButton.setEnabled(false);
@@ -719,11 +719,11 @@ public class MainActivity extends Activity {
         }
 
         addMessage("أنت", message);
-        final TextView responseBubble = addMessage("JASSIM AI", "...");
+        final TextView responseBubble = addMessage("Mahdia AI", "...");
         cancelRequested = false;
         if (sendButton != null) sendButton.setEnabled(false);
         if (stopButton != null) stopButton.setEnabled(false);
-        status.setText("● جارٍ الاتصال بـ JASSIM AI...");
+        status.setText("● جارٍ الاتصال بـ Mahdia AI...");
         status.setTextColor(0xFFFFC36B);
         String conversationId = ensureConversationId();
 
@@ -736,7 +736,7 @@ public class MainActivity extends Activity {
                 connection.setReadTimeout(300000);
                 runOnUiThread(() -> {
                     if (stopButton != null) stopButton.setEnabled(true);
-                    status.setText("● JASSIM AI يكتب الآن...");
+                    status.setText("● Mahdia AI يكتب الآن...");
                     status.setTextColor(0xFFFFC36B);
                 });
                 connection.setDoOutput(true);
@@ -765,7 +765,7 @@ public class MainActivity extends Activity {
                         if ("token".equals(type)) {
                             answer.append(event.optString("token", ""));
                             final String partial = answer.toString();
-                            runOnUiThread(() -> responseBubble.setText("JASSIM AI\n" + partial));
+                            runOnUiThread(() -> responseBubble.setText("Mahdia AI\n" + partial));
                         } else if ("done".equals(type)) {
                             engine = event.optString("engine", "ollama");
                             completed = true;
@@ -782,7 +782,7 @@ public class MainActivity extends Activity {
                 final String result = answer.toString();
                 final String finalEngine = engine;
                 runOnUiThread(() -> {
-                    responseBubble.setText("JASSIM AI\n" + result);
+                    responseBubble.setText("Mahdia AI\n" + result);
                     status.setText("● متصل بالخادم — " + finalEngine);
                     status.setTextColor(0xFF62DCA8);
                 });
@@ -790,7 +790,7 @@ public class MainActivity extends Activity {
                 if (cancelRequested) {
                     runOnUiThread(() -> {
                         if (answer.length() == 0) {
-                            responseBubble.setText("JASSIM AI\nتم إيقاف التوليد قبل وصول الإجابة.");
+                            responseBubble.setText("Mahdia AI\nتم إيقاف التوليد قبل وصول الإجابة.");
                         }
                         status.setText("● تم إيقاف عرض الإجابة");
                         status.setTextColor(0xFFFFC36B);
@@ -800,7 +800,7 @@ public class MainActivity extends Activity {
                     runOnUiThread(() -> {
                         status.setText("● فشل الاتصال — يمكنك إعادة المحاولة");
                         status.setTextColor(0xFFFF7777);
-                        responseBubble.setText("JASSIM AI\nتعذر إكمال الطلب: " + error
+                        responseBubble.setText("Mahdia AI\nتعذر إكمال الطلب: " + error
                             + "\nاحتفظت برسالتك لتتمكن من إعادة إرسالها.");
                         if (input.getText().toString().trim().isEmpty()) {
                             input.setText(message);
@@ -839,7 +839,7 @@ public class MainActivity extends Activity {
             JSONArray chatMessages = new JSONArray();
             JSONObject system = new JSONObject();
             system.put("role", "system");
-            system.put("content", "أنت JASSIM AI، مساعد عربي مفيد ودقيق. أجب بالعربية الواضحة، وافهم اللهجة التونسية. لا تختلق معلومات، واذكر حدود معرفتك.");
+            system.put("content", "أنت Mahdia AI، مساعد عربي مفيد ودقيق. أجب بالعربية الواضحة، وافهم اللهجة التونسية. لا تختلق معلومات، واذكر حدود معرفتك.");
             chatMessages.put(system);
             if (history != null) {
                 for (int i = 0; i < history.length(); i++) {
@@ -896,7 +896,7 @@ public class MainActivity extends Activity {
                     if (!token.isEmpty()) {
                         answer.append(token);
                         final String partial = answer.toString();
-                        runOnUiThread(() -> responseBubble.setText("JASSIM AI\n" + partial));
+                        runOnUiThread(() -> responseBubble.setText("Mahdia AI\n" + partial));
                     }
                 }
             }
@@ -926,7 +926,7 @@ public class MainActivity extends Activity {
             } catch (Exception firstError) {
                 if (cancelRequested) return;
                 runOnUiThread(() -> {
-                    responseBubble.setText("JASSIM AI\nتعذر الوصول إلى المزود الأول؛ نجرب خادماً احتياطياً آخر...");
+                    responseBubble.setText("Mahdia AI\nتعذر الوصول إلى المزود الأول؛ نجرب خادماً احتياطياً آخر...");
                     status.setText("● نجرب OVHcloud كخيار ثانٍ...");
                 });
                 try {
@@ -946,7 +946,7 @@ public class MainActivity extends Activity {
             final String answer = result;
             final String usedProvider = provider;
             runOnUiThread(() -> {
-                responseBubble.setText("JASSIM AI\n" + answer);
+                responseBubble.setText("Mahdia AI\n" + answer);
                 status.setText("● متصل عبر " + usedProvider + " — الخدمة العامة المجانية");
                 status.setTextColor(0xFFFFC36B);
             });
@@ -954,7 +954,7 @@ public class MainActivity extends Activity {
             if (!cancelRequested) {
                 String error = e.getMessage() == null ? "تعذر الاتصال بالخدمات الاحتياطية" : e.getMessage();
                 runOnUiThread(() -> {
-                    responseBubble.setText("JASSIM AI\nتعذر الاتصال بالخدمات الاحتياطية: " + error
+                    responseBubble.setText("Mahdia AI\nتعذر الاتصال بالخدمات الاحتياطية: " + error
                         + "\nاحتفظت برسالتك؛ يمكنك إعادة المحاولة لاحقاً.");
                     status.setText("● تعذر الاتصال بالخدمات الاحتياطية");
                     status.setTextColor(0xFFFF7777);
@@ -1002,14 +1002,14 @@ public class MainActivity extends Activity {
                 }
                 final String message = report.toString();
                 runOnUiThread(() -> {
-                    addMessage("JASSIM AI", message);
+                    addMessage("Mahdia AI", message);
                     status.setText("● انتهى الاختبار — تم تحديث ترتيب الخوادم");
                     status.setTextColor(0xFF62DCA8);
                 });
             } catch (Exception e) {
                 String error = e.getMessage() == null ? "تعذر إجراء الاختبار" : e.getMessage();
                 runOnUiThread(() -> {
-                    addMessage("JASSIM AI", "لم يكتمل اختبار الخوادم: " + error);
+                    addMessage("Mahdia AI", "لم يكتمل اختبار الخوادم: " + error);
                     status.setText("● تعذر تحديث ترتيب الخوادم");
                     status.setTextColor(0xFFFF7777);
                 });
@@ -1368,7 +1368,7 @@ public class MainActivity extends Activity {
         fields.addView(tokenField);
 
         new AlertDialog.Builder(this)
-            .setTitle("اتصال خادم JASSIM AI")
+            .setTitle("اتصال خادم Mahdia AI")
             .setMessage("المستخدم العادي لا يحتاج رمز API؛ استخدم زر حساب لتسجيل الدخول. هذا الحقل اختياري للمطور فقط.")
             .setView(fields)
             .setNegativeButton("إلغاء", null)
