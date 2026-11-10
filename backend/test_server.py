@@ -95,20 +95,20 @@ class ServerSmokeTest(unittest.TestCase):
                     os.environ["JASSIM_DATA_DIR"] = previous_data_dir
 
         messages = [{"role": "user", "content": "synthetic fallback test"}]
-        with patch.object(module, "ask_ollama", side_effect=RuntimeError("local model unavailable")), \\
-             patch.object(module.adaptive, "answer_with_provider",
-                          return_value=("JASSIM ONLINE", "jarvisclaw")) as fallback:
-            answer, engine = module.generate_answer(messages)
-        self.assertEqual(answer, "JASSIM ONLINE")
-        self.assertEqual(engine, "jarvisclaw")
-        fallback.assert_called_once()
+        with patch.object(module, "ask_ollama", side_effect=RuntimeError("local model unavailable")):
+            with patch.object(module.adaptive, "answer_with_provider",
+                              return_value=("JASSIM ONLINE", "jarvisclaw")) as fallback:
+                answer, engine = module.generate_answer(messages)
+            self.assertEqual(answer, "JASSIM ONLINE")
+            self.assertEqual(engine, "jarvisclaw")
+            fallback.assert_called_once()
 
-        with patch.object(module, "ask_ollama", return_value="LOCAL ANSWER"), \\
-             patch.object(module.adaptive, "answer_with_provider") as fallback:
-            answer, engine = module.generate_answer(messages)
-        self.assertEqual(answer, "LOCAL ANSWER")
-        self.assertEqual(engine, "ollama")
-        fallback.assert_not_called()
+        with patch.object(module, "ask_ollama", return_value="LOCAL ANSWER"):
+            with patch.object(module.adaptive, "answer_with_provider") as fallback:
+                answer, engine = module.generate_answer(messages)
+            self.assertEqual(answer, "LOCAL ANSWER")
+            self.assertEqual(engine, "ollama")
+            fallback.assert_not_called()
 
     def test_history_budget_preserves_recent_messages(self):
         import importlib.util
