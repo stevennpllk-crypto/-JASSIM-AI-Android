@@ -1039,7 +1039,7 @@ public class MainActivity extends Activity {
     private void chooseUiLanguage(Dialog currentDialog) {
         String[] languages = {"العربية", "English", "Français"};
         new AlertDialog.Builder(this)
-            .setTitle(uiText("اختر لغة الواجهة", "Choose interface language", "Choisir la langue"))
+            .setTitle(uiText("اختر لغة شاشة الحساب", "Choose account screen language", "Choisir la langue de connexion"))
             .setItems(languages, (picker, which) -> {
                 String selected = which == 1 ? "en" : which == 2 ? "fr" : "ar";
                 prefs.edit().putString("ui_language", selected).apply();
@@ -1067,7 +1067,7 @@ public class MainActivity extends Activity {
 
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
-        Button language = actionButton(uiLanguageLabel() + "  ▾", uiText("تغيير لغة الواجهة", "Change interface language", "Changer la langue"), () ->
+        Button language = actionButton(uiLanguageLabel() + "  ▾", uiText("تغيير لغة شاشة الحساب", "Change account screen language", "Changer la langue de connexion"), () ->
             chooseUiLanguage(dialog));
         top.addView(language, new LinearLayout.LayoutParams(0, dp(42), 1));
         Button settings = actionButton("⚙", uiText("إعدادات الاتصال", "Connection settings", "Paramètres de connexion"), () -> {
@@ -1095,7 +1095,7 @@ public class MainActivity extends Activity {
         page.addView(brand);
 
         TextView tagline = new TextView(this);
-        tagline.setText("ذكاء اصطناعي ... بإبداع تونسي");
+        tagline.setText(uiText("ذكاء اصطناعي ... بإبداع تونسي", "Artificial intelligence ... Tunisian creativity", "Intelligence artificielle ... créativité tunisienne"));
         tagline.setTextColor(0xFFE1E8FF);
         tagline.setTextSize(16);
         tagline.setGravity(Gravity.CENTER);
