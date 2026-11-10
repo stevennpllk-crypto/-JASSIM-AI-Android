@@ -67,9 +67,16 @@ public class MainActivity extends Activity {
 
     private void saveApiToken(String token) throws Exception {
         if (token == null || token.isEmpty()) {
+            transientSessionToken = "";
             prefs.edit().remove("api_token").remove("api_token_enc").remove("api_token_iv").apply();
             return;
         }
+        if (!rememberSession) {
+            transientSessionToken = token;
+            prefs.edit().remove("api_token").remove("api_token_enc").remove("api_token_iv").apply();
+            return;
+        }
+        transientSessionToken = "";
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateSecretKey());
         byte[] encrypted = cipher.doFinal(token.getBytes(StandardCharsets.UTF_8));
@@ -81,6 +88,7 @@ public class MainActivity extends Activity {
     }
 
     private String readApiToken() {
+        if (transientSessionToken != null && !transientSessionToken.isEmpty()) return transientSessionToken;
         try {
             String encrypted = prefs.getString("api_token_enc", "");
             String iv = prefs.getString("api_token_iv", "");
@@ -1118,6 +1126,7 @@ public class MainActivity extends Activity {
         passwordField.setBackgroundColor(Color.TRANSPARENT);
         passwordField.setPadding(dp(15), dp(10), dp(8), dp(10));
         passwordRow.addView(passwordField, new LinearLayout.LayoutParams(0, -1, 1));
+        final Button[] revealHolder = new Button[1];
         Button reveal = actionButton("◉", "إظهار أو إخفاء كلمة المرور", () -> {
             boolean visible = (passwordField.getInputType()
                 & android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD) != 0;
@@ -1126,8 +1135,9 @@ public class MainActivity extends Activity {
                 | (visible ? android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
                            : android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD));
             passwordField.setSelection(Math.max(0, Math.min(cursor, passwordField.length())));
-            reveal.setText(visible ? "◉" : "⊘");
+            revealHolder[0].setText(visible ? "◉" : "⊘");
         });
+        revealHolder[0] = reveal;
         passwordRow.addView(reveal, new LinearLayout.LayoutParams(dp(48), -1));
         LinearLayout.LayoutParams passwordLp = new LinearLayout.LayoutParams(-1, dp(58));
         passwordLp.setMargins(0, dp(12), 0, 0);
