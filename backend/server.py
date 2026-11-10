@@ -882,7 +882,7 @@ class Handler(BaseHTTPRequestHandler):
             previous = history(conversation_id, max(1, HISTORY_MESSAGES - 1), identity["user_id"])
             saved_memory = get_memory(conversation_id, identity["user_id"])
             if saved_memory:
-                previous.insert(0, {"role": "system", "content": "معلومات اختار المستخدم حفظها صراحةً في ذاكرة JASSIM المشتركة لهذا الخادم، استخدمها فقط عندما تكون ذات صلة ولا تفترض أنها حقائق خارج هذا السياق: " + saved_memory})
+                previous.insert(0, {"role": "system", "content": "معلومات اختار المستخدم حفظها صراحةً في ذاكرة حسابه الخاصة، استخدمها فقط عندما تكون ذات صلة ولا تفترض أنها حقائق خارج هذا السياق: " + saved_memory})
             context = fit_history_to_budget(previous + [{"role": "user", "content": message}])
             if streaming:
                 self.stream_chat_response(conversation_id, message, context, identity["user_id"])
