@@ -408,7 +408,7 @@ public class MainActivity extends Activity {
                 String copyText = text;
                 if (rawMessage instanceof String) {
                     String stored = (String) rawMessage;
-                    int separator = stored.indexOf('\\n');
+                    int separator = stored.indexOf('\n');
                     if (separator >= 0) copyText = stored.substring(separator + 1);
                 }
                 clipboard.setPrimaryClip(ClipData.newPlainText("JASSIM AI", copyText));
