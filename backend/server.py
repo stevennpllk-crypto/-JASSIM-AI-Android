@@ -3,6 +3,7 @@
 import json
 import os
 import storage
+import auth
 import threading
 import time
 import re
@@ -81,42 +82,60 @@ def connect_db():
     storage.ensure_schema(db, sqlite_path=DB_PATH)
     return db
 
-def history(conversation_id, limit=12):
+def conversation_belongs_to_other_user(conversation_id, user_id):
+    db = connect_db()
+    try:
+        row = db.execute(
+            "SELECT user_id FROM conversations WHERE conversation_id=?",
+            (conversation_id,)
+        ).fetchone()
+        return bool(row and row[0] != user_id)
+    finally:
+        db.close()
+
+
+def history(conversation_id, limit=12, user_id="legacy-owner"):
     with DB_LOCK:
         db = connect_db()
         try:
             rows = db.execute(
-                "SELECT role, content FROM messages WHERE conversation_id=? ORDER BY id DESC LIMIT ?",
-                (conversation_id, limit)
+                """SELECT m.role,m.content FROM messages m
+                   JOIN conversations c ON c.conversation_id=m.conversation_id
+                   WHERE m.conversation_id=? AND c.user_id=?
+                   ORDER BY m.id DESC LIMIT ?""",
+                (conversation_id, user_id, limit)
             ).fetchall()
             return [{"role": role, "content": content} for role, content in reversed(rows)]
         finally:
             db.close()
 
-def list_conversations(limit=50):
-    """Return recent conversations without exposing message bodies beyond a short title."""
+
+def list_conversations(limit=50, user_id="legacy-owner"):
+    """Return only conversations owned by the authenticated account."""
     with DB_LOCK:
         db = connect_db()
         try:
             rows = db.execute("""
-                SELECT conversation_id,
+                SELECT grouped.conversation_id,
                        COALESCE(
                            (SELECT content FROM messages first_user
-                            WHERE first_user.conversation_id = grouped.conversation_id
-                              AND first_user.role = 'user'
+                            WHERE first_user.conversation_id=grouped.conversation_id
+                              AND first_user.role='user'
                             ORDER BY first_user.id ASC LIMIT 1),
                            (SELECT content FROM messages first_message
-                            WHERE first_message.conversation_id = grouped.conversation_id
+                            WHERE first_message.conversation_id=grouped.conversation_id
                             ORDER BY first_message.id ASC LIMIT 1),
                            'محادثة جديدة'
                        ) AS title,
-                       MAX(created_at) AS updated_at,
+                       MAX(grouped.created_at) AS updated_at,
                        COUNT(*) AS message_count
                 FROM messages grouped
-                GROUP BY conversation_id
-                ORDER BY MAX(id) DESC
+                JOIN conversations owned ON owned.conversation_id=grouped.conversation_id
+                WHERE owned.user_id=?
+                GROUP BY grouped.conversation_id
+                ORDER BY MAX(grouped.id) DESC
                 LIMIT ?
-            """, (limit,)).fetchall()
+            """, (user_id, limit)).fetchall()
             return [{
                 "conversation_id": row[0],
                 "title": row[1][:90],
@@ -126,14 +145,23 @@ def list_conversations(limit=50):
         finally:
             db.close()
 
-def delete_conversation(conversation_id):
-    """Delete every message in one validated conversation, without touching other chats."""
+
+def delete_conversation(conversation_id, user_id="legacy-owner"):
+    """Delete a conversation only when it belongs to the requesting account."""
     with DB_LOCK:
         db = connect_db()
         try:
-            cursor = db.execute(
-                "DELETE FROM messages WHERE conversation_id=?",
-                (conversation_id,)
+            owned = db.execute(
+                "SELECT conversation_id FROM conversations WHERE conversation_id=? AND user_id=?",
+                (conversation_id, user_id)
+            ).fetchone()
+            if not owned:
+                return 0
+            cursor = db.execute("DELETE FROM messages WHERE conversation_id=?", (conversation_id,))
+            db.execute("DELETE FROM memories WHERE conversation_id=?", (conversation_id,))
+            db.execute(
+                "DELETE FROM conversations WHERE conversation_id=? AND user_id=?",
+                (conversation_id, user_id)
             )
             db.commit()
             return cursor.rowcount
@@ -141,50 +169,81 @@ def delete_conversation(conversation_id):
             db.close()
 
 
+def _ensure_conversation_owner(db, conversation_id, user_id):
+    now = datetime.now(timezone.utc).isoformat()
+    # Atomic insert avoids two workers racing to create the same conversation.
+    db.execute(
+        """INSERT INTO conversations(conversation_id,user_id,created_at,updated_at)
+           VALUES(?,?,?,?) ON CONFLICT(conversation_id) DO NOTHING""",
+        (conversation_id, user_id, now, now)
+    )
+    row = db.execute(
+        "SELECT user_id FROM conversations WHERE conversation_id=?", (conversation_id,)
+    ).fetchone()
+    if not row or row[0] != user_id:
+        raise PermissionError("conversation_not_owned")
+    db.execute(
+        "UPDATE conversations SET updated_at=? WHERE conversation_id=? AND user_id=?",
+        (now, conversation_id, user_id)
+    )
+    return now
 
-def save_message(conversation_id, role, content):
+
+def save_message(conversation_id, role, content, user_id="legacy-owner"):
     with DB_LOCK:
         db = connect_db()
         try:
+            now = _ensure_conversation_owner(db, conversation_id, user_id)
             db.execute(
                 "INSERT INTO messages(conversation_id, role, content, created_at) VALUES(?,?,?,?)",
-                (conversation_id, role, content, datetime.now(timezone.utc).isoformat())
+                (conversation_id, role, content, now)
             )
             db.commit()
         finally:
             db.close()
 
-def get_memory(conversation_id):
+
+def get_memory(conversation_id, user_id="legacy-owner"):
     with DB_LOCK:
         db = connect_db()
         try:
-            row = db.execute("SELECT content FROM memories WHERE conversation_id=?", (conversation_id,)).fetchone()
+            row = db.execute(
+                """SELECT m.content FROM memories m JOIN conversations c
+                   ON c.conversation_id=m.conversation_id
+                   WHERE m.conversation_id=? AND c.user_id=?""",
+                (conversation_id, user_id)
+            ).fetchone()
             return row[0] if row else ""
         finally:
             db.close()
 
 
-def set_memory(conversation_id, content):
+def set_memory(conversation_id, content, user_id="legacy-owner"):
     content = str(content).strip()
     if not content or len(content) > 2000:
         raise ValueError("memory_must_be_1_to_2000_chars")
     with DB_LOCK:
         db = connect_db()
         try:
+            now = _ensure_conversation_owner(db, conversation_id, user_id)
             db.execute("""INSERT INTO memories(conversation_id, content, updated_at)
                 VALUES(?,?,?) ON CONFLICT(conversation_id) DO UPDATE SET
                 content=excluded.content, updated_at=excluded.updated_at""",
-                (conversation_id, content, datetime.now(timezone.utc).isoformat()))
+                (conversation_id, content, now))
             db.commit()
         finally:
             db.close()
 
 
-def clear_memory(conversation_id):
+def clear_memory(conversation_id, user_id="legacy-owner"):
     with DB_LOCK:
         db = connect_db()
         try:
-            cursor = db.execute("DELETE FROM memories WHERE conversation_id=?", (conversation_id,))
+            cursor = db.execute(
+                """DELETE FROM memories WHERE conversation_id=? AND EXISTS
+                   (SELECT 1 FROM conversations c WHERE c.conversation_id=? AND c.user_id=?)""",
+                (conversation_id, conversation_id, user_id)
+            )
             db.commit()
             return cursor.rowcount > 0
         finally:
@@ -368,7 +427,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_sse_event({"type": "token", "token": answer})
         self.send_sse_event({"type": "done", "conversation_id": conversation_id, "engine": engine})
 
-    def stream_chat_response(self, conversation_id, message, context):
+    def stream_chat_response(self, conversation_id, message, context, user_id):
         if not INFERENCE_SEMAPHORE.acquire(timeout=OLLAMA_QUEUE_TIMEOUT):
             self.send_json(503, {
                 "error": "model_busy",
@@ -407,8 +466,8 @@ class Handler(BaseHTTPRequestHandler):
                     answer, provider = adaptive.answer_with_provider(
                         [{"role": "system", "content": SYSTEM_PROMPT}] + context
                     )
-                    save_message(conversation_id, "user", message)
-                    save_message(conversation_id, "assistant", answer)
+                    save_message(conversation_id, "user", message, user_id)
+                    save_message(conversation_id, "assistant", answer, user_id)
                     self.send_sse_static(answer, conversation_id, provider)
                 except RuntimeError:
                     self.send_json(503, {
@@ -445,8 +504,8 @@ class Handler(BaseHTTPRequestHandler):
                 answer = "".join(answer_parts).strip()
                 if not completed or not answer:
                     raise RuntimeError("ollama_stream_incomplete")
-                save_message(conversation_id, "user", message)
-                save_message(conversation_id, "assistant", answer)
+                save_message(conversation_id, "user", message, user_id)
+                save_message(conversation_id, "assistant", answer, user_id)
                 self.send_sse_event({
                     "type": "done",
                     "conversation_id": conversation_id,
@@ -489,16 +548,35 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Vary", "Origin")
         super().end_headers()
 
-    def authorized(self):
-        if not API_TOKEN:
-            return False
+    def current_identity(self):
         supplied = self.headers.get("Authorization", "")
-        expected = "Bearer " + API_TOKEN
-        return hmac.compare_digest(supplied, expected)
+        if API_TOKEN and hmac.compare_digest(supplied, "Bearer " + API_TOKEN):
+            return {"user_id": "legacy-owner", "email": "owner@jassim.local", "role": "admin", "legacy": True}
+        if not supplied.startswith("Bearer "):
+            return None
+        token = supplied[7:].strip()
+        db = connect_db()
+        try:
+            return auth.authenticate_session(db, token)
+        finally:
+            db.close()
 
-    def rate_limited(self):
+    def authorized(self):
+        return self.current_identity() is not None
+
+    def request_token(self):
+        supplied = self.headers.get("Authorization", "")
+        return supplied[7:].strip() if supplied.startswith("Bearer ") else ""
+
+    def rate_limited(self, identity=None):
         now = time.time()
-        client = self.client_address[0]
+        if identity:
+            # Do not make unrelated customers share one bucket behind Railway's proxy.
+            client = "user:" + str(identity["user_id"])
+        else:
+            # Railway forwards the original client address; use it for public auth routes.
+            forwarded = self.headers.get("X-Forwarded-For", "")
+            client = "ip:" + (forwarded.split(",")[0].strip() or self.client_address[0])
         with RATE_LOCK:
             hits = [stamp for stamp in RATE_BUCKETS.get(client, []) if now - stamp < RATE_WINDOW]
             if len(hits) >= RATE_LIMIT:
@@ -521,9 +599,9 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path in ("/health", "/ready"):
             model_state = ollama_status()
             external_ready = adaptive.external_chat_enabled()
-            ready = bool(API_TOKEN and (
+            ready = bool(
                 (model_state["reachable"] and model_state["model_ready"]) or external_ready
-            ))
+            )
             if parsed.path == "/ready":
                 self.send_json(200 if ready else 503, {
                     "ready": ready,
@@ -545,16 +623,24 @@ class Handler(BaseHTTPRequestHandler):
                 "ollama_reachable": model_state["reachable"],
                 "uptime_seconds": int(time.monotonic() - STARTED_AT),
                 "storage": storage.backend_name(),
-                "authentication": "configured" if API_TOKEN else "not-configured",
+                "authentication": "account-sessions",
                 "image_generation_ready": bool(os.environ.get("JASSIM_HF_TOKEN", "").strip()),
                 "image_model": os.environ.get("JASSIM_IMAGE_MODEL", "black-forest-labs/FLUX.1-schnell")
             })
             return
+        if parsed.path == "/api/auth/me":
+            identity = self.current_identity()
+            if not identity:
+                self.send_json(401, {"error": "unauthorized"})
+            else:
+                self.send_json(200, {"user": {"id": identity["user_id"], "email": identity["email"], "role": identity["role"]}})
+            return
         if parsed.path in ("/api/models", "/api/history", "/api/conversations", "/api/providers", "/api/admin/storage"):
-            if not self.authorized():
+            identity = self.current_identity()
+            if not identity:
                 self.send_json(401, {"error": "unauthorized"})
                 return
-            if self.rate_limited():
+            if self.rate_limited(identity):
                 self.send_json(429, {"error": "rate_limit_exceeded", "retry_after_seconds": 60})
                 return
             if parsed.path == "/api/providers":
@@ -564,6 +650,9 @@ class Handler(BaseHTTPRequestHandler):
                 })
                 return
             if parsed.path == "/api/admin/storage":
+                if identity["role"] != "admin":
+                    self.send_json(403, {"error": "admin_required"})
+                    return
                 db = connect_db()
                 try:
                     counts = {
@@ -599,13 +688,13 @@ class Handler(BaseHTTPRequestHandler):
                 except (TypeError, ValueError):
                     self.send_json(400, {"error": "invalid_limit"})
                     return
-                self.send_json(200, {"conversations": list_conversations(limit)})
+                self.send_json(200, {"conversations": list_conversations(limit, identity["user_id"])})
                 return
             conversation_id = parse_qs(parsed.query).get("conversation_id", ["default"])[0]
             if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", conversation_id):
                 self.send_json(400, {"error": "invalid_conversation_id"})
                 return
-            self.send_json(200, {"conversation_id": conversation_id, "messages": history(conversation_id, 100)})
+            self.send_json(200, {"conversation_id": conversation_id, "messages": history(conversation_id, 100, identity["user_id"])})
             return
         self.send_json(404, {"error": "not_found"})
 
@@ -614,17 +703,18 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path != "/api/conversations":
             self.send_json(404, {"error": "not_found"})
             return
-        if not self.authorized():
+        identity = self.current_identity()
+        if not identity:
             self.send_json(401, {"error": "unauthorized"})
             return
-        if self.rate_limited():
+        if self.rate_limited(identity):
             self.send_json(429, {"error": "rate_limit_exceeded", "retry_after_seconds": 60})
             return
         conversation_id = parse_qs(parsed.query).get("conversation_id", [""])[0]
         if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", conversation_id):
             self.send_json(400, {"error": "invalid_conversation_id"})
             return
-        deleted_count = delete_conversation(conversation_id)
+        deleted_count = delete_conversation(conversation_id, identity['user_id'])
         if deleted_count == 0:
             self.send_json(404, {"error": "conversation_not_found"})
             return
@@ -637,13 +727,68 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         request_path = urlparse(self.path).path
         streaming = request_path == "/api/chat/stream"
-        if request_path not in ("/api/chat", "/api/chat/stream", "/api/admin/evaluate", "/api/images/generate"):
+        if request_path not in ("/api/chat", "/api/chat/stream", "/api/admin/evaluate", "/api/images/generate", "/api/auth/register", "/api/auth/login", "/api/auth/logout"):
             self.send_json(404, {"error": "not_found"})
             return
-        if not self.authorized():
+        if request_path in ("/api/auth/register", "/api/auth/login"):
+            if self.rate_limited():
+                self.send_json(429, {"error": "rate_limit_exceeded", "retry_after_seconds": 60})
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length < 2 or length > 4096:
+                    self.send_json(413, {"error": "invalid_body_size"})
+                    return
+                body = json.loads(self.rfile.read(length).decode("utf-8"))
+                if not isinstance(body, dict):
+                    self.send_json(400, {"error": "json_object_required"})
+                    return
+                db = connect_db()
+                try:
+                    email = auth.normalize_email(body.get("email"))
+                    password = str(body.get("password") or "")
+                    if request_path == "/api/auth/register":
+                        user = auth.create_user(db, email, password)
+                    else:
+                        row = auth.find_user_by_email(db, email)
+                        if not row or not auth.verify_password(password, row[2]):
+                            self.send_json(401, {"error": "invalid_credentials"})
+                            return
+                        user = {"id": row[0], "email": row[1], "role": row[3]}
+                    token = auth.issue_session(db, user["id"])
+                finally:
+                    db.close()
+                self.send_json(201 if request_path.endswith("register") else 200, {
+                    "token": token, "token_type": "Bearer",
+                    "expires_in": auth.SESSION_DAYS * 86400, "user": user
+                })
+            except ValueError as exc:
+                reason = str(exc)
+                status = 409 if reason == "email_already_registered" else 400
+                self.send_json(status, {"error": reason})
+            except (UnicodeDecodeError, json.JSONDecodeError, TypeError, AttributeError) as exc:
+                self.send_json(400, {"error": "bad_request", "detail": str(exc)[:120]})
+            return
+        if request_path == "/api/auth/logout":
+            identity = self.current_identity()
+            if not identity:
+                self.send_json(401, {"error": "unauthorized"})
+                return
+            db = connect_db()
+            try:
+                revoked = auth.revoke_session(db, self.request_token())
+            finally:
+                db.close()
+            self.send_json(200, {"ok": True, "revoked": revoked})
+            return
+        identity = self.current_identity()
+        if not identity:
             self.send_json(503 if not API_TOKEN else 401, {"error": "authentication_not_configured" if not API_TOKEN else "unauthorized"})
             return
-        if self.rate_limited():
+        if request_path == "/api/admin/evaluate" and identity["role"] != "admin":
+            self.send_json(403, {"error": "admin_required"})
+            return
+        if self.rate_limited(identity):
             self.send_json(429, {"error": "rate_limit_exceeded", "retry_after_seconds": 60})
             return
         if request_path == "/api/images/generate":
@@ -697,6 +842,9 @@ class Handler(BaseHTTPRequestHandler):
             if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", conversation_id):
                 self.send_json(400, {"error": "invalid_conversation_id"})
                 return
+            if conversation_belongs_to_other_user(conversation_id, identity["user_id"]):
+                self.send_json(404, {"error": "conversation_not_found"})
+                return
             if not message:
                 self.send_json(400, {"error": "message_required"})
                 return
@@ -708,42 +856,42 @@ class Handler(BaseHTTPRequestHandler):
                 if not memory_text:
                     self.send_json(400, {"error": "memory_content_required"})
                     return
-                set_memory(conversation_id, memory_text)
+                set_memory(conversation_id, memory_text, identity["user_id"])
                 answer = "حفظت هذه المعلومة في ذاكرة هذه المحادثة. يمكنك عرضها بقول «ماذا تتذكر عني؟» أو مسحها بقول «انسَ ذاكرتي»."
-                save_message(conversation_id, "user", message)
-                save_message(conversation_id, "assistant", answer)
+                save_message(conversation_id, "user", message, identity["user_id"])
+                save_message(conversation_id, "assistant", answer, identity["user_id"])
                 if streaming:
                     self.send_sse_static(answer, conversation_id, "memory")
                 else:
                     self.send_json(200, {"answer": answer, "reply": answer, "conversation_id": conversation_id, "engine": "memory"})
                 return
             if command == "show":
-                saved_memory = get_memory(conversation_id)
+                saved_memory = get_memory(conversation_id, identity["user_id"])
                 answer = ("المحفوظ في ذاكرة هذه المحادثة: " + saved_memory) if saved_memory else "لا توجد معلومات محفوظة في ذاكرة هذه المحادثة."
-                save_message(conversation_id, "user", message)
-                save_message(conversation_id, "assistant", answer)
+                save_message(conversation_id, "user", message, identity["user_id"])
+                save_message(conversation_id, "assistant", answer, identity["user_id"])
                 if streaming:
                     self.send_sse_static(answer, conversation_id, "memory")
                 else:
                     self.send_json(200, {"answer": answer, "reply": answer, "conversation_id": conversation_id, "engine": "memory"})
                 return
             if command == "clear":
-                clear_memory(conversation_id)
+                clear_memory(conversation_id, identity["user_id"])
                 answer = "تم مسح ذاكرة هذه المحادثة."
-                save_message(conversation_id, "user", message)
-                save_message(conversation_id, "assistant", answer)
+                save_message(conversation_id, "user", message, identity["user_id"])
+                save_message(conversation_id, "assistant", answer, identity["user_id"])
                 if streaming:
                     self.send_sse_static(answer, conversation_id, "memory")
                 else:
                     self.send_json(200, {"answer": answer, "reply": answer, "conversation_id": conversation_id, "engine": "memory"})
                 return
-            previous = history(conversation_id, max(1, HISTORY_MESSAGES - 1))
-            saved_memory = get_memory(conversation_id)
+            previous = history(conversation_id, max(1, HISTORY_MESSAGES - 1), identity["user_id"])
+            saved_memory = get_memory(conversation_id, identity["user_id"])
             if saved_memory:
-                previous.insert(0, {"role": "system", "content": "معلومات اختار المستخدم حفظها صراحةً في ذاكرة JASSIM المشتركة لهذا الخادم، استخدمها فقط عندما تكون ذات صلة ولا تفترض أنها حقائق خارج هذا السياق: " + saved_memory})
+                previous.insert(0, {"role": "system", "content": "معلومات اختار المستخدم حفظها صراحةً في ذاكرة حسابه الخاصة، استخدمها فقط عندما تكون ذات صلة ولا تفترض أنها حقائق خارج هذا السياق: " + saved_memory})
             context = fit_history_to_budget(previous + [{"role": "user", "content": message}])
             if streaming:
-                self.stream_chat_response(conversation_id, message, context)
+                self.stream_chat_response(conversation_id, message, context, identity["user_id"])
                 return
             answer, engine = generate_answer(context)
             if engine in ("busy", "fallback"):
@@ -756,8 +904,8 @@ class Handler(BaseHTTPRequestHandler):
                     "conversation_id": conversation_id
                 })
                 return
-            save_message(conversation_id, "user", message)
-            save_message(conversation_id, "assistant", answer)
+            save_message(conversation_id, "user", message, identity["user_id"])
+            save_message(conversation_id, "assistant", answer, identity["user_id"])
             self.send_json(200, {
                 "answer": answer, "reply": answer,
                 "conversation_id": conversation_id, "engine": engine

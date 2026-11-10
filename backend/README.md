@@ -94,3 +94,29 @@ On the first PostgreSQL startup, the backend checks the existing `JASSIM_DATA_DI
 Railway deploys PostgreSQL privately and injects `DATABASE_URL=${{Postgres.DATABASE_URL}}` into the API service. After migration and verification, the legacy SQLite volume can be detached (not deleted), allowing multiple API replicas to run without a single-writer disk mount.
 
 The current horizontal topology uses multiple API replicas behind the Railway domain. PostgreSQL is the shared durable data layer. This is horizontal replica scaling; it does not mean model weights are retrained. Provider evaluation remains synthetic, and routing scores are shared through PostgreSQL.
+
+
+# JASSIM AI Multi-user Accounts
+
+## Authentication API
+
+The backend now supports account sessions in addition to the legacy operator token:
+
+- `POST /api/auth/register` — JSON body: `{"email":"person@example.com","password":"at-least-10-characters"}`. Returns a one-time opaque bearer token.
+- `POST /api/auth/login` — same JSON body; returns a new session token.
+- `GET /api/auth/me` — returns the authenticated account profile.
+- `POST /api/auth/logout` — revokes the current session.
+
+Send the returned token on normal API requests as `Authorization: Bearer <session-token>`. Tokens expire after 30 days. The server stores only a SHA-256 digest of each random session token. Passwords are stored using PBKDF2-HMAC-SHA256 with a unique random salt (310,000 iterations); passwords must be at least 10 characters.
+
+## Account privacy and migration
+
+Every conversation has one owner in the `conversations` table. History, memory, listing and deletion are scoped to the authenticated owner. A user cannot claim an existing conversation ID belonging to another account. Existing messages and memories are assigned to the non-login `legacy-owner` account during schema initialization; they are not exposed to newly registered accounts.
+
+`JASSIM_API_TOKEN` remains an operator/admin credential for maintenance and backwards compatibility. It must not be embedded in a distributed APK or shared with ordinary users. New users receive their own session token after login or registration.
+
+## Current beta limitations
+
+Registration is open and currently protected by the API's per-process IP rate limiter. Email verification and password reset are not yet implemented. Do not treat this as a finished public launch until registration abuse protection is moved to shared storage, email verification/recovery is configured, and the Android and dashboard login screens are deployed. Always use HTTPS for public traffic.
+
+The feature branch also includes Android and dashboard login/register/logout controls. Android stores the opaque session token using Android Keystore-backed encryption; the dashboard keeps it in sessionStorage for the current tab. These client changes are not live until the pull request is reviewed, merged and deployed.

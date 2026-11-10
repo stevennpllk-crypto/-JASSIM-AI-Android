@@ -162,8 +162,9 @@ public class MainActivity extends Activity {
                         : "● تم اكتشاف الخادم تلقائياً — جارٍ الاتصال...");
                     checkHealth();
                     if (readApiToken().isEmpty()) {
-                        status.setText("● الخادم جاهز — أدخل رمز الوصول من الإعدادات لتفعيل المحادثة");
+                        status.setText("● أنشئ حساباً أو سجّل الدخول للبدء");
                         status.setTextColor(0xFFFFC36B);
+                        accountDialog();
                     } else {
                         loadHistory();
                     }
@@ -261,6 +262,8 @@ public class MainActivity extends Activity {
         brand.addView(tagline);
         header.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
 
+        Button accountButton = actionButton("حساب", "تسجيل الدخول أو إنشاء حساب", () -> accountDialog());
+        header.addView(accountButton, new LinearLayout.LayoutParams(-2, dp(38)));
         Button historyButton = actionButton("السجل", "سجل المحادثات", () -> showConversations());
         header.addView(historyButton, new LinearLayout.LayoutParams(-2, dp(38)));
         Button newChat = actionButton("+", "محادثة جديدة", () -> newConversation());
@@ -988,6 +991,144 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void accountDialog() {
+        LinearLayout fields = new LinearLayout(this);
+        fields.setOrientation(LinearLayout.VERTICAL);
+        int pad = dp(18);
+        fields.setPadding(pad, pad / 2, pad, 0);
+
+        EditText emailField = new EditText(this);
+        emailField.setSingleLine(true);
+        emailField.setHint("البريد الإلكتروني");
+        emailField.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+            | android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        fields.addView(emailField);
+
+        EditText passwordField = new EditText(this);
+        passwordField.setSingleLine(true);
+        passwordField.setHint("كلمة المرور (10 أحرف على الأقل)");
+        passwordField.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+            | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        fields.addView(passwordField);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+            .setTitle("حساب JASSIM AI")
+            .setMessage("أنشئ حساباً خاصاً بك أو سجّل الدخول. لا تحتاج إلى رمز الخادم.")
+            .setView(fields)
+            .setNegativeButton("إغلاق", null)
+            .setPositiveButton("دخول", null)
+            .setNeutralButton("إنشاء حساب", null)
+            .create();
+        dialog.setOnShowListener(ignored -> {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v ->
+                authenticateAccount(emailField.getText().toString(),
+                    passwordField.getText().toString(), false, dialog));
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v ->
+                authenticateAccount(emailField.getText().toString(),
+                    passwordField.getText().toString(), true, dialog));
+        });
+        dialog.show();
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v ->
+            authenticateAccount(emailField.getText().toString(),
+                passwordField.getText().toString(), false, dialog));
+        dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v ->
+            authenticateAccount(emailField.getText().toString(),
+                passwordField.getText().toString(), true, dialog));
+
+        if (readApiToken().startsWith("jss_")) {
+            Button logout = new Button(this);
+            logout.setText("تسجيل الخروج");
+            logout.setAllCaps(false);
+            fields.addView(logout);
+            logout.setOnClickListener(v -> logoutAccount(dialog));
+        }
+    }
+
+    private void authenticateAccount(String email, String password, boolean register, AlertDialog dialog) {
+        final String cleanEmail = email == null ? "" : email.trim();
+        if (cleanEmail.isEmpty() || password == null || password.length() < 10) {
+            Toast.makeText(this, "أدخل بريداً صحيحاً وكلمة مرور من 10 أحرف على الأقل", Toast.LENGTH_LONG).show();
+            return;
+        }
+        executor.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                URL url = new URL(baseUrl() + (register ? "/api/auth/register" : "/api/auth/login"));
+                connection = (HttpURLConnection) url.openConnection();
+                connection.setRequestMethod("POST");
+                connection.setConnectTimeout(15000);
+                connection.setReadTimeout(20000);
+                connection.setDoOutput(true);
+                connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                JSONObject payload = new JSONObject();
+                payload.put("email", cleanEmail);
+                payload.put("password", password);
+                try (OutputStream output = connection.getOutputStream()) {
+                    output.write(payload.toString().getBytes(StandardCharsets.UTF_8));
+                }
+                int code = connection.getResponseCode();
+                InputStream stream = code >= 400 ? connection.getErrorStream() : connection.getInputStream();
+                StringBuilder raw = new StringBuilder();
+                if (stream != null) {
+                    try (BufferedReader reader = new BufferedReader(
+                            new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+                        String line;
+                        while ((line = reader.readLine()) != null) raw.append(line);
+                    }
+                }
+                JSONObject result = new JSONObject(raw.toString());
+                if (code < 200 || code >= 300) {
+                    throw new IOException(result.optString("error", "تعذر تسجيل الدخول") + " (HTTP " + code + ")");
+                }
+                String token = result.optString("token", "");
+                if (!token.startsWith("jss_")) throw new IOException("لم يُرجع الخادم رمز جلسة صالحاً");
+                saveApiToken(token);
+                runOnUiThread(() -> {
+                    dialog.dismiss();
+                    newConversation();
+                    status.setText("● تم تسجيل الدخول إلى حسابك");
+                    status.setTextColor(0xFF62DCA8);
+                    loadHistory();
+                    Toast.makeText(this, register ? "تم إنشاء حسابك بنجاح" : "مرحباً بعودتك", Toast.LENGTH_SHORT).show();
+                });
+            } catch (Exception error) {
+                String message = error.getMessage() == null ? "تعذر الاتصال بالخادم" : error.getMessage();
+                runOnUiThread(() -> Toast.makeText(this, message, Toast.LENGTH_LONG).show());
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        });
+    }
+
+    private void logoutAccount(AlertDialog dialog) {
+        executor.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                connection = openConnection("/api/auth/logout", "POST");
+                connection.setDoOutput(true);
+                connection.setRequestProperty("Content-Type", "application/json");
+                try (OutputStream output = connection.getOutputStream()) {
+                    output.write("{}".getBytes(StandardCharsets.UTF_8));
+                }
+                readJsonResponse(connection);
+                saveApiToken("");
+                runOnUiThread(() -> {
+                    dialog.dismiss();
+                    newConversation();
+                    status.setText("● تم تسجيل الخروج");
+                    status.setTextColor(0xFFFFC36B);
+                    Toast.makeText(this, "تم تسجيل الخروج من حسابك", Toast.LENGTH_SHORT).show();
+                    accountDialog();
+                });
+            } catch (Exception error) {
+                String message = error.getMessage() == null ? "تعذر تسجيل الخروج" : error.getMessage();
+                runOnUiThread(() -> Toast.makeText(this, message, Toast.LENGTH_LONG).show());
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        });
+    }
+
     private void endpointDialog() {
         LinearLayout fields = new LinearLayout(this);
         fields.setOrientation(LinearLayout.VERTICAL);
@@ -1002,7 +1143,7 @@ public class MainActivity extends Activity {
 
         EditText tokenField = new EditText(this);
         tokenField.setSingleLine(true);
-        tokenField.setHint("رمز الوصول API Token");
+        tokenField.setHint("رمز إداري قديم (اختياري للمطور)");
         tokenField.setInputType(android.text.InputType.TYPE_CLASS_TEXT
             | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
         tokenField.setText(readApiToken());
@@ -1010,7 +1151,7 @@ public class MainActivity extends Activity {
 
         new AlertDialog.Builder(this)
             .setTitle("اتصال خادم JASSIM AI")
-            .setMessage("أدخل رابط HTTPS ورمز API. لا تستخدم روابط HTTP ولا تشارك الرمز مع أحد.")
+            .setMessage("المستخدم العادي لا يحتاج رمز API؛ استخدم زر حساب لتسجيل الدخول. هذا الحقل اختياري للمطور فقط.")
             .setView(fields)
             .setNegativeButton("إلغاء", null)
             .setPositiveButton("حفظ وفحص", (d, w) -> {
@@ -1020,12 +1161,12 @@ public class MainActivity extends Activity {
                     Toast.makeText(this, "الحماية مفعّلة: يجب استخدام رابط HTTPS فقط", Toast.LENGTH_LONG).show();
                     return;
                 }
-                if (value.isEmpty() || token.isEmpty()) {
-                    Toast.makeText(this, "أدخل رابط الخادم ورمز API معاً", Toast.LENGTH_LONG).show();
+                if (value.isEmpty()) {
+                    Toast.makeText(this, "أدخل رابط الخادم", Toast.LENGTH_LONG).show();
                     return;
                 }
                 try {
-                    saveApiToken(token);
+                    if (!token.isEmpty()) saveApiToken(token);
                     prefs.edit().putString("endpoint", value).apply();
                     checkHealth();
                     loadHistory();

@@ -64,6 +64,28 @@ def ensure_schema(db, sqlite_path=None):
                     content TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )""",
+                """CREATE TABLE IF NOT EXISTS users (
+                    id TEXT PRIMARY KEY,
+                    email_normalized TEXT NOT NULL UNIQUE,
+                    password_hash TEXT NOT NULL,
+                    role TEXT NOT NULL DEFAULT 'user',
+                    created_at TEXT NOT NULL
+                )""",
+                """CREATE TABLE IF NOT EXISTS sessions (
+                    token_hash TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    revoked_at TEXT
+                )""",
+                "CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)",
+                """CREATE TABLE IF NOT EXISTS conversations (
+                    conversation_id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )""",
+                "CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_id, updated_at)",
                 """CREATE TABLE IF NOT EXISTS provider_scores (
                     provider_id TEXT PRIMARY KEY,
                     attempts BIGINT NOT NULL DEFAULT 0,
@@ -93,6 +115,28 @@ def ensure_schema(db, sqlite_path=None):
                     content TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )""",
+                """CREATE TABLE IF NOT EXISTS users (
+                    id TEXT PRIMARY KEY,
+                    email_normalized TEXT NOT NULL UNIQUE,
+                    password_hash TEXT NOT NULL,
+                    role TEXT NOT NULL DEFAULT 'user',
+                    created_at TEXT NOT NULL
+                )""",
+                """CREATE TABLE IF NOT EXISTS sessions (
+                    token_hash TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    revoked_at TEXT
+                )""",
+                "CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)",
+                """CREATE TABLE IF NOT EXISTS conversations (
+                    conversation_id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )""",
+                "CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_id, updated_at)",
                 """CREATE TABLE IF NOT EXISTS provider_scores (
                     provider_id TEXT PRIMARY KEY,
                     attempts INTEGER NOT NULL DEFAULT 0,
@@ -108,6 +152,26 @@ def ensure_schema(db, sqlite_path=None):
         db.commit()
         if postgres:
             _migrate_sqlite_once(db)
+        # Existing chats are assigned once to a non-login legacy owner. They are
+        # never claimable by the first newly registered account.
+        db.execute(
+            """INSERT INTO users(id,email_normalized,password_hash,role,created_at)
+               VALUES(?,?,?,?,?) ON CONFLICT(id) DO NOTHING""",
+            ("legacy-owner", "owner@jassim.local", "", "admin", "2026-01-01T00:00:00+00:00")
+        )
+        db.execute(
+            """INSERT INTO conversations(conversation_id,user_id,created_at,updated_at)
+               SELECT m.conversation_id,'legacy-owner',MIN(m.created_at),MAX(m.created_at)
+               FROM messages m WHERE 1=1 GROUP BY m.conversation_id
+               ON CONFLICT(conversation_id) DO NOTHING"""
+        )
+        db.execute(
+            """INSERT INTO conversations(conversation_id,user_id,created_at,updated_at)
+               SELECT m.conversation_id,'legacy-owner',m.updated_at,m.updated_at
+               FROM memories m WHERE 1=1
+               ON CONFLICT(conversation_id) DO NOTHING"""
+        )
+        db.commit()
         _SCHEMA_READY_KEY = schema_key
 
 
