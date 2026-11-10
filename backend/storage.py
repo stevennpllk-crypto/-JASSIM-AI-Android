@@ -86,28 +86,6 @@ def ensure_schema(db, sqlite_path=None):
                     updated_at TEXT NOT NULL
                 )""",
                 "CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_id, updated_at)",
-                """CREATE TABLE IF NOT EXISTS users (
-                    id TEXT PRIMARY KEY,
-                    email_normalized TEXT NOT NULL UNIQUE,
-                    password_hash TEXT NOT NULL,
-                    role TEXT NOT NULL DEFAULT 'user',
-                    created_at TEXT NOT NULL
-                )""",
-                """CREATE TABLE IF NOT EXISTS sessions (
-                    token_hash TEXT PRIMARY KEY,
-                    user_id TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    expires_at TEXT NOT NULL,
-                    revoked_at TEXT
-                )""",
-                "CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)",
-                """CREATE TABLE IF NOT EXISTS conversations (
-                    conversation_id TEXT PRIMARY KEY,
-                    user_id TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                )""",
-                "CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_id, updated_at)",
                 """CREATE TABLE IF NOT EXISTS provider_scores (
                     provider_id TEXT PRIMARY KEY,
                     attempts BIGINT NOT NULL DEFAULT 0,
@@ -137,6 +115,28 @@ def ensure_schema(db, sqlite_path=None):
                     content TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )""",
+                """CREATE TABLE IF NOT EXISTS users (
+                    id TEXT PRIMARY KEY,
+                    email_normalized TEXT NOT NULL UNIQUE,
+                    password_hash TEXT NOT NULL,
+                    role TEXT NOT NULL DEFAULT 'user',
+                    created_at TEXT NOT NULL
+                )""",
+                """CREATE TABLE IF NOT EXISTS sessions (
+                    token_hash TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    revoked_at TEXT
+                )""",
+                "CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)",
+                """CREATE TABLE IF NOT EXISTS conversations (
+                    conversation_id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )""",
+                "CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_id, updated_at)",
                 """CREATE TABLE IF NOT EXISTS provider_scores (
                     provider_id TEXT PRIMARY KEY,
                     attempts INTEGER NOT NULL DEFAULT 0,
