@@ -774,7 +774,7 @@ public class MainActivity extends Activity {
                 if (cancelRequested) {
                     runOnUiThread(() -> {
                         if (answer.length() == 0) {
-                            responseBubble.setText("JASSIM AI\nتم إيقاف التوليد قبل وصول الإجابة.");
+                            renderMessage(responseBubble, "JASSIM AI", "تم إيقاف التوليد قبل وصول الإجابة.");
                         }
                         status.setText("● تم إيقاف عرض الإجابة");
                         status.setTextColor(0xFFFFC36B);
@@ -910,7 +910,7 @@ public class MainActivity extends Activity {
             } catch (Exception firstError) {
                 if (cancelRequested) return;
                 runOnUiThread(() -> {
-                    responseBubble.setText("JASSIM AI\nتعذر الوصول إلى المزود الأول؛ نجرب خادماً احتياطياً آخر...");
+                    renderMessage(responseBubble, "JASSIM AI", "تعذر الوصول إلى المزود الأول؛ نجرب خادماً احتياطياً آخر...");
                     status.setText("● نجرب OVHcloud كخيار ثانٍ...");
                 });
                 try {
