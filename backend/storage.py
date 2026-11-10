@@ -168,7 +168,7 @@ def ensure_schema(db, sqlite_path=None):
         db.execute(
             """INSERT INTO conversations(conversation_id,user_id,created_at,updated_at)
                SELECT m.conversation_id,'legacy-owner',m.updated_at,m.updated_at
-               FROM memories m
+               FROM memories m WHERE 1=1
                ON CONFLICT(conversation_id) DO NOTHING"""
         )
         db.commit()
