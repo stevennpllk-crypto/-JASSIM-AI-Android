@@ -1058,53 +1058,38 @@ public class MainActivity extends Activity {
         scrollView.setFillViewport(true);
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
-        page.setPadding(dp(18), dp(18), dp(18), dp(16));
+        page.setPadding(0, dp(8), 0, dp(12));
         android.graphics.drawable.GradientDrawable pageBg =
             new android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
                 new int[] { 0xFF050B25, 0xFF101A48, 0xFF090D29 });
         page.setBackground(pageBg);
 
-        LinearLayout top = new LinearLayout(this);
-        top.setGravity(Gravity.CENTER_VERTICAL);
+        FrameLayout hero = new FrameLayout(this);
+        ImageView mascot = new ImageView(this);
+        mascot.setImageResource(R.drawable.mahdia_hero_v2);
+        mascot.setScaleType(ImageView.ScaleType.FIT_XY);
+        mascot.setContentDescription(uiText("روبوت Mahdia AI وقلعة المهدية", "Mahdia AI robot and Mahdia fortress", "Robot Mahdia AI et fort de Mahdia"));
+        hero.addView(mascot, new FrameLayout.LayoutParams(-1, -1));
+
         Button language = actionButton(uiLanguageLabel() + "  ▾", uiText("تغيير لغة شاشة الحساب", "Change account screen language", "Changer la langue de connexion"), () ->
             chooseUiLanguage(dialog));
         language.setBackground(loginOutline());
-        language.setTextSize(14);
-        top.addView(language, new LinearLayout.LayoutParams(0, dp(42), 1));
+        language.setTextSize(12);
+        FrameLayout.LayoutParams languageLp = new FrameLayout.LayoutParams(dp(82), dp(30), Gravity.TOP | Gravity.LEFT);
+        languageLp.setMargins(dp(10), dp(8), 0, 0);
+        hero.addView(language, languageLp);
+
         Button settings = actionButton("⚙", uiText("إعدادات الاتصال", "Connection settings", "Paramètres de connexion"), () -> {
             dialog.dismiss();
             endpointDialog();
         });
         settings.setBackground(loginOutline());
-        settings.setTextSize(18);
-        top.addView(settings, new LinearLayout.LayoutParams(dp(48), dp(42)));
-        page.addView(top);
-
-        ImageView mascot = new ImageView(this);
-        mascot.setImageResource(R.drawable.mahdia_hero_v2);
-        mascot.setScaleType(ImageView.ScaleType.FIT_XY);
-        mascot.setAdjustViewBounds(true);
-        mascot.setContentDescription(uiText("روبوت Mahdia AI وقلعة المهدية", "Mahdia AI robot and Mahdia fortress", "Robot Mahdia AI et fort de Mahdia"));
-        LinearLayout.LayoutParams mascotLp = new LinearLayout.LayoutParams(-1, dp(148));
-        mascotLp.setMargins(0, dp(8), 0, dp(4));
-        page.addView(mascot, mascotLp);
-
-        TextView brand = new TextView(this);
-        brand.setText("Mahdia AI");
-        brand.setTextColor(Color.WHITE);
-        brand.setTextSize(36);
-        brand.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        brand.setGravity(Gravity.CENTER);
-        page.addView(brand);
-
-        TextView tagline = new TextView(this);
-        tagline.setText(uiText("ذكاء اصطناعي ... بإبداع تونسي", "Artificial intelligence ... Tunisian creativity", "Intelligence artificielle ... créativité tunisienne"));
-        tagline.setTextColor(0xFFE1E8FF);
-        tagline.setTextSize(16);
-        tagline.setGravity(Gravity.CENTER);
-        tagline.setPadding(0, 0, 0, dp(18));
-        page.addView(tagline);
+        settings.setTextSize(17);
+        FrameLayout.LayoutParams settingsLp = new FrameLayout.LayoutParams(dp(32), dp(30), Gravity.TOP | Gravity.RIGHT);
+        settingsLp.setMargins(0, dp(8), dp(10), 0);
+        hero.addView(settings, settingsLp);
+        page.addView(hero, new LinearLayout.LayoutParams(-1, dp(120)));
 
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
@@ -1258,14 +1243,18 @@ public class MainActivity extends Activity {
             card.addView(logout);
         }
 
-        page.addView(card);
+        LinearLayout.LayoutParams cardPageLp = new LinearLayout.LayoutParams(-1, -2);
+        cardPageLp.setMargins(dp(18), dp(4), dp(18), 0);
+        page.addView(card, cardPageLp);
         TextView footer = new TextView(this);
         footer.setText(uiText("Mahdia AI  •  شريكك الذكي في عالم المعرفة  ♥", "Mahdia AI  •  Your smart knowledge partner  ♥", "Mahdia AI  •  Votre partenaire intelligent du savoir  ♥"));
         footer.setTextColor(0xFFC49AFF);
         footer.setTextSize(13);
         footer.setGravity(Gravity.CENTER);
-        footer.setPadding(0, dp(18), 0, dp(8));
-        page.addView(footer);
+        footer.setPadding(0, dp(12), 0, dp(8));
+        LinearLayout.LayoutParams footerLp = new LinearLayout.LayoutParams(-1, -2);
+        footerLp.setMargins(dp(12), 0, dp(12), 0);
+        page.addView(footer, footerLp);
 
         scrollView.addView(page);
         dialog.setContentView(scrollView);
@@ -1281,6 +1270,9 @@ public class MainActivity extends Activity {
                 View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
             window.setLayout(-1, -1);
         }
+        View activityDecor = getWindow().getDecorView();
+        dialog.setOnDismissListener(ignored -> activityDecor.setVisibility(View.VISIBLE));
+        activityDecor.setVisibility(View.INVISIBLE);
         dialog.show();
         if (dialog.getWindow() != null) {
             dialog.getWindow().setLayout(-1, -1);
