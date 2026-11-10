@@ -87,4 +87,5 @@
   });
   $("loadHistory").addEventListener("click",async()=>{try{const h=await request("/api/history?conversation_id="+encodeURIComponent(state.conversation));$("historyOutput").textContent=JSON.stringify(h,null,2)}catch(e){$("historyOutput").textContent="تعذر تحميل السجل: "+e.message}});
   $("serverUrlText").textContent=state.endpoint||"لم يتم الإعداد";checkHealth();
+  if(!state.token)openSettings();
 })();
