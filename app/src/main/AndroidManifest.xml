@@ -4,7 +4,7 @@
     <application
         android:allowBackup="false"
         android:usesCleartextTraffic="false"
-        android:label="JASSIM AI"
+        android:label="Mahdia AI"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
         <activity
