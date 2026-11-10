@@ -119,4 +119,4 @@ Every conversation has one owner in the `conversations` table. History, memory, 
 
 Registration is open and currently protected by the API's per-process IP rate limiter. Email verification and password reset are not yet implemented. Do not treat this as a finished public launch until registration abuse protection is moved to shared storage, email verification/recovery is configured, and the Android and dashboard login screens are deployed. Always use HTTPS for public traffic.
 
-The session endpoints are backend primitives. Clients must provide a login/register UI and keep session tokens in platform secure storage. The existing Android and dashboard builds still use the legacy operator-token UI until their separate client integration changes are released.
+The feature branch also includes Android and dashboard login/register/logout controls. Android stores the opaque session token using Android Keystore-backed encryption; the dashboard keeps it in sessionStorage for the current tab. These client changes are not live until the pull request is reviewed, merged and deployed.
