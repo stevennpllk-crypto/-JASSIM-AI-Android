@@ -170,13 +170,16 @@ public class MainActivity extends Activity {
                         ? "● تعذر تحديث الرابط — نجرب آخر عنوان محفوظ"
                         : "● تم اكتشاف الخادم تلقائياً — جارٍ الاتصال...");
                     checkHealth();
-                    if (readApiToken().isEmpty()) {
-                        status.setText("● أنشئ حساباً أو سجّل الدخول للبدء");
-                        status.setTextColor(0xFFFFC36B);
-                        accountDialog();
-                    } else {
+                    if (!readApiToken().isEmpty()) {
                         loadHistory();
                     }
+                }
+                // Always show account access on first launch, even when the private
+                // backend is offline; login UI must not depend on server discovery.
+                if (readApiToken().isEmpty()) {
+                    status.setText("● أنشئ حساباً أو سجّل الدخول للبدء");
+                    status.setTextColor(0xFFFFC36B);
+                    accountDialog();
                 }
             });
         });
