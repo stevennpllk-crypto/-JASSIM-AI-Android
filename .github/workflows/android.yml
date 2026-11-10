@@ -52,11 +52,11 @@ jobs:
                       data = json.loads(response.read().decode("utf-8"))
                   if not data.get("ok"):
                       raise RuntimeError(f"Unexpected health payload: {data}")
-                  print("JASSIM_API_LIVE:", data.get("version"), data.get("engine"))
-          print("OLLAMA_REACHABLE:", data.get("ollama_reachable"))
-          print("MODEL_READY:", data.get("model_ready"))
-          print("EXTERNAL_PROVIDER_ROUTE_ENABLED:", data.get("external_provider_ready"))
-          print("NOTE: /health proves API liveness only; it does not prove model readiness or successful inference.")
+                          print("JASSIM_API_LIVE:", data.get("version"), data.get("engine"))
+                  print("OLLAMA_REACHABLE:", data.get("ollama_reachable"))
+                  print("MODEL_READY:", data.get("model_ready"))
+                  print("EXTERNAL_PROVIDER_ROUTE_ENABLED:", data.get("external_provider_ready"))
+                  print("NOTE: /health proves API liveness only; it does not prove model readiness or successful inference.")
                   break
               except Exception as exc:
                   last_error = exc
@@ -87,9 +87,9 @@ jobs:
                   data = json.loads(response.read())
                   answer = data["choices"][0]["message"]["content"]
                   if "JASSIM ONLINE" not in answer.upper():
-                  print("ANONYMOUS_LLM_INVALID_RESPONSE:", answer[:300])
-                  raise RuntimeError("Provider returned content but failed the exact-response check")
-              print("ANONYMOUS_LLM_OK:", answer[:300])
+                      print("ANONYMOUS_LLM_INVALID_RESPONSE:", answer[:300])
+                      raise RuntimeError("Provider returned content but failed the exact-response check")
+                  print("ANONYMOUS_LLM_OK:", answer[:300])
           except Exception as exc:
               print("ANONYMOUS_LLM_UNAVAILABLE:", repr(exc))
               raise
