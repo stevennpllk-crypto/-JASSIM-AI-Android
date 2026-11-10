@@ -664,7 +664,7 @@ class Handler(BaseHTTPRequestHandler):
                     db.close()
                 self.send_json(200, {
                     "backend": storage.backend_name(),
-                    "migration": "sqlite_to_postgres_v1",
+                    "migration": "sqlite_to_postgres_v2_accounts",
                     "counts": counts
                 })
                 return
