@@ -52,7 +52,7 @@ jobs:
                       data = json.loads(response.read().decode("utf-8"))
                   if not data.get("ok"):
                       raise RuntimeError(f"Unexpected health payload: {data}")
-                          print("JASSIM_API_LIVE:", data.get("version"), data.get("engine"))
+                  print("JASSIM_API_LIVE:", data.get("version"), data.get("engine"))
                   print("OLLAMA_REACHABLE:", data.get("ollama_reachable"))
                   print("MODEL_READY:", data.get("model_ready"))
                   print("EXTERNAL_PROVIDER_ROUTE_ENABLED:", data.get("external_provider_ready"))
