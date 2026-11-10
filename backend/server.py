@@ -593,9 +593,9 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path in ("/health", "/ready"):
             model_state = ollama_status()
             external_ready = adaptive.external_chat_enabled()
-            ready = bool(API_TOKEN and (
+            ready = bool(
                 (model_state["reachable"] and model_state["model_ready"]) or external_ready
-            ))
+            )
             if parsed.path == "/ready":
                 self.send_json(200 if ready else 503, {
                     "ready": ready,
@@ -617,7 +617,7 @@ class Handler(BaseHTTPRequestHandler):
                 "ollama_reachable": model_state["reachable"],
                 "uptime_seconds": int(time.monotonic() - STARTED_AT),
                 "storage": storage.backend_name(),
-                "authentication": "configured" if API_TOKEN else "not-configured",
+                "authentication": "account-sessions",
                 "image_generation_ready": bool(os.environ.get("JASSIM_HF_TOKEN", "").strip()),
                 "image_model": os.environ.get("JASSIM_IMAGE_MODEL", "black-forest-labs/FLUX.1-schnell")
             })
