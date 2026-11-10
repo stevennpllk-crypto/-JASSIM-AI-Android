@@ -1052,12 +1052,13 @@ public class MainActivity extends Activity {
         top.addView(settings, new LinearLayout.LayoutParams(dp(48), dp(42)));
         page.addView(top);
 
-        TextView mascot = new TextView(this);
-        mascot.setText("🤖   ✦");
-        mascot.setTextSize(46);
-        mascot.setGravity(Gravity.CENTER);
-        mascot.setPadding(0, dp(18), 0, 0);
-        page.addView(mascot);
+        ImageView mascot = new ImageView(this);
+        mascot.setImageResource(R.drawable.mahdia_hero);
+        mascot.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        mascot.setContentDescription("روبوت Mahdia AI وقلعة المهدية");
+        LinearLayout.LayoutParams mascotLp = new LinearLayout.LayoutParams(-1, dp(100));
+        mascotLp.setMargins(0, dp(8), 0, dp(4));
+        page.addView(mascot, mascotLp);
 
         TextView brand = new TextView(this);
         brand.setText("Mahdia AI");
