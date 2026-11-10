@@ -10,7 +10,8 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe JarvisClaw free anonymous model
+      - name: Probe JarvisClaw free anonymous model (optional)
+        id: jarvis
         continue-on-error: true
         run: |
           python - <<'PY'
@@ -33,14 +34,15 @@ jobs:
                       if choices:
                           answer.append(choices[0].get("delta", {}).get("content", ""))
               result = "".join(answer)
-              if not result:
-                  raise RuntimeError("No streamed content returned")
+              if "JASSIM ONLINE" not in result.upper():
+                  raise RuntimeError("Provider returned no valid exact-response marker: " + result[:160])
               print("JARVISCLAW_STREAM_OK:", result[:300])
           except Exception as e:
               print("JARVISCLAW_FAIL:",repr(e))
               raise
           PY
-      - name: Probe OVH anonymous model
+      - name: Probe OVH anonymous model (optional)
+        id: ovh
         continue-on-error: true
         run: |
           python - <<'PY'
@@ -63,10 +65,17 @@ jobs:
                       if choices:
                           answer.append(choices[0].get("delta", {}).get("content", ""))
               result = "".join(answer)
-              if not result:
-                  raise RuntimeError("No streamed content returned")
+              if "JASSIM ONLINE" not in result.upper():
+                  raise RuntimeError("Provider returned no valid exact-response marker: " + result[:160])
               print("OVH_STREAM_OK:", result[:300])
           except Exception as e:
               print("OVH_FAIL:",repr(e))
               raise
           PY
+
+      - name: Summarize optional provider probes
+        if: always()
+        run: |
+          echo '### Optional anonymous provider probes' >> "$GITHUB_STEP_SUMMARY"
+          echo 'JarvisClaw outcome: ${{ steps.jarvis.outcome }}' >> "$GITHUB_STEP_SUMMARY"
+          echo 'OVH outcome: ${{ steps.ovh.outcome }}' >> "$GITHUB_STEP_SUMMARY"

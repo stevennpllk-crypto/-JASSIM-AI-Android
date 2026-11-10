@@ -31,8 +31,19 @@
   $("registerAccount").addEventListener("click",()=>authenticateAccount("register"));
   $("logoutAccount").addEventListener("click",async()=>{
     if(!state.token)return;
-    try{await request("/api/auth/logout",{method:"POST",body:"{}"})}catch(_){}
-    state.token="";sessionStorage.removeItem("jassim_token");toast("تم تسجيل الخروج");openSettings();
+    try{
+      const result=await request("/api/auth/logout",{method:"POST",body:"{}"});
+      if(!result.revoked)throw new Error("لم يؤكد الخادم إبطال الجلسة");
+      state.token="";sessionStorage.removeItem("jassim_token");
+      toast("تم تسجيل الخروج وإبطال الجلسة");openSettings();
+    }catch(error){
+      if(error.message==="HTTP 401"){
+        state.token="";sessionStorage.removeItem("jassim_token");
+        toast("الجلسة منتهية أو ملغاة بالفعل");openSettings();
+      }else{
+        toast("تعذر تأكيد تسجيل الخروج؛ احتفظنا بالجلسة لإعادة المحاولة: "+error.message);
+      }
+    }
   });
   $("chatForm").addEventListener("submit",async e=>{
     e.preventDefault();
@@ -79,8 +90,10 @@
     btn.disabled=true;btn.textContent="جارٍ التوليد…";status.textContent="قد يستغرق التوليد بعض الوقت.";result.innerHTML="";
     try{
       const data=await request("/api/images/generate",{method:"POST",body:JSON.stringify({prompt})});
+      if(!data.image_base64||!["image/png","image/jpeg","image/webp"].includes(String(data.mime_type||"").toLowerCase()))throw new Error("أعاد مزود الصور صيغة غير مدعومة");
       const img=document.createElement("img");img.alt="الصورة التي أنشأها JASSIM AI";img.src="data:"+data.mime_type+";base64,"+data.image_base64;result.appendChild(img);
-      const link=document.createElement("a");link.href=img.src;link.download="jassim-ai-image.png";link.textContent="تنزيل الصورة";link.className="secondary image-download";result.appendChild(link);
+      const extension={"image/png":"png","image/jpeg":"jpg","image/webp":"webp"}[data.mime_type.toLowerCase()];
+      const link=document.createElement("a");link.href=img.src;link.download="jassim-ai-image."+extension;link.textContent="تنزيل الصورة";link.className="secondary image-download";result.appendChild(link);
       status.textContent="تم التوليد بواسطة "+data.model;
     }catch(e){status.textContent="تعذر التوليد: "+e.message;toast("فشل توليد الصورة")}
     finally{btn.disabled=false;btn.textContent="توليد الصورة ✦"}
