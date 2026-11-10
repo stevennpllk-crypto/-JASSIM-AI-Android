@@ -76,13 +76,18 @@ class SharedStorageTests(unittest.TestCase):
             source.execute("INSERT INTO messages VALUES(?,?,?,?,?)",
                            (7, "chat-1", "user", "رسالة محفوظة", "2026-01-01T00:00:00Z"))
             source.execute("INSERT INTO memories VALUES(?,?,?)",
-                           ("chat-1", "ذاكرة محفوظة", "2026-01-02T00:00:00Z"))
+                           ("chat-1", "ذاكرة قديمة", "2026-01-02T00:00:00Z"))
+            source.execute("INSERT INTO memories VALUES(?,?,?)",
+                           ("chat-2", "ذاكرة محفوظة", "2026-01-02T00:00:00Z"))
             source.commit()
             source.close()
 
             target = storage.connect(sqlite_path=target_path)
             try:
                 storage.ensure_schema(target, sqlite_path=target_path)
+                target.execute("INSERT INTO memories VALUES(?,?,?)",
+                               ("chat-1", "ذاكرة أحدث في PostgreSQL", "2026-02-01T00:00:00Z"))
+                storage._copy_sqlite_data(target, source_path)
                 storage._copy_sqlite_data(target, source_path)
                 target.commit()
                 self.assertEqual(
@@ -103,7 +108,15 @@ class SharedStorageTests(unittest.TestCase):
                 )
                 self.assertEqual(
                     target.execute("SELECT content FROM memories WHERE conversation_id='chat-1'").fetchone()[0],
+                    "ذاكرة أحدث في PostgreSQL"
+                )
+                self.assertEqual(
+                    target.execute("SELECT content FROM memories WHERE conversation_id='chat-2'").fetchone()[0],
                     "ذاكرة محفوظة"
+                )
+                self.assertEqual(
+                    target.execute("SELECT COUNT(*) FROM messages WHERE id=7").fetchone()[0],
+                    1
                 )
             finally:
                 target.close()
