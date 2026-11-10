@@ -7,10 +7,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     JASSIM_DATA_DIR=/data
 
 WORKDIR /app
-COPY backend/server.py /app/server.py
-COPY backend/adaptive.py /app/adaptive.py
-COPY backend/storage.py /app/storage.py
-COPY backend/entrypoint.py /app/entrypoint.py
+# Copy the complete backend package so auth.py and future modules are included.
+COPY backend/ /app/
 
 RUN pip install --no-cache-dir 'psycopg[binary]>=3.2,<4' \
     && useradd --system --uid 10001 --create-home jassim \
