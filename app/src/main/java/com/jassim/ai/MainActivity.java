@@ -1,7 +1,8 @@
 package com.jassim.ai;
 
 import android.app.Activity;
-import android.app.AlertDialog;\nimport android.app.Dialog;
+import android.app.AlertDialog;
+import android.app.Dialog;
 import android.os.Bundle;
 import android.graphics.Color;
 import android.graphics.Typeface;
