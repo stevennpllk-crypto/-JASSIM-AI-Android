@@ -1091,6 +1091,22 @@ public class MainActivity extends Activity {
         hero.addView(settings, settingsLp);
         page.addView(hero, new LinearLayout.LayoutParams(-1, dp(120)));
 
+        TextView brand = new TextView(this);
+        brand.setText("Mahdia AI");
+        brand.setTextColor(Color.WHITE);
+        brand.setTextSize(32);
+        brand.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        brand.setGravity(Gravity.CENTER);
+        page.addView(brand);
+
+        TextView tagline = new TextView(this);
+        tagline.setText(uiText("ذكاء اصطناعي ... بإبداع تونسي", "Artificial intelligence ... Tunisian creativity", "Intelligence artificielle ... créativité tunisienne"));
+        tagline.setTextColor(0xFFE1E8FF);
+        tagline.setTextSize(15);
+        tagline.setGravity(Gravity.CENTER);
+        tagline.setPadding(0, 0, 0, dp(12));
+        page.addView(tagline);
+
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(dp(18), dp(20), dp(18), dp(18));
