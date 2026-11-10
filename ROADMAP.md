@@ -67,7 +67,8 @@ Build an independent, Arabic-first AI assistant with a polished Android app and 
 - [x] Serialize model inference by default with a bounded queue to reduce GPU memory spikes under concurrent requests.
 - [x] Colab watchdog that restarts crashed API/model/tunnel processes while the runtime remains alive.
 - [ ] Model-specific context limits and prompt templates.
-- [ ] Optional cloud providers through server-side secrets only; never embed provider keys in APK or browser code.
+- [x] Optional external inference requires both an operator kill switch and explicit per-message user consent; default is deny, and the Android UI exposes the choice.
+- [ ] Expand the provider registry with verified privacy terms, model-quality benchmarks, and per-provider health probes; never embed provider keys in APK or browser code.
 - [ ] Health, readiness, latency, token usage, storage, and error dashboards.
 - [ ] Backups, restore drills, database migrations, and retention controls.
 - [x] Documented restartable Docker deployment, persistent model/database volumes, and readiness checks.
