@@ -1054,9 +1054,10 @@ public class MainActivity extends Activity {
 
         ImageView mascot = new ImageView(this);
         mascot.setImageResource(R.drawable.mahdia_hero);
-        mascot.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        mascot.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        mascot.setAdjustViewBounds(true);
         mascot.setContentDescription("روبوت Mahdia AI وقلعة المهدية");
-        LinearLayout.LayoutParams mascotLp = new LinearLayout.LayoutParams(-1, dp(100));
+        LinearLayout.LayoutParams mascotLp = new LinearLayout.LayoutParams(-1, dp(112));
         mascotLp.setMargins(0, dp(8), 0, dp(4));
         page.addView(mascot, mascotLp);
 
