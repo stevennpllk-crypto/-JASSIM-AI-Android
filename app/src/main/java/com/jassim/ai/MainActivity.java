@@ -1,7 +1,7 @@
 package com.jassim.ai;
 
 import android.app.Activity;
-import android.app.AlertDialog;
+import android.app.AlertDialog;\nimport android.app.Dialog;
 import android.os.Bundle;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -255,12 +255,12 @@ public class MainActivity extends Activity {
         brand.setOrientation(LinearLayout.VERTICAL);
         brand.setPadding(dp(10), 0, dp(6), 0);
         TextView title = new TextView(this);
-        title.setText("JASSIM AI");
+        title.setText("Mahdia AI");
         title.setTextColor(Color.WHITE);
         title.setTextSize(19);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         TextView tagline = new TextView(this);
-        tagline.setText("مساعدك الذكي");
+        tagline.setText("ذكاء اصطناعي ... بإبداع تونسي");
         tagline.setTextColor(muted);
         tagline.setTextSize(11);
         brand.addView(title);
@@ -388,7 +388,7 @@ public class MainActivity extends Activity {
         root.addView(composerShell, shellLp);
 
         TextView footer = new TextView(this);
-        footer.setText("JASSIM AI  •  محادثاتك تبدأ من هنا");
+        footer.setText("Mahdia AI  •  محادثاتك تبدأ من هنا");
         footer.setTextColor(0xFF687492);
         footer.setTextSize(10);
         footer.setGravity(Gravity.CENTER);
@@ -1010,57 +1010,244 @@ public class MainActivity extends Activity {
         });
     }
 
+    private String transientSessionToken = "";
+    private boolean rememberSession = true;
+
     private void accountDialog() {
-        LinearLayout fields = new LinearLayout(this);
-        fields.setOrientation(LinearLayout.VERTICAL);
-        int pad = dp(18);
-        fields.setPadding(pad, pad / 2, pad, 0);
+        Dialog dialog = new Dialog(this);
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.setFillViewport(true);
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setPadding(dp(22), dp(24), dp(22), dp(22));
+        android.graphics.drawable.GradientDrawable pageBg =
+            new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                new int[] { 0xFF050B25, 0xFF101A48, 0xFF090D29 });
+        page.setBackground(pageBg);
+
+        LinearLayout top = new LinearLayout(this);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        Button language = actionButton("العربية  ▾", "تغيير لغة الواجهة", () ->
+            Toast.makeText(this, "واجهة Mahdia AI متاحة بالعربية حالياً", Toast.LENGTH_SHORT).show());
+        top.addView(language, new LinearLayout.LayoutParams(0, dp(42), 1));
+        Button settings = actionButton("⚙", "إعدادات الاتصال", () -> {
+            dialog.dismiss();
+            endpointDialog();
+        });
+        top.addView(settings, new LinearLayout.LayoutParams(dp(48), dp(42)));
+        page.addView(top);
+
+        TextView mascot = new TextView(this);
+        mascot.setText("🤖   ✦");
+        mascot.setTextSize(46);
+        mascot.setGravity(Gravity.CENTER);
+        mascot.setPadding(0, dp(18), 0, 0);
+        page.addView(mascot);
+
+        TextView brand = new TextView(this);
+        brand.setText("Mahdia AI");
+        brand.setTextColor(Color.WHITE);
+        brand.setTextSize(36);
+        brand.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        brand.setGravity(Gravity.CENTER);
+        page.addView(brand);
+
+        TextView tagline = new TextView(this);
+        tagline.setText("ذكاء اصطناعي ... بإبداع تونسي");
+        tagline.setTextColor(0xFFE1E8FF);
+        tagline.setTextSize(16);
+        tagline.setGravity(Gravity.CENTER);
+        tagline.setPadding(0, 0, 0, dp(18));
+        page.addView(tagline);
+
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(18), dp(20), dp(18), dp(18));
+        android.graphics.drawable.GradientDrawable cardBg =
+            new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                new int[] { 0xEE111A43, 0xF20A1538 });
+        cardBg.setCornerRadius(dp(26));
+        cardBg.setStroke(dp(2), 0xFF7654F5);
+        card.setBackground(cardBg);
+
+        TextView heading = new TextView(this);
+        heading.setText("مرحباً بك في Mahdia AI");
+        heading.setTextColor(Color.WHITE);
+        heading.setTextSize(24);
+        heading.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        heading.setGravity(Gravity.CENTER);
+        card.addView(heading);
+
+        TextView subheading = new TextView(this);
+        subheading.setText("سجّل الدخول إلى حسابك للمتابعة");
+        subheading.setTextColor(0xFFD2D9F4);
+        subheading.setTextSize(15);
+        subheading.setGravity(Gravity.CENTER);
+        subheading.setPadding(0, dp(6), 0, dp(16));
+        card.addView(subheading);
 
         EditText emailField = new EditText(this);
         emailField.setSingleLine(true);
-        emailField.setHint("البريد الإلكتروني");
+        emailField.setHint("البريد الإلكتروني أو اسم المستخدم");
+        emailField.setHintTextColor(0xFFB6C2E5);
+        emailField.setTextColor(Color.WHITE);
+        emailField.setTextSize(16);
         emailField.setInputType(android.text.InputType.TYPE_CLASS_TEXT
             | android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
-        fields.addView(emailField);
+        emailField.setPadding(dp(15), dp(12), dp(15), dp(12));
+        emailField.setBackground(loginFieldBackground());
+        LinearLayout.LayoutParams fieldLp = new LinearLayout.LayoutParams(-1, dp(58));
+        fieldLp.setMargins(0, dp(10), 0, 0);
+        card.addView(emailField, fieldLp);
 
+        LinearLayout passwordRow = new LinearLayout(this);
+        passwordRow.setGravity(Gravity.CENTER_VERTICAL);
+        passwordRow.setBackground(loginFieldBackground());
         EditText passwordField = new EditText(this);
         passwordField.setSingleLine(true);
-        passwordField.setHint("كلمة المرور (10 أحرف على الأقل)");
+        passwordField.setHint("كلمة المرور");
+        passwordField.setHintTextColor(0xFFB6C2E5);
+        passwordField.setTextColor(Color.WHITE);
+        passwordField.setTextSize(16);
         passwordField.setInputType(android.text.InputType.TYPE_CLASS_TEXT
             | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        fields.addView(passwordField);
-
-        AlertDialog dialog = new AlertDialog.Builder(this)
-            .setTitle("حساب JASSIM AI")
-            .setMessage("أنشئ حساباً خاصاً بك أو سجّل الدخول. لا تحتاج إلى رمز الخادم.")
-            .setView(fields)
-            .setNegativeButton("إغلاق", null)
-            .setPositiveButton("دخول", null)
-            .setNeutralButton("إنشاء حساب", null)
-            .create();
-        dialog.setOnShowListener(ignored -> {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v ->
-                authenticateAccount(emailField.getText().toString(),
-                    passwordField.getText().toString(), false, dialog));
-            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v ->
-                authenticateAccount(emailField.getText().toString(),
-                    passwordField.getText().toString(), true, dialog));
+        passwordField.setBackgroundColor(Color.TRANSPARENT);
+        passwordField.setPadding(dp(15), dp(10), dp(8), dp(10));
+        passwordRow.addView(passwordField, new LinearLayout.LayoutParams(0, -1, 1));
+        Button reveal = actionButton("◉", "إظهار أو إخفاء كلمة المرور", () -> {
+            boolean visible = (passwordField.getInputType()
+                & android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD) != 0;
+            int cursor = passwordField.getSelectionStart();
+            passwordField.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | (visible ? android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+                           : android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD));
+            passwordField.setSelection(Math.max(0, Math.min(cursor, passwordField.length())));
+            reveal.setText(visible ? "◉" : "⊘");
         });
-        dialog.show();
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v ->
+        passwordRow.addView(reveal, new LinearLayout.LayoutParams(dp(48), -1));
+        LinearLayout.LayoutParams passwordLp = new LinearLayout.LayoutParams(-1, dp(58));
+        passwordLp.setMargins(0, dp(12), 0, 0);
+        card.addView(passwordRow, passwordLp);
+
+        LinearLayout options = new LinearLayout(this);
+        options.setGravity(Gravity.CENTER_VERTICAL);
+        CheckBox remember = new CheckBox(this);
+        remember.setText("تذكّرني");
+        remember.setTextColor(Color.WHITE);
+        remember.setButtonTintList(android.content.res.ColorStateList.valueOf(0xFF9B5CFF));
+        remember.setChecked(prefs.getBoolean("remember_session", true));
+        rememberSession = remember.isChecked();
+        options.addView(remember, new LinearLayout.LayoutParams(0, dp(48), 1));
+        remember.setOnCheckedChangeListener((button, checked) -> {
+            rememberSession = checked;
+            prefs.edit().putBoolean("remember_session", checked).apply();
+            if (!checked && readApiToken().startsWith("jss_")) {
+                transientSessionToken = readApiToken();
+                prefs.edit().remove("api_token_enc").remove("api_token_iv").remove("api_token").apply();
+            }
+        });
+        Button forgot = actionButton("نسيت كلمة المرور؟", "استعادة كلمة المرور", () ->
+            new AlertDialog.Builder(this)
+                .setTitle("استعادة كلمة المرور")
+                .setMessage("استعادة كلمة المرور عبر البريد الإلكتروني غير مفعّلة على الخادم حالياً. لن نرسل رابطاً وهمياً.")
+                .setPositiveButton("حسناً", null).show());
+        options.addView(forgot);
+        card.addView(options);
+
+        Button login = actionButton("دخول   ➜", "تسجيل الدخول", () ->
             authenticateAccount(emailField.getText().toString(),
                 passwordField.getText().toString(), false, dialog));
-        dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v ->
+        login.setTextSize(18);
+        login.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        login.setBackground(loginGradient());
+        LinearLayout.LayoutParams loginLp = new LinearLayout.LayoutParams(-1, dp(58));
+        loginLp.setMargins(0, dp(8), 0, dp(12));
+        card.addView(login, loginLp);
+
+        TextView or = new TextView(this);
+        or.setText("أو");
+        or.setTextColor(Color.WHITE);
+        or.setTextSize(15);
+        or.setGravity(Gravity.CENTER);
+        card.addView(or);
+
+        Button google = actionButton("G   الدخول عبر Google", "تسجيل الدخول عبر Google", () ->
+            new AlertDialog.Builder(this)
+                .setTitle("Google")
+                .setMessage("تسجيل Google غير مهيأ بعد: يتطلب إعداد OAuth موثوقاً في الخادم. لم نضع زرّاً وهمياً.")
+                .setPositiveButton("حسناً", null).show());
+        google.setTextSize(16);
+        google.setBackground(loginOutline());
+        LinearLayout.LayoutParams googleLp = new LinearLayout.LayoutParams(-1, dp(54));
+        googleLp.setMargins(0, dp(10), 0, dp(12));
+        card.addView(google, googleLp);
+
+        Button register = actionButton("إنشاء حساب جديد", "إنشاء حساب", () ->
             authenticateAccount(emailField.getText().toString(),
                 passwordField.getText().toString(), true, dialog));
+        register.setTextColor(0xFFD58BFF);
+        card.addView(register);
+
+        TextView secure = new TextView(this);
+        secure.setText("◈ تسجيل آمن وخصوصي");
+        secure.setTextColor(0xFFD7E2FF);
+        secure.setGravity(Gravity.CENTER);
+        secure.setPadding(0, dp(14), 0, 0);
+        card.addView(secure);
 
         if (readApiToken().startsWith("jss_")) {
-            Button logout = new Button(this);
-            logout.setText("تسجيل الخروج");
-            logout.setAllCaps(false);
-            fields.addView(logout);
-            logout.setOnClickListener(v -> logoutAccount(dialog));
+            Button logout = actionButton("تسجيل الخروج", "تسجيل الخروج من الحساب", () ->
+                logoutAccount(new AlertDialog.Builder(this).create()));
+            card.addView(logout);
         }
+
+        page.addView(card);
+        TextView footer = new TextView(this);
+        footer.setText("Mahdia AI  •  شريكك الذكي في عالم المعرفة  ♥");
+        footer.setTextColor(0xFFC49AFF);
+        footer.setTextSize(13);
+        footer.setGravity(Gravity.CENTER);
+        footer.setPadding(0, dp(18), 0, dp(8));
+        page.addView(footer);
+
+        scrollView.addView(page);
+        dialog.setContentView(scrollView);
+        android.view.Window window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawableResource(android.R.color.transparent);
+            window.setLayout(-1, -1);
+        }
+        dialog.show();
+        if (dialog.getWindow() != null) dialog.getWindow().setLayout(-1, -1);
+    }
+
+    private android.graphics.drawable.Drawable loginFieldBackground() {
+        android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable();
+        shape.setColor(0xFF101A3A);
+        shape.setCornerRadius(dp(17));
+        shape.setStroke(dp(1), 0xFF635AC0);
+        return shape;
+    }
+
+    private android.graphics.drawable.Drawable loginGradient() {
+        android.graphics.drawable.GradientDrawable shape =
+            new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[] { 0xFF8D22F7, 0xFF4E55FF, 0xFF00C9EF });
+        shape.setCornerRadius(dp(30));
+        return shape;
+    }
+
+    private android.graphics.drawable.Drawable loginOutline() {
+        android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable();
+        shape.setColor(0x00101838);
+        shape.setCornerRadius(dp(28));
+        shape.setStroke(dp(2), 0xFF9878FF);
+        return shape;
     }
 
     private void authenticateAccount(String email, String password, boolean register, AlertDialog dialog) {
