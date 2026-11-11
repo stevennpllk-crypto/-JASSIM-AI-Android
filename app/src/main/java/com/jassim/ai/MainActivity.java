@@ -48,6 +48,7 @@ public class MainActivity extends Activity {
     private Button improveButton;
     private Button speakButton;
     private TextToSpeech textToSpeech;
+    private boolean textToSpeechReady;
     private String latestAssistantText = "";
     private static final int REQUEST_SPEECH_INPUT = 4101;
     private volatile boolean adminSession;
@@ -448,15 +449,18 @@ public class MainActivity extends Activity {
         textToSpeech = new TextToSpeech(this, result -> {
             if (result == TextToSpeech.SUCCESS && textToSpeech != null) {
                 int languageResult = textToSpeech.setLanguage(new Locale("ar"));
+                textToSpeechReady = languageResult != TextToSpeech.LANG_MISSING_DATA &&
+                        languageResult != TextToSpeech.LANG_NOT_SUPPORTED;
                 textToSpeech.setSpeechRate(0.96f);
                 if (languageResult == TextToSpeech.LANG_MISSING_DATA ||
                         languageResult == TextToSpeech.LANG_NOT_SUPPORTED) {
                     runOnUiThread(() -> {
+                        textToSpeechReady = false;
                         if (speakButton != null) speakButton.setEnabled(false);
                     });
                 } else {
                     runOnUiThread(() -> {
-                        if (speakButton != null) speakButton.setEnabled(!latestAssistantText.isEmpty());
+                        if (speakButton != null) speakButton.setEnabled(textToSpeechReady && !latestAssistantText.isEmpty());
                     });
                 }
             }
@@ -467,7 +471,7 @@ public class MainActivity extends Activity {
         Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                 RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ar-TN");
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ar");
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ar-TN");
         intent.putExtra(RecognizerIntent.EXTRA_PROMPT, "تحدث الآن — Mahdia AI يستمع إليك");
         intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
@@ -480,7 +484,7 @@ public class MainActivity extends Activity {
     }
 
     private void speakLatestAnswer() {
-        if (textToSpeech == null || latestAssistantText.trim().isEmpty()) {
+        if (textToSpeech == null || !textToSpeechReady || latestAssistantText.trim().isEmpty()) {
             Toast.makeText(this, "لا توجد إجابة لقراءتها بعد", Toast.LENGTH_SHORT).show();
             return;
         }
@@ -521,7 +525,7 @@ public class MainActivity extends Activity {
         boolean isUser = "أنت".equals(who);
         if (!isUser && text != null && !text.trim().isEmpty()) {
             latestAssistantText = text;
-            if (speakButton != null) speakButton.setEnabled(textToSpeech != null);
+            if (speakButton != null) speakButton.setEnabled(textToSpeechReady);
         }
         TextView bubble = new TextView(this);
         bubble.setText(who + "\n" + text);
