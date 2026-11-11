@@ -13,9 +13,11 @@ public class TrustedEndpointPolicyTest {
     }
 
     @Test
-    public void acceptsCloudflareQuickTunnelHosts() {
-        assertTrue(TrustedEndpointPolicy.isTrusted("https://abc-123.trycloudflare.com"));
-        assertTrue(TrustedEndpointPolicy.isTrusted("https://ABC-123.TRYCLOUDFLARE.COM"));
+    public void rejectsUnsignedTemporaryTunnelHosts() {
+        // Quick Tunnel hostnames are user-controlled; without a signed registry
+        // they must not receive account bearer tokens.
+        assertFalse(TrustedEndpointPolicy.isTrusted("https://abc-123.trycloudflare.com"));
+        assertFalse(TrustedEndpointPolicy.isTrusted("https://ABC-123.TRYCLOUDFLARE.COM"));
     }
 
     @Test
