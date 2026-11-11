@@ -116,5 +116,54 @@ class AdaptiveRouterTests(unittest.TestCase):
         request.assert_not_called()
 
 
+    def test_openai_compatible_sse_stream_emits_text_deltas(self):
+        import io
+        from unittest.mock import patch
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+            def __iter__(self):
+                return iter([
+                    b'data: {"choices":[{"delta":{"content":"Hello "},"finish_reason":null}]}\\n',
+                    b'data: {"choices":[{"delta":{"content":"world"},"finish_reason":null}]}\\n',
+                    b'data: [DONE]\\n',
+                ])
+
+        emitted = []
+        provider = {"id": "test", "url": "https://example.invalid", "model": "test"}
+        with patch.object(adaptive.urllib.request, "urlopen", return_value=FakeResponse()):
+            answer, latency = adaptive._stream_request(
+                provider, [{"role": "user", "content": "hi"}], on_delta=emitted.append
+            )
+        self.assertEqual(answer, "Hello world")
+        self.assertEqual(emitted, ["Hello ", "world"])
+        self.assertGreaterEqual(latency, 0)
+
+    def test_stream_router_does_not_switch_provider_after_partial_output(self):
+        providers = [
+            {"id": "first", "url": "https://example.invalid", "model": "test"},
+            {"id": "second", "url": "https://example.invalid", "model": "test"},
+        ]
+        ranked = [{"id": "first"}, {"id": "second"}]
+        emitted = []
+        def interrupted(*args, **kwargs):
+            kwargs["on_delta"]("partial")
+            raise RuntimeError("connection lost")
+        with patch.object(adaptive, "ALLOW_EXTERNAL_CHAT", True), \\
+             patch.object(adaptive, "ENABLE_PUBLIC_PROVIDERS", True), \\
+             patch.object(adaptive, "PROVIDERS", providers), \\
+             patch.object(adaptive, "provider_stats", return_value=ranked), \\
+             patch.object(adaptive, "_stream_request", side_effect=interrupted) as request:
+            with self.assertRaisesRegex(RuntimeError, "provider_stream_interrupted"):
+                adaptive.stream_answer_with_provider(
+                    [{"role": "user", "content": "test"}], emitted.append
+                )
+        self.assertEqual(emitted, ["partial"])
+        request.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()
