@@ -109,7 +109,7 @@ def _grade_benchmark_case(case, answer):
         normalized = _normalize_benchmark_text(answer)
         return all(
             re.search(
-                r"(?<!\\w)" + re.escape(_normalize_benchmark_text(word)) + r"(?!\\w)",
+                r"(?<!\w)" + re.escape(_normalize_benchmark_text(word)) + r"(?!\w)",
                 normalized,
             ) is not None
             for word in case["expected"]
