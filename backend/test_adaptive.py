@@ -102,7 +102,7 @@ class AdaptiveRouterTests(unittest.TestCase):
         self.assertFalse(adaptive._grade_benchmark_case(
             cases["json_schema_01"], 'Here is JSON: {"name":"Ali","age":16}'))
         self.assertTrue(adaptive._grade_benchmark_case(
-            cases["python_ast_01"], "def add(a, b):\\n    return a + b"))
+            cases["python_ast_01"], "def add(a, b):" + chr(10) + "    return a + b"))
         self.assertFalse(adaptive._grade_benchmark_case(
             cases["python_ast_01"], "def add(a, b): return a - b"))
         self.assertTrue(adaptive._grade_benchmark_case(
