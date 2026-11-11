@@ -39,6 +39,22 @@ class AdaptiveRouterTests(unittest.TestCase):
         self.assertGreater(scores["jarvisclaw"]["routing_score"],
                            scores["ovh"]["routing_score"])
 
+    def test_live_chat_routing_ignores_unverified_quality_score(self):
+        adaptive._record("jarvisclaw", 800, 0.99)
+        adaptive._record("ovh", 800, 0.01)
+        scores = {item["id"]: item for item in adaptive.provider_stats()}
+        self.assertEqual(scores["jarvisclaw"]["routing_score"],
+                         scores["ovh"]["routing_score"])
+
+    def test_live_chat_attempt_preserves_benchmark_quality_and_failure_latency(self):
+        adaptive._record("jarvisclaw", 900, 0.8)
+        adaptive._record("jarvisclaw", 0, None, "TimeoutError: timed out")
+        scores = {item["id"]: item for item in adaptive.provider_stats()}
+        self.assertEqual(scores["jarvisclaw"]["quality_score"], 0.8)
+        self.assertEqual(scores["jarvisclaw"]["average_latency_ms"], 900)
+        self.assertEqual(scores["jarvisclaw"]["successes"], 1)
+        self.assertEqual(scores["jarvisclaw"]["attempts"], 2)
+
     def test_groq_is_hidden_without_api_key(self):
         with patch.dict(os.environ, {"GROQ_API_KEY": ""}):
             self.assertNotIn("groq", [p["id"] for p in adaptive._configured_providers()])
