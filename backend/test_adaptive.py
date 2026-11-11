@@ -152,15 +152,15 @@ class AdaptiveRouterTests(unittest.TestCase):
         def interrupted(*args, **kwargs):
             kwargs["on_delta"]("partial")
             raise RuntimeError("connection lost")
-        with patch.object(adaptive, "ALLOW_EXTERNAL_CHAT", True), \\
-             patch.object(adaptive, "ENABLE_PUBLIC_PROVIDERS", True), \\
-             patch.object(adaptive, "PROVIDERS", providers), \\
-             patch.object(adaptive, "provider_stats", return_value=ranked), \\
-             patch.object(adaptive, "_stream_request", side_effect=interrupted) as request:
-            with self.assertRaisesRegex(RuntimeError, "provider_stream_interrupted"):
-                adaptive.stream_answer_with_provider(
-                    [{"role": "user", "content": "test"}], emitted.append
-                )
+        with patch.object(adaptive, "ALLOW_EXTERNAL_CHAT", True):
+            with patch.object(adaptive, "ENABLE_PUBLIC_PROVIDERS", True):
+                with patch.object(adaptive, "PROVIDERS", providers):
+                    with patch.object(adaptive, "provider_stats", return_value=ranked):
+                        with patch.object(adaptive, "_stream_request", side_effect=interrupted) as request:
+                            with self.assertRaisesRegex(RuntimeError, "provider_stream_interrupted"):
+                                adaptive.stream_answer_with_provider(
+                                    [{"role": "user", "content": "test"}], emitted.append
+                                )
         self.assertEqual(emitted, ["partial"])
         request.assert_called_once()
 
