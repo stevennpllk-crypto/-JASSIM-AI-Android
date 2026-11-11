@@ -658,7 +658,7 @@ public class MainActivity extends Activity {
                 boolean ok = result.optBoolean("ok", false);
                 boolean modelReady = result.optBoolean("model_ready", false);
                 boolean externalEnabled = result.optBoolean("external_provider_ready", false);
-                localModelReady = modelReady;
+                localModelReady = ok && modelReady;
                 externalChatEnabled = externalEnabled;
                 healthChecked = true;
                 String engine = result.optString("model", result.optString("engine", "غير معروف"));
