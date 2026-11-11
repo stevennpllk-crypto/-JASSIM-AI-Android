@@ -235,13 +235,6 @@ def stream_answer_with_provider(messages, on_delta):
             errors.append(provider["id"])
     raise RuntimeError("all_external_providers_failed:" + ",".join(errors))
 
-def _quality(answer, needles):
-    text = answer.casefold()
-    if len(answer.strip()) < 2:
-        return 0.0
-    matched = sum(1 for needle in needles if needle.casefold() in text)
-    return 0.25 + (0.75 * matched / max(1, len(needles)))
-
 
 def _record(provider_id, latency, quality=None, error=""):
     db = _db()
@@ -360,10 +353,10 @@ def answer_with_provider(messages):
             answer, latency = _request(
                 provider, messages, max_tokens=2048, timeout=attempt_timeout
             )
-            _record(provider["id"], latency, 0.65)
+            _record(provider["id"], latency, None)
             return answer, provider["id"]
         except Exception as exc:
-            _record(provider["id"], 0, 0, type(exc).__name__ + ": " + str(exc))
+            _record(provider["id"], 0, None, type(exc).__name__ + ": " + str(exc))
             errors.append(provider["id"])
     raise RuntimeError("all_external_providers_failed:" + ",".join(errors))
 
