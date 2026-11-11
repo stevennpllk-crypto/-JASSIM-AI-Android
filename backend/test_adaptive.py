@@ -142,6 +142,24 @@ class AdaptiveRouterTests(unittest.TestCase):
         self.assertEqual(emitted, ["Hello ", "world"])
         self.assertGreaterEqual(latency, 0)
 
+    def test_openai_stream_rejects_missing_terminal_event(self):
+        from unittest.mock import patch
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+            def __iter__(self):
+                return iter([
+                    b'data: {"choices":[{"delta":{"content":"partial"},"finish_reason":null}]}\\n'
+                ])
+
+        provider = {"id": "test", "url": "https://example.invalid", "model": "test"}
+        with patch.object(adaptive.urllib.request, "urlopen", return_value=FakeResponse()):
+            with self.assertRaisesRegex(RuntimeError, "incomplete_provider_stream"):
+                adaptive._stream_request(provider, [{"role": "user", "content": "hi"}])
+
     def test_stream_router_does_not_switch_provider_after_partial_output(self):
         providers = [
             {"id": "first", "url": "https://example.invalid", "model": "test"},
