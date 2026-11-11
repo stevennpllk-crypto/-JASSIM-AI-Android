@@ -1,0 +1,40 @@
+name: Training data validation
+
+on:
+  pull_request:
+    paths:
+      - "training/**"
+      - ".github/workflows/training-validation.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "training/**"
+      - ".github/workflows/training-validation.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate Python syntax and JSONL schema
+        run: |
+          python -m compileall -q training
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path("training/data/seed.jsonl")
+          rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+          assert rows, "training seed dataset is empty"
+          for number, row in enumerate(rows, 1):
+              assert isinstance(row, dict), f"line {number}: row must be an object"
+              assert isinstance(row.get("instruction"), str) and row["instruction"].strip(), f"line {number}: instruction required"
+              assert isinstance(row.get("input", ""), str), f"line {number}: input must be a string"
+              assert isinstance(row.get("output"), str) and row["output"].strip(), f"line {number}: output required"
+          print(f"Validated {len(rows)} training examples")
+          PY
+      - name: Test assistant-only loss masking
+        run: python -m unittest training.test_data_utils -v
