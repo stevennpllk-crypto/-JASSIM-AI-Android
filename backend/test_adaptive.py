@@ -98,6 +98,9 @@ class AdaptiveRouterTests(unittest.TestCase):
         self.assertTrue(adaptive._grade_benchmark_case(cases["math_multiply_01"], "323"))
         self.assertTrue(adaptive._grade_benchmark_case(cases["math_multiply_01"], "٣٢٣"))
         self.assertFalse(adaptive._grade_benchmark_case(cases["math_multiply_01"], "324"))
+        self.assertFalse(adaptive._grade_benchmark_case(cases["math_multiply_01"], "The answer is 323"))
+        self.assertFalse(adaptive._grade_benchmark_case(cases["math_multiply_01"], "323 or 324"))
+        self.assertTrue(adaptive._grade_benchmark_case(cases["math_multiply_01"], "٣٢٣"))
         self.assertTrue(adaptive._grade_benchmark_case(
             cases["json_schema_01"], '{"name":"Ali","age":16}'))
         self.assertFalse(adaptive._grade_benchmark_case(
@@ -106,6 +109,12 @@ class AdaptiveRouterTests(unittest.TestCase):
             cases["python_ast_01"], "def add(a, b):" + chr(10) + "    return a + b"))
         self.assertFalse(adaptive._grade_benchmark_case(
             cases["python_ast_01"], "def add(a, b): return a - b"))
+        self.assertFalse(adaptive._grade_benchmark_case(
+            cases["python_ast_01"], "import os\\ndef add(a, b):\\n    return a + b"))
+        self.assertFalse(adaptive._grade_benchmark_case(
+            cases["python_ast_01"], "def add(a, b=0):\\n    return a + b"))
+        self.assertFalse(adaptive._grade_benchmark_case(
+            cases["python_ast_01"], "def add(a, b):\\n    return a + b\\nprint('extra')"))
         self.assertTrue(adaptive._grade_benchmark_case(
             cases["french_translation_01"], "Bonjour!"))
 
