@@ -446,26 +446,63 @@ class Handler(BaseHTTPRequestHandler):
         self.send_sse_event({"type": "token", "token": answer})
         self.send_sse_event({"type": "done", "conversation_id": conversation_id, "engine": engine})
 
+    def stream_external_provider_response(self, conversation_id, message, context, user_id):
+        """Stream provider deltas to the client; persist only complete answers."""
+        answer_parts = []
+        headers_sent = False
+        try:
+            def emit(token):
+                nonlocal headers_sent
+                if self.client_disconnected():
+                    raise BrokenPipeError("client_disconnected")
+                if not headers_sent:
+                    self.send_sse_headers()
+                    headers_sent = True
+                answer_parts.append(token)
+                self.send_sse_event({"type": "token", "token": token})
+
+            answer, provider = adaptive.stream_answer_with_provider(
+                [{"role": "system", "content": SYSTEM_PROMPT}] + context, emit
+            )
+            if self.client_disconnected():
+                return
+            if not headers_sent:
+                self.send_json(503, {
+                    "error": "model_unavailable",
+                    "message": "لم يصل أي محتوى من مزوّد الذكاء الاصطناعي.",
+                    "retry_after_seconds": 30,
+                    "conversation_id": conversation_id
+                })
+                return
+            save_message(conversation_id, "user", message, user_id)
+            save_message(conversation_id, "assistant", answer, user_id)
+            self.send_sse_event({
+                "type": "done", "conversation_id": conversation_id, "engine": provider
+            })
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            # A disconnected client must not leave a partial assistant message.
+            return
+        except RuntimeError:
+            if headers_sent:
+                try:
+                    self.send_sse_event({"type": "error", "error": "generation_interrupted"})
+                except (BrokenPipeError, ConnectionResetError, OSError):
+                    pass
+            else:
+                self.send_json(503, {
+                    "error": "model_unavailable",
+                    "message": "محرك الذكاء الاصطناعي غير متاح أو تعذر الوصول إلى المزوّدات.",
+                    "retry_after_seconds": 30,
+                    "conversation_id": conversation_id
+                })
+
     def stream_chat_response(self, conversation_id, message, context, user_id):
         # Avoid a long Ollama connection timeout on hosts where no local model
         # is provisioned. The readiness probe is bounded and fallback routing
         # can begin immediately.
         model_state = ollama_status()
         if not model_state["reachable"] or not model_state["model_ready"]:
-            try:
-                answer, provider = adaptive.answer_with_provider(
-                    [{"role": "system", "content": SYSTEM_PROMPT}] + context
-                )
-                save_message(conversation_id, "user", message, user_id)
-                save_message(conversation_id, "assistant", answer, user_id)
-                self.send_sse_static(answer, conversation_id, provider)
-            except RuntimeError:
-                self.send_json(503, {
-                    "error": "model_unavailable",
-                    "message": "محرك الذكاء الاصطناعي غير متاح. لم يُفعّل مزود خارجي أو تعذر الوصول إليه.",
-                    "retry_after_seconds": 30,
-                    "conversation_id": conversation_id
-                })
+            self.stream_external_provider_response(conversation_id, message, context, user_id)
             return
 
         if not INFERENCE_SEMAPHORE.acquire(timeout=OLLAMA_QUEUE_TIMEOUT):
@@ -502,20 +539,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 response = urllib.request.urlopen(request, timeout=OLLAMA_TIMEOUT)
             except (urllib.error.URLError, TimeoutError, ValueError, OSError):
-                try:
-                    answer, provider = adaptive.answer_with_provider(
-                        [{"role": "system", "content": SYSTEM_PROMPT}] + context
-                    )
-                    save_message(conversation_id, "user", message, user_id)
-                    save_message(conversation_id, "assistant", answer, user_id)
-                    self.send_sse_static(answer, conversation_id, provider)
-                except RuntimeError:
-                    self.send_json(503, {
-                        "error": "model_unavailable",
-                        "message": "محرك الذكاء الاصطناعي غير متاح. لم يُفعّل مزود خارجي أو تعذر الوصول إليه.",
-                        "retry_after_seconds": 30,
-                        "conversation_id": conversation_id
-                    })
+                self.stream_external_provider_response(conversation_id, message, context, user_id)
                 return
 
             self.send_sse_headers()
