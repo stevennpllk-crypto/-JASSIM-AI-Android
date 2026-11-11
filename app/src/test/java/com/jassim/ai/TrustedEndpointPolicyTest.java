@@ -39,6 +39,25 @@ public class TrustedEndpointPolicyTest {
     }
 
     @Test
+    public void acceptsOnlyTheCanonicalProductionOrigin() {
+        assertTrue(TrustedEndpointPolicy.isTrusted(
+            "https://JASSIM-AI-CORE-FINAL-PRODUCTION.UP.RAILWAY.APP"));
+        assertTrue(TrustedEndpointPolicy.isTrusted(
+            "https://jassim-ai-core-final-production.up.railway.app:443"));
+    }
+
+    @Test
+    public void rejectsUnsafeComponentsOnTheTrustedProductionHost() {
+        String host = "jassim-ai-core-final-production.up.railway.app";
+        assertFalse(TrustedEndpointPolicy.isTrusted("https://user:pass@" + host));
+        assertFalse(TrustedEndpointPolicy.isTrusted("https://" + host + ":8443"));
+        assertFalse(TrustedEndpointPolicy.isTrusted("https://" + host + "/api"));
+        assertFalse(TrustedEndpointPolicy.isTrusted("https://" + host + "/?next=evil"));
+        assertFalse(TrustedEndpointPolicy.isTrusted("https://" + host + "/#fragment"));
+        assertFalse(TrustedEndpointPolicy.isTrusted("https://" + host + "."));
+    }
+
+    @Test
     public void rejectsEmptyMalformedAndOversizedValues() {
         assertFalse(TrustedEndpointPolicy.isTrusted(null));
         assertFalse(TrustedEndpointPolicy.isTrusted(""));
