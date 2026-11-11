@@ -41,9 +41,15 @@ python training/train_qlora.py \
   --epochs 1
 ```
 
-The script refuses to run without CUDA. It saves a PEFT adapter and tokenizer; it does
-not modify or overwrite the base model. Keep the adapter, base-model revision, dataset
-hash, training arguments, and evaluation results together for reproducibility.
+The script refuses to run without CUDA. The current data pipeline masks system and user
+prompt tokens with `-100`, so the loss is computed only over assistant response tokens;
+padding labels are masked by the sequence collator as well. A dependency-light unit test
+covers this behavior, and the `Training data validation` GitHub Actions workflow checks
+Python syntax, JSONL schema, and the masking tests on training-related changes.
+
+It saves a PEFT adapter and tokenizer; it does not modify or overwrite the base model.
+Keep the adapter, base-model revision, dataset hash, training arguments, and evaluation
+results together for reproducibility.
 
 ## Evaluation gate
 
