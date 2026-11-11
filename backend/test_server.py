@@ -185,6 +185,97 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIsNone(stub.error_result)
         fallback.assert_not_called()
 
+    def test_external_provider_stream_sends_tokens_and_persists_complete_turn(self):
+        import importlib.util
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_provider_stream_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+
+        class StubHandler:
+            def __init__(self):
+                self.events = []
+                self.headers_sent = 0
+                self.errors = []
+            def client_disconnected(self):
+                return False
+            def send_sse_headers(self):
+                self.headers_sent += 1
+            def send_sse_event(self, event):
+                self.events.append(event)
+            def send_json(self, status, payload):
+                self.errors.append((status, payload))
+
+        stub = StubHandler()
+        def fake_stream(messages, emit):
+            emit("Hello ")
+            emit("world")
+            return "Hello world", "provider-test"
+        with patch.object(module.adaptive, "stream_answer_with_provider", side_effect=fake_stream):
+            with patch.object(module, "save_message") as save:
+                module.Handler.stream_external_provider_response(
+                    stub, "conversation-test", "question", [], "user-test")
+        self.assertEqual(stub.headers_sent, 1)
+        self.assertEqual([event["type"] for event in stub.events], ["token", "token", "done"])
+        self.assertEqual("".join(event.get("token", "") for event in stub.events), "Hello world")
+        self.assertEqual(stub.events[-1]["engine"], "provider-test")
+        self.assertEqual(save.call_count, 2)
+        self.assertEqual(stub.errors, [])
+
+    def test_interrupted_external_stream_is_not_persisted_as_complete(self):
+        import importlib.util
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_interrupted_stream_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+
+        class StubHandler:
+            def __init__(self):
+                self.events = []
+                self.headers_sent = 0
+                self.errors = []
+            def client_disconnected(self):
+                return False
+            def send_sse_headers(self):
+                self.headers_sent += 1
+            def send_sse_event(self, event):
+                self.events.append(event)
+            def send_json(self, status, payload):
+                self.errors.append((status, payload))
+
+        stub = StubHandler()
+        def interrupted(messages, emit):
+            emit("partial")
+            raise RuntimeError("upstream interrupted")
+        with patch.object(module.adaptive, "stream_answer_with_provider", side_effect=interrupted):
+            with patch.object(module, "save_message") as save:
+                module.Handler.stream_external_provider_response(
+                    stub, "conversation-test", "question", [], "user-test")
+        self.assertEqual(stub.headers_sent, 1)
+        self.assertEqual([event["type"] for event in stub.events], ["token", "error"])
+        save.assert_not_called()
+        self.assertEqual(stub.errors, [])
+
     def test_history_budget_preserves_recent_messages(self):
         import importlib.util
         with tempfile.TemporaryDirectory() as tmp:
