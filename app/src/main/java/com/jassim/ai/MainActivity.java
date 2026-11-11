@@ -1470,7 +1470,7 @@ public class MainActivity extends Activity {
 
         EditText field = new EditText(this);
         field.setSingleLine(true);
-        field.setHint("https://your-server.trycloudflare.com");
+        field.setHint(DEFAULT_SERVER_URL);
         field.setText(prefs.getString("endpoint", DEFAULT_SERVER_URL));
         fields.addView(field);
 
@@ -1490,8 +1490,10 @@ public class MainActivity extends Activity {
             .setPositiveButton("حفظ وفحص", (d, w) -> {
                 String value = field.getText().toString().trim();
                 String token = tokenField.getText().toString().trim();
-                if (!value.isEmpty() && !value.startsWith("https://")) {
-                    Toast.makeText(this, "الحماية مفعّلة: يجب استخدام رابط HTTPS فقط", Toast.LENGTH_LONG).show();
+                if (!TrustedEndpointPolicy.isTrusted(value)) {
+                    Toast.makeText(this,
+                        "لأمان الحسابات، هذا الإصدار يقبل خادم Mahdia AI الرسمي فقط",
+                        Toast.LENGTH_LONG).show();
                     return;
                 }
                 if (value.isEmpty()) {
