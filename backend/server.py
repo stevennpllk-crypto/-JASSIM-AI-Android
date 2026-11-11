@@ -516,6 +516,20 @@ class Handler(BaseHTTPRequestHandler):
                     "retry_after_seconds": 30,
                     "conversation_id": conversation_id
                 })
+        except Exception:
+            # Persistence and unexpected server errors must be visible to the
+            # streaming client; save_turn rolls back the incomplete turn.
+            if headers_sent:
+                try:
+                    self.send_sse_event({"type": "error", "error": "persistence_failed"})
+                except (BrokenPipeError, ConnectionResetError, OSError):
+                    pass
+            else:
+                self.send_json(500, {
+                    "error": "persistence_failed",
+                    "message": "تعذر حفظ المحادثة. حاول مجدداً.",
+                    "conversation_id": conversation_id
+                })
 
     def stream_chat_response(self, conversation_id, message, context, user_id):
         # Avoid a long Ollama connection timeout on hosts where no local model
