@@ -149,6 +149,8 @@ def _stream_request(provider, messages, max_tokens=2048, timeout=None, on_delta=
     answer = "".join(parts).strip()
     if not answer:
         raise RuntimeError("empty_provider_stream")
+    if not saw_done:
+        raise RuntimeError("incomplete_provider_stream")
     return answer, (time.monotonic() - started) * 1000
 
 
