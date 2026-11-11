@@ -58,7 +58,7 @@ class AdaptiveRouterTests(unittest.TestCase):
         provider.pop("key_env", None)
         adaptive.PROVIDERS = [provider]
 
-        def fake_request(provider, messages, max_tokens=256):
+        def fake_request(provider, messages, max_tokens=256, timeout=None):
             calls.append(messages)
             return "تونس", 123
 
@@ -73,6 +73,47 @@ class AdaptiveRouterTests(unittest.TestCase):
             adaptive._request = original_request
             adaptive.PROVIDERS = old_providers
             adaptive.ENABLE_PUBLIC_PROVIDERS = old_enabled
+
+
+    def test_external_fallback_bounds_each_provider_attempt(self):
+        providers = [
+            {"id": "jarvisclaw", "url": "https://example.invalid", "model": "test"},
+            {"id": "ovh", "url": "https://example.invalid", "model": "test"},
+        ]
+        ranked = [{"id": "jarvisclaw"}, {"id": "ovh"}]
+        with patch.object(adaptive, "ALLOW_EXTERNAL_CHAT", True), \
+             patch.object(adaptive, "ENABLE_PUBLIC_PROVIDERS", True), \
+             patch.object(adaptive, "PROVIDERS", providers), \
+             patch.object(adaptive, "PROVIDER_ATTEMPT_TIMEOUT", 7), \
+             patch.object(adaptive, "PROVIDER_TOTAL_TIMEOUT", 30), \
+             patch.object(adaptive, "provider_stats", return_value=ranked), \
+             patch.object(adaptive, "_request", side_effect=[
+                 TimeoutError("first provider timed out"), ("answer", 123)
+             ]) as request:
+            answer, provider = adaptive.answer_with_provider(
+                [{"role": "user", "content": "test"}]
+            )
+        self.assertEqual((answer, provider), ("answer", "ovh"))
+        self.assertEqual(request.call_count, 2)
+        self.assertEqual(request.call_args_list[0].kwargs["timeout"], 7)
+        self.assertEqual(request.call_args_list[1].kwargs["timeout"], 7)
+
+    def test_external_fallback_stops_when_total_budget_is_exhausted(self):
+        providers = [
+            {"id": "jarvisclaw", "url": "https://example.invalid", "model": "test"},
+            {"id": "ovh", "url": "https://example.invalid", "model": "test"},
+        ]
+        ranked = [{"id": "jarvisclaw"}, {"id": "ovh"}]
+        with patch.object(adaptive, "ALLOW_EXTERNAL_CHAT", True), \
+             patch.object(adaptive, "ENABLE_PUBLIC_PROVIDERS", True), \
+             patch.object(adaptive, "PROVIDERS", providers), \
+             patch.object(adaptive, "PROVIDER_TOTAL_TIMEOUT", 10), \
+             patch.object(adaptive, "provider_stats", return_value=ranked), \
+             patch.object(adaptive.time, "monotonic", side_effect=[100.0, 111.0]), \
+             patch.object(adaptive, "_request", side_effect=TimeoutError("timeout")) as request:
+            with self.assertRaisesRegex(RuntimeError, "provider_budget_exhausted"):
+                adaptive.answer_with_provider([{"role": "user", "content": "test"}])
+        request.assert_not_called()
 
 
 if __name__ == "__main__":
