@@ -1,4 +1,5 @@
 name: Build JASSIM AI APK
+# CI validation for the fast local-model availability routing path.
 
 on:
   push:
