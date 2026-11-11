@@ -5,6 +5,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from data_utils import encode_assistant_only
+
 import torch
 from datasets import Dataset
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
@@ -12,7 +14,7 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
-    DataCollatorForLanguageModeling,
+    DataCollatorForSeq2Seq,
     Trainer,
     TrainingArguments,
 )
@@ -24,12 +26,18 @@ def read_jsonl(path: Path):
         if not line.strip():
             continue
         item = json.loads(line)
-        if not isinstance(item.get("instruction"), str) or not isinstance(item.get("output"), str):
-            raise ValueError(f"line {line_no}: instruction and output strings are required")
+        if not isinstance(item, dict):
+            raise ValueError(f"line {line_no}: each row must be a JSON object")
+        if not isinstance(item.get("instruction"), str) or not item["instruction"].strip():
+            raise ValueError(f"line {line_no}: a non-empty instruction string is required")
+        if not isinstance(item.get("output"), str) or not item["output"].strip():
+            raise ValueError(f"line {line_no}: a non-empty output string is required")
         messages = []
         if item["instruction"].strip():
             messages.append({"role": "system", "content": item["instruction"].strip()})
         user_input = item.get("input", "")
+        if not isinstance(user_input, str):
+            raise ValueError(f"line {line_no}: input must be a string")
         messages.append({"role": "user", "content": user_input.strip() or "ابدأ."})
         messages.append({"role": "assistant", "content": item["output"].strip()})
         rows.append({"messages": messages})
@@ -63,20 +71,13 @@ def main():
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    def render(row):
-        return {"text": tokenizer.apply_chat_template(
-            row["messages"], tokenize=False, add_generation_prompt=False
-        )}
+    ds = Dataset.from_list(rows)
 
-    ds = Dataset.from_list(rows).map(render)
+    def tokenize_row(row):
+        return encode_assistant_only(tokenizer, row["messages"], args.max_length)
 
-    def tokenize(batch):
-        return tokenizer(
-            batch["text"], truncation=True, max_length=args.max_length,
-            padding=False, add_special_tokens=False
-        )
+    tokenized = ds.map(tokenize_row, remove_columns=ds.column_names)
 
-    tokenized = ds.map(tokenize, batched=True, remove_columns=ds.column_names)
     quant = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
@@ -116,7 +117,9 @@ def main():
         model=model,
         args=training_args,
         train_dataset=tokenized,
-        data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False),
+        data_collator=DataCollatorForSeq2Seq(
+            tokenizer=tokenizer, model=model, padding=True, label_pad_token_id=-100
+        ),
     )
     result = trainer.train()
     trainer.save_model(str(output_dir))
