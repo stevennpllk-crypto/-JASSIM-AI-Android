@@ -11,10 +11,14 @@ class AdaptiveRouterTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.old_path = adaptive.DB_PATH
+        self.old_public_providers = adaptive.ENABLE_PUBLIC_PROVIDERS
+        # Provider-routing unit tests opt into isolated test doubles only.
+        adaptive.ENABLE_PUBLIC_PROVIDERS = True
         adaptive.DB_PATH = Path(self.tmp.name) / "test.db"
 
     def tearDown(self):
         adaptive.DB_PATH = self.old_path
+        adaptive.ENABLE_PUBLIC_PROVIDERS = self.old_public_providers
         self.tmp.cleanup()
 
     def test_external_chat_is_disabled_by_default(self):
