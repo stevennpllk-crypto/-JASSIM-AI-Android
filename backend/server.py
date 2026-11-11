@@ -210,6 +210,28 @@ def save_message(conversation_id, role, content, user_id="legacy-owner"):
             db.close()
 
 
+def save_turn(conversation_id, user_message, assistant_message, user_id="legacy-owner"):
+    """Persist a complete user/assistant turn atomically."""
+    with DB_LOCK:
+        db = connect_db()
+        try:
+            now = _ensure_conversation_owner(db, conversation_id, user_id)
+            db.execute(
+                "INSERT INTO messages(conversation_id, role, content, created_at) VALUES(?,?,?,?)",
+                (conversation_id, "user", user_message, now)
+            )
+            db.execute(
+                "INSERT INTO messages(conversation_id, role, content, created_at) VALUES(?,?,?,?)",
+                (conversation_id, "assistant", assistant_message, now)
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
+
 def get_memory(conversation_id, user_id="legacy-owner"):
     with DB_LOCK:
         db = connect_db()
@@ -474,8 +496,7 @@ class Handler(BaseHTTPRequestHandler):
                     "conversation_id": conversation_id
                 })
                 return
-            save_message(conversation_id, "user", message, user_id)
-            save_message(conversation_id, "assistant", answer, user_id)
+            save_turn(conversation_id, message, answer, user_id)
             self.send_sse_event({
                 "type": "done", "conversation_id": conversation_id, "engine": provider
             })
@@ -568,8 +589,7 @@ class Handler(BaseHTTPRequestHandler):
                 answer = "".join(answer_parts).strip()
                 if not completed or not answer:
                     raise RuntimeError("ollama_stream_incomplete")
-                save_message(conversation_id, "user", message, user_id)
-                save_message(conversation_id, "assistant", answer, user_id)
+                save_turn(conversation_id, message, answer, user_id)
                 self.send_sse_event({
                     "type": "done",
                     "conversation_id": conversation_id,
@@ -929,8 +949,7 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 set_memory(conversation_id, memory_text, identity["user_id"])
                 answer = "حفظت هذه المعلومة في ذاكرة هذه المحادثة. يمكنك عرضها بقول «ماذا تتذكر عني؟» أو مسحها بقول «انسَ ذاكرتي»."
-                save_message(conversation_id, "user", message, identity["user_id"])
-                save_message(conversation_id, "assistant", answer, identity["user_id"])
+                save_turn(conversation_id, message, answer, identity["user_id"])
                 if streaming:
                     self.send_sse_static(answer, conversation_id, "memory")
                 else:
@@ -939,8 +958,7 @@ class Handler(BaseHTTPRequestHandler):
             if command == "show":
                 saved_memory = get_memory(conversation_id, identity["user_id"])
                 answer = ("المحفوظ في ذاكرة هذه المحادثة: " + saved_memory) if saved_memory else "لا توجد معلومات محفوظة في ذاكرة هذه المحادثة."
-                save_message(conversation_id, "user", message, identity["user_id"])
-                save_message(conversation_id, "assistant", answer, identity["user_id"])
+                save_turn(conversation_id, message, answer, identity["user_id"])
                 if streaming:
                     self.send_sse_static(answer, conversation_id, "memory")
                 else:
@@ -949,8 +967,7 @@ class Handler(BaseHTTPRequestHandler):
             if command == "clear":
                 clear_memory(conversation_id, identity["user_id"])
                 answer = "تم مسح ذاكرة هذه المحادثة."
-                save_message(conversation_id, "user", message, identity["user_id"])
-                save_message(conversation_id, "assistant", answer, identity["user_id"])
+                save_turn(conversation_id, message, answer, identity["user_id"])
                 if streaming:
                     self.send_sse_static(answer, conversation_id, "memory")
                 else:
@@ -975,8 +992,7 @@ class Handler(BaseHTTPRequestHandler):
                     "conversation_id": conversation_id
                 })
                 return
-            save_message(conversation_id, "user", message, identity["user_id"])
-            save_message(conversation_id, "assistant", answer, identity["user_id"])
+            save_turn(conversation_id, message, answer, identity["user_id"])
             self.send_json(200, {
                 "answer": answer, "reply": answer,
                 "conversation_id": conversation_id, "engine": engine
