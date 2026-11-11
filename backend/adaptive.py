@@ -175,10 +175,10 @@ def stream_answer_with_provider(messages, on_delta):
                 provider, messages, max_tokens=2048, timeout=attempt_timeout,
                 on_delta=lambda token: (emitted.append(token), on_delta(token))
             )
-            _record(provider["id"], latency, 0.65)
+            _record(provider["id"], latency, None)
             return answer, provider["id"]
         except Exception as exc:
-            _record(provider["id"], 0, 0, type(exc).__name__ + ": " + str(exc))
+            _record(provider["id"], 0, None, type(exc).__name__ + ": " + str(exc))
             if emitted:
                 raise RuntimeError("provider_stream_interrupted:" + provider["id"]) from exc
             errors.append(provider["id"])
@@ -192,7 +192,7 @@ def _quality(answer, needles):
     return 0.25 + (0.75 * matched / max(1, len(needles)))
 
 
-def _record(provider_id, latency, quality, error=""):
+def _record(provider_id, latency, quality=None, error=""):
     db = _db()
     try:
         row = db.execute("SELECT attempts, successes, avg_latency_ms, quality_score FROM provider_scores WHERE provider_id=?", (provider_id,)).fetchone()
@@ -200,10 +200,21 @@ def _record(provider_id, latency, quality, error=""):
             attempts, successes, avg_latency, old_quality = row
             new_attempts = attempts + 1
             new_successes = successes + (1 if not error else 0)
-            new_latency = latency if not attempts else (avg_latency * 0.7 + latency * 0.3)
-            new_quality = quality if not attempts else (old_quality * 0.7 + quality * 0.3)
+            # Failed requests do not make a provider appear faster, and live
+            # chat has no ground-truth label from which to infer answer quality.
+            new_latency = (
+                latency if not attempts else
+                (avg_latency * 0.7 + latency * 0.3 if not error and latency > 0 else avg_latency)
+            )
+            new_quality = (
+                old_quality if quality is None else
+                (quality if not attempts else old_quality * 0.7 + quality * 0.3)
+            )
         else:
-            new_attempts, new_successes, new_latency, new_quality = 1, (0 if error else 1), latency, quality
+            new_attempts = 1
+            new_successes = 0 if error else 1
+            new_latency = latency if not error and latency > 0 else 0
+            new_quality = 0 if quality is None else quality
         db.execute("""INSERT INTO provider_scores(provider_id,attempts,successes,avg_latency_ms,quality_score,last_success,last_error)
             VALUES(?,?,?,?,?,?,?) ON CONFLICT(provider_id) DO UPDATE SET
             attempts=excluded.attempts, successes=excluded.successes, avg_latency_ms=excluded.avg_latency_ms,
@@ -228,8 +239,10 @@ def provider_stats():
         values = known.get(provider["id"], (0, 0, 0, 0, None, None))
         attempts, successes, latency, quality, last_success, last_error = values
         reliability = successes / attempts if attempts else 0.5
-        # Quality dominates; reliability and latency break ties.
-        score = (quality * 0.65) + (reliability * 0.25) + (max(0, 1 - latency / 30000) * 0.10 if latency else 0.05)
+        # Route on observable service behavior only. Answer quality requires
+        # benchmark labels and must never be inferred from live-chat success.
+        latency_score = max(0, 1 - latency / 30000) if latency else 0.5
+        score = (reliability * 0.75) + (latency_score * 0.25)
         result.append({
             "id": provider["id"], "name": provider["name"], "model": provider["model"],
             "attempts": attempts, "successes": successes,
