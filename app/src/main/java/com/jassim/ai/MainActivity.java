@@ -6,6 +6,7 @@ import android.app.Dialog;
 import android.content.Intent;
 import android.speech.RecognizerIntent;
 import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
 import java.util.Locale;
 import android.os.Bundle;
 import android.graphics.Color;
@@ -452,6 +453,22 @@ public class MainActivity extends Activity {
                 textToSpeechReady = languageResult != TextToSpeech.LANG_MISSING_DATA &&
                         languageResult != TextToSpeech.LANG_NOT_SUPPORTED;
                 textToSpeech.setSpeechRate(0.96f);
+                textToSpeech.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                    @Override public void onStart(String utteranceId) { }
+                    @Override public void onDone(String utteranceId) {
+                        if (utteranceId != null && utteranceId.startsWith("jassim-") &&
+                                utteranceId.endsWith("-last")) {
+                            runOnUiThread(() -> {
+                                if (speakButton != null) speakButton.setText("🔊 استمع");
+                            });
+                        }
+                    }
+                    @Override public void onError(String utteranceId) {
+                        runOnUiThread(() -> {
+                            if (speakButton != null) speakButton.setText("🔊 استمع");
+                        });
+                    }
+                });
                 if (languageResult == TextToSpeech.LANG_MISSING_DATA ||
                         languageResult == TextToSpeech.LANG_NOT_SUPPORTED) {
                     runOnUiThread(() -> {
@@ -468,6 +485,8 @@ public class MainActivity extends Activity {
     }
 
     private void startVoiceInput() {
+        status.setText("● جارٍ فتح الميكروفون — تحدث بوضوح");
+        status.setTextColor(0xFF80B8FF);
         Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                 RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
@@ -483,6 +502,20 @@ public class MainActivity extends Activity {
         }
     }
 
+    private java.util.ArrayList<String> splitSpeechText(String text) {
+        java.util.ArrayList<String> chunks = new java.util.ArrayList<>();
+        String remaining = text == null ? "" : text.trim();
+        final int maxChunk = 3200;
+        while (remaining.length() > maxChunk) {
+            int cut = remaining.lastIndexOf(' ', maxChunk);
+            if (cut < 1000) cut = maxChunk;
+            chunks.add(remaining.substring(0, cut).trim());
+            remaining = remaining.substring(cut).trim();
+        }
+        if (!remaining.isEmpty()) chunks.add(remaining);
+        return chunks;
+    }
+
     private void speakLatestAnswer() {
         if (textToSpeech == null || !textToSpeechReady || latestAssistantText.trim().isEmpty()) {
             Toast.makeText(this, "لا توجد إجابة لقراءتها بعد", Toast.LENGTH_SHORT).show();
@@ -494,7 +527,13 @@ public class MainActivity extends Activity {
             return;
         }
         textToSpeech.setLanguage(new Locale("ar"));
-        textToSpeech.speak(latestAssistantText, TextToSpeech.QUEUE_FLUSH, null, "jassim-latest-answer");
+        java.util.ArrayList<String> chunks = splitSpeechText(latestAssistantText);
+        for (int i = 0; i < chunks.size(); i++) {
+            boolean last = i == chunks.size() - 1;
+            textToSpeech.speak(chunks.get(i),
+                    i == 0 ? TextToSpeech.QUEUE_FLUSH : TextToSpeech.QUEUE_ADD,
+                    null, "jassim-" + i + (last ? "-last" : ""));
+        }
         speakButton.setText("■ إيقاف الصوت");
     }
 
