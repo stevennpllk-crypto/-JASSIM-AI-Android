@@ -127,9 +127,9 @@ class AdaptiveRouterTests(unittest.TestCase):
                 return False
             def __iter__(self):
                 return iter([
-                    b'data: {"choices":[{"delta":{"content":"Hello "},"finish_reason":null}]}\\n',
-                    b'data: {"choices":[{"delta":{"content":"world"},"finish_reason":null}]}\\n',
-                    b'data: [DONE]\\n',
+                    b'data: {"choices":[{"delta":{"content":"Hello "},"finish_reason":null}]}\n',
+                    b'data: {"choices":[{"delta":{"content":"world"},"finish_reason":null}]}\n',
+                    b'data: [DONE]\n',
                 ])
 
         emitted = []
@@ -152,7 +152,7 @@ class AdaptiveRouterTests(unittest.TestCase):
                 return False
             def __iter__(self):
                 return iter([
-                    b'data: {"choices":[{"delta":{"content":"partial"},"finish_reason":null}]}\\n'
+                    b'data: {"choices":[{"delta":{"content":"partial"},"finish_reason":null}]}\n'
                 ])
 
         provider = {"id": "test", "url": "https://example.invalid", "model": "test"}
