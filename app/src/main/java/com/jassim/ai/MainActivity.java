@@ -3,6 +3,10 @@ package com.jassim.ai;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
+import android.content.Intent;
+import android.speech.RecognizerIntent;
+import android.speech.tts.TextToSpeech;
+import java.util.Locale;
 import android.os.Bundle;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -42,6 +46,10 @@ public class MainActivity extends Activity {
     private Button sendButton;
     private Button stopButton;
     private Button improveButton;
+    private Button speakButton;
+    private TextToSpeech textToSpeech;
+    private String latestAssistantText = "";
+    private static final int REQUEST_SPEECH_INPUT = 4101;
     private volatile boolean adminSession;
     private volatile HttpURLConnection activeChatConnection;
     private volatile boolean cancelRequested;
@@ -116,6 +124,7 @@ public class MainActivity extends Activity {
         prefs = getSharedPreferences("jassim", MODE_PRIVATE);
         ensureConversationId();
         buildUi();
+        initTextToSpeech();
         // Discover the current Colab tunnel from the stable GitHub Pages registry.
         status.setText("● جارٍ اكتشاف عنوان الخادم...");
         status.setTextColor(0xFFFFC36B);
@@ -365,6 +374,22 @@ public class MainActivity extends Activity {
             return false;
         });
         composerShell.addView(input, new LinearLayout.LayoutParams(0, -2, 1));
+        Button voiceInputButton = new Button(this);
+        voiceInputButton.setText("🎙");
+        voiceInputButton.setTextSize(17);
+        voiceInputButton.setTextColor(0xFFE5E9FF);
+        voiceInputButton.setAllCaps(false);
+        voiceInputButton.setMinWidth(0);
+        voiceInputButton.setMinimumWidth(0);
+        voiceInputButton.setMinHeight(dp(40));
+        voiceInputButton.setMinimumHeight(dp(40));
+        voiceInputButton.setPadding(dp(7), 0, dp(7), 0);
+        voiceInputButton.setBackground(rounded(0xFF263B61, 13));
+        voiceInputButton.setContentDescription("التحدث لإملاء رسالة صوتية");
+        voiceInputButton.setOnClickListener(v -> startVoiceInput());
+        LinearLayout.LayoutParams voiceLp = new LinearLayout.LayoutParams(dp(44), dp(40));
+        voiceLp.setMargins(dp(4), 0, 0, 0);
+        composerShell.addView(voiceInputButton, voiceLp);
 
         stopButton = new Button(this);
         stopButton.setText("إيقاف");
@@ -403,6 +428,11 @@ public class MainActivity extends Activity {
         sendLp.setMargins(dp(5), 0, 0, 0);
         composerShell.addView(sendButton, sendLp);
         root.addView(composerShell, shellLp);
+        speakButton = actionButton("🔊 استمع", "قراءة آخر إجابة بصوت عربي", () -> speakLatestAnswer());
+        speakButton.setEnabled(false);
+        LinearLayout.LayoutParams speakLp = new LinearLayout.LayoutParams(-2, dp(34));
+        speakLp.setMargins(0, dp(5), 0, 0);
+        root.addView(speakButton, speakLp);
 
         TextView footer = new TextView(this);
         footer.setText("Mahdia AI  •  محادثاتك تبدأ من هنا");
@@ -414,8 +444,85 @@ public class MainActivity extends Activity {
         setContentView(root);
     }
 
+    private void initTextToSpeech() {
+        textToSpeech = new TextToSpeech(this, result -> {
+            if (result == TextToSpeech.SUCCESS && textToSpeech != null) {
+                int languageResult = textToSpeech.setLanguage(new Locale("ar"));
+                textToSpeech.setSpeechRate(0.96f);
+                if (languageResult == TextToSpeech.LANG_MISSING_DATA ||
+                        languageResult == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    runOnUiThread(() -> {
+                        if (speakButton != null) speakButton.setEnabled(false);
+                    });
+                } else {
+                    runOnUiThread(() -> {
+                        if (speakButton != null) speakButton.setEnabled(!latestAssistantText.isEmpty());
+                    });
+                }
+            }
+        });
+    }
+
+    private void startVoiceInput() {
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ar-TN");
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ar-TN");
+        intent.putExtra(RecognizerIntent.EXTRA_PROMPT, "تحدث الآن — Mahdia AI يستمع إليك");
+        intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+        intent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true);
+        try {
+            startActivityForResult(intent, REQUEST_SPEECH_INPUT);
+        } catch (android.content.ActivityNotFoundException e) {
+            Toast.makeText(this, "ميزة التعرف على الصوت غير مثبتة. تحقق من محرك الصوت على جهازك.", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void speakLatestAnswer() {
+        if (textToSpeech == null || latestAssistantText.trim().isEmpty()) {
+            Toast.makeText(this, "لا توجد إجابة لقراءتها بعد", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (textToSpeech.isSpeaking()) {
+            textToSpeech.stop();
+            speakButton.setText("🔊 استمع");
+            return;
+        }
+        textToSpeech.setLanguage(new Locale("ar"));
+        textToSpeech.speak(latestAssistantText, TextToSpeech.QUEUE_FLUSH, null, "jassim-latest-answer");
+        speakButton.setText("■ إيقاف الصوت");
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_SPEECH_INPUT) return;
+        if (resultCode == RESULT_OK && data != null) {
+            java.util.ArrayList<String> results =
+                    data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+            if (results != null && !results.isEmpty() && results.get(0) != null) {
+                String recognized = results.get(0).trim();
+                if (!recognized.isEmpty()) {
+                    String current = input.getText().toString().trim();
+                    input.setText(current.isEmpty() ? recognized : current + " " + recognized);
+                    input.setSelection(input.getText().length());
+                    input.requestFocus();
+                    status.setText("● تم تحويل صوتك إلى نص — راجعه ثم اضغط إرسال");
+                    status.setTextColor(0xFF62DCA8);
+                }
+            }
+        } else {
+            status.setText("● لم يتم التقاط كلام واضح؛ حاول مجدداً");
+            status.setTextColor(0xFFFFC36B);
+        }
+    }
+
     private TextView addMessage(String who, String text) {
         boolean isUser = "أنت".equals(who);
+        if (!isUser && text != null && !text.trim().isEmpty()) {
+            latestAssistantText = text;
+            if (speakButton != null) speakButton.setEnabled(textToSpeech != null);
+        }
         TextView bubble = new TextView(this);
         bubble.setText(who + "\n" + text);
         bubble.setTextColor(0xFFF1F4FF);
@@ -1542,5 +1649,10 @@ public class MainActivity extends Activity {
     @Override protected void onDestroy() {
         super.onDestroy();
         executor.shutdown();
+        if (textToSpeech != null) {
+            textToSpeech.stop();
+            textToSpeech.shutdown();
+            textToSpeech = null;
+        }
     }
 }
