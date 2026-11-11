@@ -350,7 +350,28 @@ def ollama_status():
         return {"reachable": False, "model_ready": False, "model_loaded": False}
 
 
+def answer_with_external_fallback(messages):
+    """Use a configured provider immediately when the local model is unavailable."""
+    try:
+        answer, provider = adaptive.answer_with_provider(
+            [{"role": "system", "content": SYSTEM_PROMPT}] + messages
+        )
+        return answer, provider
+    except RuntimeError:
+        return (
+            "محرك الذكاء الاصطناعي غير متاح حالياً. "
+            "لم يتمكن الخادم من الوصول إلى Ollama أو إلى مزود احتياطي مفعّل."
+        ), "fallback"
+
+
 def generate_answer(messages):
+    # Railway currently has no reachable local Ollama model. Probe readiness
+    # first (bounded to one second) instead of waiting for the 240s inference
+    # timeout before routing to an already-enabled external provider.
+    model_state = ollama_status()
+    if not model_state["reachable"] or not model_state["model_ready"]:
+        return answer_with_external_fallback(messages)
+
     if not INFERENCE_SEMAPHORE.acquire(timeout=OLLAMA_QUEUE_TIMEOUT):
         return (
             "محرك الذكاء الاصطناعي مشغول بطلب آخر. انتظر قليلاً ثم أعد المحاولة؛ "
@@ -360,16 +381,7 @@ def generate_answer(messages):
         try:
             return ask_ollama(messages), "ollama"
         except (urllib.error.URLError, TimeoutError, ValueError, RuntimeError, OSError):
-            try:
-                answer, provider = adaptive.answer_with_provider(
-                    [{"role": "system", "content": SYSTEM_PROMPT}] + messages
-                )
-                return answer, provider
-            except RuntimeError:
-                return (
-                    "محرك الذكاء الاصطناعي غير متاح حالياً. "
-                    "لم يتمكن الخادم من الوصول إلى Ollama أو إلى مزود احتياطي مفعّل."
-                ), "fallback"
+            return answer_with_external_fallback(messages)
     finally:
         INFERENCE_SEMAPHORE.release()
 
@@ -435,6 +447,27 @@ class Handler(BaseHTTPRequestHandler):
         self.send_sse_event({"type": "done", "conversation_id": conversation_id, "engine": engine})
 
     def stream_chat_response(self, conversation_id, message, context, user_id):
+        # Avoid a long Ollama connection timeout on hosts where no local model
+        # is provisioned. The readiness probe is bounded and fallback routing
+        # can begin immediately.
+        model_state = ollama_status()
+        if not model_state["reachable"] or not model_state["model_ready"]:
+            try:
+                answer, provider = adaptive.answer_with_provider(
+                    [{"role": "system", "content": SYSTEM_PROMPT}] + context
+                )
+                save_message(conversation_id, "user", message, user_id)
+                save_message(conversation_id, "assistant", answer, user_id)
+                self.send_sse_static(answer, conversation_id, provider)
+            except RuntimeError:
+                self.send_json(503, {
+                    "error": "model_unavailable",
+                    "message": "محرك الذكاء الاصطناعي غير متاح. لم يُفعّل مزود خارجي أو تعذر الوصول إليه.",
+                    "retry_after_seconds": 30,
+                    "conversation_id": conversation_id
+                })
+            return
+
         if not INFERENCE_SEMAPHORE.acquire(timeout=OLLAMA_QUEUE_TIMEOUT):
             self.send_json(503, {
                 "error": "model_busy",
