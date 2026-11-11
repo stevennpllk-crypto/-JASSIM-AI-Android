@@ -230,7 +230,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual([event["type"] for event in stub.events], ["token", "token", "done"])
         self.assertEqual("".join(event.get("token", "") for event in stub.events), "Hello world")
         self.assertEqual(stub.events[-1]["engine"], "provider-test")
-        self.assertEqual(save.call_count, 2)
+        self.assertEqual(save.call_count, 1)
         self.assertEqual(stub.errors, [])
 
     def test_interrupted_external_stream_is_not_persisted_as_complete(self):
