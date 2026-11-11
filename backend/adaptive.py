@@ -1,7 +1,7 @@
-"""Local-first model evaluation helpers for JASSIM AI.
+"""Synthetic benchmark helpers and guarded provider-routing code for JASSIM AI.
 
-Public-provider routing is hard-disabled in this build. Evaluation of an actual
-JASSIM model must use the private Ollama endpoint and synthetic benchmark cases.
+Public-provider routing is hard-disabled in this build. This module does not
+claim that a local Ollama model is installed, reachable, or benchmarked.
 """
 import ast
 import json
