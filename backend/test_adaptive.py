@@ -96,6 +96,7 @@ class AdaptiveRouterTests(unittest.TestCase):
         cases = {case["id"]: case for case in adaptive.EVALUATION_CASES}
         self.assertTrue(adaptive._grade_benchmark_case(cases["ar_capital_01"], "تونس."))
         self.assertTrue(adaptive._grade_benchmark_case(cases["math_multiply_01"], "323"))
+        self.assertTrue(adaptive._grade_benchmark_case(cases["math_multiply_01"], "٣٢٣"))
         self.assertFalse(adaptive._grade_benchmark_case(cases["math_multiply_01"], "324"))
         self.assertTrue(adaptive._grade_benchmark_case(
             cases["json_schema_01"], '{"name":"Ali","age":16}'))
