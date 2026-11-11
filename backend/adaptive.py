@@ -324,7 +324,7 @@ def evaluate_providers():
                 case_results.append({"id": case["id"], "category": case["category"], "passed": passed, "latency_ms": round(latency)})
             except Exception as exc:
                 failures += 1
-                _record(provider["id"], 0, 0, type(exc).__name__ + ": " + str(exc))
+                _record(provider["id"], 0, None, type(exc).__name__ + ": " + str(exc))
                 case_results.append({"id": case["id"], "category": case["category"], "passed": False, "error": type(exc).__name__})
         ordered = sorted(latencies)
         p95 = ordered[max(0, int(len(ordered) * 0.95 + 0.999999) - 1)] if ordered else None
