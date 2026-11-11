@@ -1242,12 +1242,31 @@ public class MainActivity extends Activity {
         rememberSession = remember.isChecked();
         options.addView(remember, new LinearLayout.LayoutParams(0, dp(48), 1));
         remember.setOnCheckedChangeListener((button, checked) -> {
+            String currentToken = readApiToken();
             rememberSession = checked;
-            prefs.edit().putBoolean("remember_session", checked).apply();
-            if (!checked && readApiToken().startsWith("jss_")) {
-                transientSessionToken = readApiToken();
+            if (checked) {
+                // If the user re-enables "Remember me" during an active
+                // temporary session, migrate that token into Android Keystore
+                // encrypted preferences instead of losing it on process restart.
+                if (!transientSessionToken.isEmpty() && currentToken.startsWith("jss_")) {
+                    try {
+                        saveApiToken(currentToken);
+                    } catch (Exception error) {
+                        rememberSession = false;
+                        prefs.edit().putBoolean("remember_session", false).apply();
+                        button.setChecked(false);
+                        Toast.makeText(this,
+                            "تعذر حفظ الجلسة بأمان؛ ستبقى مؤقتة على هذا الجهاز",
+                            Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                }
+            } else if (currentToken.startsWith("jss_")) {
+                // Keep the current login only in memory when the user opts out.
+                transientSessionToken = currentToken;
                 prefs.edit().remove("api_token_enc").remove("api_token_iv").remove("api_token").apply();
             }
+            prefs.edit().putBoolean("remember_session", checked).apply();
         });
         Button forgot = actionButton(uiText("نسيت كلمة المرور؟", "Forgot password?", "Mot de passe oublié ?"), uiText("استعادة كلمة المرور", "Password recovery", "Récupération du mot de passe"), () ->
             new AlertDialog.Builder(this)
