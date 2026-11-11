@@ -96,6 +96,92 @@ def _request(provider, messages, max_tokens=256, timeout=None):
     return answer, (time.monotonic() - started) * 1000
 
 
+
+def _stream_request(provider, messages, max_tokens=2048, timeout=None, on_delta=None):
+    """Read OpenAI-compatible SSE and emit text deltas as soon as they arrive."""
+    payload = json.dumps({
+        "model": provider["model"], "messages": messages, "stream": True,
+        "max_tokens": max_tokens, "temperature": 0.2
+    }).encode("utf-8")
+    headers = {"Content-Type": "application/json", "Accept": "text/event-stream"}
+    key_env = provider.get("key_env")
+    if key_env:
+        api_key = os.environ.get(key_env, "").strip()
+        if not api_key:
+            raise RuntimeError("provider_key_not_configured:" + provider["id"])
+        headers["Authorization"] = "Bearer " + api_key
+    request = urllib.request.Request(provider["url"], data=payload, headers=headers, method="POST")
+    started = time.monotonic()
+    request_timeout = TIMEOUT if timeout is None else max(1.0, min(float(timeout), float(TIMEOUT)))
+    parts = []
+    saw_done = False
+    with urllib.request.urlopen(request, timeout=request_timeout) as response:
+        for raw_line in response:
+            line = raw_line.decode("utf-8").strip()
+            if not line or line.startswith(":") or not line.startswith("data:"):
+                continue
+            data = line[5:].strip()
+            if data == "[DONE]":
+                saw_done = True
+                break
+            try:
+                item = json.loads(data)
+            except json.JSONDecodeError as exc:
+                raise RuntimeError("invalid_provider_stream_event") from exc
+            if item.get("error"):
+                raise RuntimeError("provider_stream_error")
+            choices = item.get("choices") or []
+            if not choices:
+                continue
+            choice = choices[0]
+            delta = choice.get("delta") or {}
+            token = delta.get("content")
+            if token is None and choice.get("message"):
+                # Some compatible endpoints ignore stream=true and return JSON.
+                token = choice["message"].get("content", "")
+            if isinstance(token, str) and token:
+                parts.append(token)
+                if on_delta:
+                    on_delta(token)
+            if choice.get("finish_reason"):
+                saw_done = True
+                break
+    answer = "".join(parts).strip()
+    if not answer:
+        raise RuntimeError("empty_provider_stream")
+    return answer, (time.monotonic() - started) * 1000
+
+
+def stream_answer_with_provider(messages, on_delta):
+    """Try providers in rank order; never switch after text reached the client."""
+    if not ALLOW_EXTERNAL_CHAT or not ENABLE_PUBLIC_PROVIDERS:
+        raise RuntimeError("external_chat_disabled")
+    ranked = provider_stats()
+    by_id = {item["id"]: item for item in _configured_providers()}
+    errors = []
+    deadline = time.monotonic() + PROVIDER_TOTAL_TIMEOUT
+    for item in ranked:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            errors.append("provider_budget_exhausted")
+            break
+        provider = by_id[item["id"]]
+        attempt_timeout = min(PROVIDER_ATTEMPT_TIMEOUT, remaining, TIMEOUT)
+        emitted = []
+        try:
+            answer, latency = _stream_request(
+                provider, messages, max_tokens=2048, timeout=attempt_timeout,
+                on_delta=lambda token: (emitted.append(token), on_delta(token))
+            )
+            _record(provider["id"], latency, 0.65)
+            return answer, provider["id"]
+        except Exception as exc:
+            _record(provider["id"], 0, 0, type(exc).__name__ + ": " + str(exc))
+            if emitted:
+                raise RuntimeError("provider_stream_interrupted:" + provider["id"]) from exc
+            errors.append(provider["id"])
+    raise RuntimeError("all_external_providers_failed:" + ",".join(errors))
+
 def _quality(answer, needles):
     text = answer.casefold()
     if len(answer.strip()) < 2:
