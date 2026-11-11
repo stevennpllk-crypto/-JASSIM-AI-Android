@@ -3,9 +3,13 @@
 Only synthetic prompts are used by the evaluator. Real conversation content is
 sent to public providers only when JASSIM_ALLOW_EXTERNAL_CHAT=true.
 """
+import ast
 import json
 import os
+import re
 import sqlite3
+import statistics
+import unicodedata
 import time
 import urllib.request
 import urllib.error
@@ -42,11 +46,58 @@ def _configured_providers():
         if not provider.get("key_env") or os.environ.get(provider["key_env"], "").strip()
     ]
 
+BENCHMARK_VERSION = "jassim-core-2026-11-v1"
 EVALUATION_CASES = [
-    {"messages": [{"role": "user", "content": "أجب بالعربية بكلمة واحدة: ما عاصمة تونس؟"}], "needles": ["تونس"]},
-    {"messages": [{"role": "user", "content": "احسب 17 × 19، وأعطني العدد فقط."}], "needles": ["323"]},
-    {"messages": [{"role": "user", "content": "Explain in one short English sentence what an API does."}], "needles": ["request", "software", "application", "communicate"]},
+    {"id":"ar_capital_01","category":"arabic","messages":[{"role":"user","content":"أجب بكلمة واحدة فقط: ما عاصمة تونس؟"}],"grader":"exact","expected":"تونس"},
+    {"id":"math_multiply_01","category":"math","messages":[{"role":"user","content":"احسب 17 × 19. أعد العدد فقط دون شرح."}],"grader":"number","expected":323},
+    {"id":"math_multistep_01","category":"reasoning","messages":[{"role":"user","content":"لدي 4 صناديق، في كل صندوق 12 كرة، ثم أضفت 7 كرات. كم كرة لدي؟ أجب بالعدد فقط."}],"grader":"number","expected":55},
+    {"id":"logic_chain_01","category":"reasoning","messages":[{"role":"user","content":"كل الزهور في الحديقة حمراء. الوردة زهرة في الحديقة. ما لون الوردة؟ أجب بكلمة واحدة."}],"grader":"exact","expected":"حمراء"},
+    {"id":"json_schema_01","category":"instructions","messages":[{"role":"user","content":"أخرج JSON صالحاً فقط بهذا الشكل: {\"name\":\"Ali\",\"age\":16}. لا تضف أي نص."}],"grader":"json","expected":{"name":"Ali","age":16}},
+    {"id":"python_ast_01","category":"coding","messages":[{"role":"user","content":"اكتب كود Python فقط لتعريف دالة اسمها add تأخذ a و b وتعيد a + b."}],"grader":"python_add"},
+    {"id":"english_api_01","category":"multilingual","messages":[{"role":"user","content":"In one short English sentence, explain what an API lets software do. Include the words request and response."}],"grader":"contains","expected":["request","response"]},
+    {"id":"french_translation_01","category":"multilingual","messages":[{"role":"user","content":"ترجم كلمة Hello إلى الفرنسية. أجب بكلمة واحدة."}],"grader":"exact","expected":"bonjour"}
 ]
+
+
+def _normalize_benchmark_text(value):
+    value = unicodedata.normalize("NFKC", str(value)).casefold().strip()
+    value = re.sub(r"^[\s\W_]+|[\s\W_]+$", "", value)
+    return re.sub(r"\s+", " ", value)
+
+
+def _grade_benchmark_case(case, answer):
+    grader = case["grader"]
+    if grader == "exact":
+        return _normalize_benchmark_text(answer) == _normalize_benchmark_text(case["expected"])
+    if grader == "number":
+        matches = re.findall(r"[-+]?\d+(?:\.\d+)?", str(answer).replace(",", ""))
+        return any(abs(float(value) - float(case["expected"])) <= 1e-9 for value in matches)
+    if grader == "json":
+        candidate = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", str(answer).strip(), flags=re.IGNORECASE)
+        try:
+            parsed = json.loads(candidate)
+        except (TypeError, ValueError):
+            return False
+        return isinstance(parsed, dict) and parsed == case["expected"]
+    if grader == "python_add":
+        candidate = re.sub(r"^\s*```(?:python)?\s*|\s*```\s*$", "", str(answer).strip(), flags=re.IGNORECASE)
+        try:
+            tree = ast.parse(candidate)
+        except (SyntaxError, ValueError, TypeError):
+            return False
+        functions = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "add"]
+        if len(functions) != 1:
+            return False
+        fn = functions[0]
+        args = [arg.arg for arg in fn.args.args]
+        if args != ["a", "b"] or len(fn.body) != 1 or not isinstance(fn.body[0], ast.Return):
+            return False
+        expr = fn.body[0].value
+        return isinstance(expr, ast.BinOp) and isinstance(expr.op, ast.Add) and isinstance(expr.left, ast.Name) and expr.left.id == "a" and isinstance(expr.right, ast.Name) and expr.right.id == "b"
+    if grader == "contains":
+        normalized = _normalize_benchmark_text(answer)
+        return all(_normalize_benchmark_text(word) in normalized for word in case["expected"])
+    return False
 
 
 def _db():
@@ -254,23 +305,40 @@ def provider_stats():
 
 
 def evaluate_providers():
-    """Benchmark only fixed synthetic prompts; never reads user conversation data."""
+    """Run versioned deterministic checks against synthetic prompts only."""
     if not ENABLE_PUBLIC_PROVIDERS:
-        return {"enabled": False, "tested": 0, "results": [], "message": "Public provider evaluation is disabled."}
+        return {"enabled": False, "benchmark_version": BENCHMARK_VERSION, "tested": 0, "results": [], "message": "Public provider evaluation is disabled."}
     results = []
     for provider in _configured_providers():
-        case_results = []
+        case_results, latencies = [], []
+        category_totals, failures = {}, 0
         for case in EVALUATION_CASES:
+            category = category_totals.setdefault(case["category"], {"passed": 0, "total": 0})
+            category["total"] += 1
             try:
-                answer, latency = _request(provider, case["messages"], max_tokens=120)
-                quality = _quality(answer, case["needles"])
-                _record(provider["id"], latency, quality)
-                case_results.append({"ok": True, "latency_ms": round(latency), "quality": round(quality, 2)})
+                answer, latency = _request(provider, case["messages"], max_tokens=256)
+                passed = _grade_benchmark_case(case, answer)
+                latencies.append(latency)
+                category["passed"] += int(passed)
+                _record(provider["id"], latency, 1.0 if passed else 0.0)
+                case_results.append({"id": case["id"], "category": case["category"], "passed": passed, "latency_ms": round(latency)})
             except Exception as exc:
+                failures += 1
                 _record(provider["id"], 0, 0, type(exc).__name__ + ": " + str(exc))
-                case_results.append({"ok": False, "error": type(exc).__name__})
-        results.append({"provider": provider["id"], "cases": case_results})
-    return {"enabled": True, "tested": len(results), "results": results, "ranking": provider_stats()}
+                case_results.append({"id": case["id"], "category": case["category"], "passed": False, "error": type(exc).__name__})
+        ordered = sorted(latencies)
+        p95 = ordered[max(0, int(len(ordered) * 0.95 + 0.999999) - 1)] if ordered else None
+        total, passed_count = len(case_results), sum(1 for item in case_results if item["passed"])
+        results.append({
+            "provider": provider["id"], "benchmark_version": BENCHMARK_VERSION,
+            "pass_rate": round(passed_count / total, 3) if total else 0,
+            "median_latency_ms": round(statistics.median(latencies)) if latencies else None,
+            "p95_latency_ms": round(p95) if p95 is not None else None,
+            "error_rate": round(failures / total, 3) if total else 0,
+            "categories": {name: {"passed": values["passed"], "total": values["total"], "pass_rate": round(values["passed"] / values["total"], 3)} for name, values in category_totals.items()},
+            "cases": case_results
+        })
+    return {"enabled": True, "benchmark_version": BENCHMARK_VERSION, "case_count": len(EVALUATION_CASES), "tested": len(results), "results": results, "routing": provider_stats()}
 
 
 def answer_with_provider(messages):
