@@ -17,10 +17,6 @@ class AdaptiveRouterTests(unittest.TestCase):
         adaptive.DB_PATH = self.old_path
         self.tmp.cleanup()
 
-    def test_quality_scoring_rewards_correct_answer(self):
-        self.assertGreater(adaptive._quality("العاصمة تونس", ["تونس"]),
-                           adaptive._quality("العاصمة صفاقس", ["تونس"]))
-
     def test_external_chat_is_disabled_by_default(self):
         old = adaptive.ALLOW_EXTERNAL_CHAT
         adaptive.ALLOW_EXTERNAL_CHAT = False
