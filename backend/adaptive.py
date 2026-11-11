@@ -70,7 +70,8 @@ def _grade_benchmark_case(case, answer):
     if grader == "exact":
         return _normalize_benchmark_text(answer) == _normalize_benchmark_text(case["expected"])
     if grader == "number":
-        matches = re.findall(r"[-+]?\d+(?:\.\d+)?", str(answer).replace(",", ""))
+        normalized_answer = str(answer).translate(str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")).replace(",", "").replace("،", "")
+        matches = re.findall(r"[-+]?\d+(?:\.\d+)?", normalized_answer)
         return any(abs(float(value) - float(case["expected"])) <= 1e-9 for value in matches)
     if grader == "json":
         candidate = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", str(answer).strip(), flags=re.IGNORECASE)
