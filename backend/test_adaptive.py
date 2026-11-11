@@ -121,6 +121,12 @@ class AdaptiveRouterTests(unittest.TestCase):
             cases["python_ast_01"], "def add(a, b):\\n    return a + b\\nprint('extra')"))
         self.assertTrue(adaptive._grade_benchmark_case(
             cases["french_translation_01"], "Bonjour!"))
+        contains_case = next(case for case in adaptive.EVALUATION_CASES
+                             if case["id"] == "english_api_01")
+        self.assertTrue(adaptive._grade_benchmark_case(
+            contains_case, "A request receives a response."))
+        self.assertFalse(adaptive._grade_benchmark_case(
+            contains_case, "A prerequest may produce a response."))
 
     def test_external_fallback_bounds_each_provider_attempt(self):
         providers = [
