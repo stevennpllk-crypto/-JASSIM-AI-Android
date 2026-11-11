@@ -165,8 +165,8 @@ class ServerSmokeTest(unittest.TestCase):
                 self.stream_result = None
                 self.error_result = None
 
-            def send_sse_static(self, answer, conversation_id, engine):
-                self.stream_result = (answer, conversation_id, engine)
+            def stream_external_provider_response(self, conversation_id, message, context, user_id):
+                self.stream_result = ("live-stream", conversation_id, user_id)
 
             def send_json(self, status, payload):
                 self.error_result = (status, payload)
@@ -176,16 +176,14 @@ class ServerSmokeTest(unittest.TestCase):
         with patch.object(module, "ollama_status", return_value={
             "reachable": False, "model_ready": False, "model_loaded": False
         }):
-            with patch.object(module.adaptive, "answer_with_provider",
+            with patch.object(module.adaptive, "stream_answer_with_provider",
                               return_value=("STREAM FALLBACK ANSWER", "jarvisclaw")) as fallback:
-                with patch.object(module, "save_message") as save:
-                    module.Handler.stream_chat_response(
-                        stub, "conversation-test", "question", context, "user-test")
+                module.Handler.stream_chat_response(
+                    stub, "conversation-test", "question", context, "user-test")
         self.assertEqual(stub.stream_result,
-                         ("STREAM FALLBACK ANSWER", "conversation-test", "jarvisclaw"))
+                         ("live-stream", "conversation-test", "user-test"))
         self.assertIsNone(stub.error_result)
-        self.assertEqual(save.call_count, 2)
-        fallback.assert_called_once()
+        fallback.assert_not_called()
 
     def test_history_budget_preserves_recent_messages(self):
         import importlib.util
