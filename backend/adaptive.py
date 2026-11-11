@@ -70,9 +70,11 @@ def _grade_benchmark_case(case, answer):
     if grader == "exact":
         return _normalize_benchmark_text(answer) == _normalize_benchmark_text(case["expected"])
     if grader == "number":
-        normalized_answer = str(answer).translate(str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")).replace(",", "").replace("،", "")
-        matches = re.findall(r"[-+]?\d+(?:\.\d+)?", normalized_answer)
-        return any(abs(float(value) - float(case["expected"])) <= 1e-9 for value in matches)
+        normalized_answer = str(answer).translate(str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")).strip()
+        # The prompt requests a number only: reject explanations and extra numbers.
+        if not re.fullmatch(r"[-+]?\d+(?:[.٫]\d+)?", normalized_answer):
+            return False
+        return abs(float(normalized_answer.replace("٫", ".")) - float(case["expected"])) <= 1e-9
     if grader == "json":
         candidate = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", str(answer).strip(), flags=re.IGNORECASE)
         try:
@@ -86,12 +88,17 @@ def _grade_benchmark_case(case, answer):
             tree = ast.parse(candidate)
         except (SyntaxError, ValueError, TypeError):
             return False
-        functions = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "add"]
-        if len(functions) != 1:
+        # Accept only the requested single, plain function definition.
+        if len(tree.body) != 1 or not isinstance(tree.body[0], ast.FunctionDef):
             return False
-        fn = functions[0]
-        args = [arg.arg for arg in fn.args.args]
-        if args != ["a", "b"] or len(fn.body) != 1 or not isinstance(fn.body[0], ast.Return):
+        fn = tree.body[0]
+        if fn.name != "add" or fn.decorator_list or fn.returns is not None:
+            return False
+        if (fn.args.posonlyargs or [arg.arg for arg in fn.args.args] != ["a", "b"]
+                or fn.args.vararg or fn.args.kwonlyargs or fn.args.kwarg
+                or fn.args.defaults or fn.args.kw_defaults):
+            return False
+        if len(fn.body) != 1 or not isinstance(fn.body[0], ast.Return):
             return False
         expr = fn.body[0].value
         return isinstance(expr, ast.BinOp) and isinstance(expr.op, ast.Add) and isinstance(expr.left, ast.Name) and expr.left.id == "a" and isinstance(expr.right, ast.Name) and expr.right.id == "b"
