@@ -143,6 +143,50 @@ class ServerSmokeTest(unittest.TestCase):
                 local_model.assert_not_called()
                 fallback.assert_called_once()
 
+    def test_stream_chat_uses_fallback_without_waiting_for_unavailable_ollama(self):
+        import importlib.util
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_stream_fallback_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+
+        class StubHandler:
+            def __init__(self):
+                self.stream_result = None
+                self.error_result = None
+
+            def send_sse_static(self, answer, conversation_id, engine):
+                self.stream_result = (answer, conversation_id, engine)
+
+            def send_json(self, status, payload):
+                self.error_result = (status, payload)
+
+        stub = StubHandler()
+        context = [{"role": "user", "content": "synthetic streaming fallback test"}]
+        with patch.object(module, "ollama_status", return_value={
+            "reachable": False, "model_ready": False, "model_loaded": False
+        }):
+            with patch.object(module.adaptive, "answer_with_provider",
+                              return_value=("STREAM FALLBACK ANSWER", "jarvisclaw")) as fallback:
+                with patch.object(module, "save_message") as save:
+                    module.Handler.stream_chat_response(
+                        stub, "conversation-test", "question", context, "user-test")
+        self.assertEqual(stub.stream_result,
+                         ("STREAM FALLBACK ANSWER", "conversation-test", "jarvisclaw"))
+        self.assertIsNone(stub.error_result)
+        self.assertEqual(save.call_count, 2)
+        fallback.assert_called_once()
+
     def test_history_budget_preserves_recent_messages(self):
         import importlib.util
         with tempfile.TemporaryDirectory() as tmp:
