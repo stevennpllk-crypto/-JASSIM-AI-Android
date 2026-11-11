@@ -57,6 +57,7 @@ public class MainActivity extends Activity {
     private volatile boolean cancelRequested;
     private volatile boolean localModelReady;
     private volatile boolean externalChatEnabled;
+    private volatile boolean healthChecked;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private static final String KEY_ALIAS = "jassim_api_token_v1";
     private static final String DEFAULT_SERVER_URL =
@@ -177,8 +178,8 @@ public class MainActivity extends Activity {
             }
             runOnUiThread(() -> {
                 if (baseUrl().isEmpty()) {
-                    addMessage("Mahdia AI", "الخادم الخاص غير متصل الآن. يمكنك متابعة المحادثة عبر خدمة ذكاء اصطناعي عامة مجانية؛ قد تتغير سرعتها وحدودها.");
-                    status.setText("● الخادم الخاص غير متصل — الخدمة الاحتياطية متاحة");
+                    addMessage("Mahdia AI", "الخادم الخاص غير متصل الآن. لن نرسل رسائلك إلى أي خدمة خارجية. أعد المحاولة عند عودة الخادم.");
+                    status.setText("● الخادم الخاص غير متصل — الإرسال متوقف حفاظاً على الخصوصية");
                     status.setTextColor(0xFFFFC36B);
                 } else {
                     status.setText(endpoint.isEmpty()
@@ -640,6 +641,9 @@ public class MainActivity extends Activity {
 
     private void checkHealth() {
         if (baseUrl().isEmpty()) {
+            healthChecked = true;
+            localModelReady = false;
+            externalChatEnabled = false;
             setAdminCapability(false);
             status.setText("● غير متصل بالخادم");
             status.setTextColor(0xFFFFC36B);
@@ -656,15 +660,19 @@ public class MainActivity extends Activity {
                 boolean externalEnabled = result.optBoolean("external_provider_ready", false);
                 localModelReady = modelReady;
                 externalChatEnabled = externalEnabled;
+                healthChecked = true;
                 String engine = result.optString("model", result.optString("engine", "غير معروف"));
                 runOnUiThread(() -> {
                     status.setText(!ok ? uiText("● الخادم غير جاهز", "● Server unavailable", "● Serveur indisponible")
+                        : externalEnabled ? uiText("⚠ تم إيقاف المحادثة: مسار خارجي متاح على الخادم", "⚠ Chat blocked: an external provider route is enabled", "⚠ Discussion bloquée : un fournisseur externe est activé")
                         : modelReady ? uiText("● النموذج المحلي جاهز", "● Local model ready", "● Modèle local prêt")
-                        : externalEnabled ? uiText("⚠ النموذج المحلي غير متاح؛ قد تُرسل رسائلك إلى مزوّد خارجي", "⚠ Local model unavailable; your messages may be sent to an external AI provider", "⚠ Modèle local indisponible ; vos messages peuvent être envoyés à un fournisseur externe")
-                        : uiText("● الخادم متصل لكن النموذج غير جاهز (" + engine + ")", "● Server connected but model is not ready (" + engine + ")", "● Serveur connecté mais modèle non prêt (" + engine + ")"));
-                    status.setTextColor(!ok ? 0xFFFF7777 : modelReady ? 0xFF62DCA8 : 0xFFFFC36B);
+                        : uiText("● الخادم متصل لكن النموذج المحلي غير جاهز (" + engine + ")", "● Server connected but local model is not ready (" + engine + ")", "● Serveur connecté mais le modèle local n'est pas prêt (" + engine + ")"));
+                    status.setTextColor(!ok ? 0xFFFF7777 : (externalEnabled || !modelReady) ? 0xFFFFC36B : 0xFF62DCA8);
                 });
             } catch (Exception e) {
+                healthChecked = true;
+                localModelReady = false;
+                externalChatEnabled = false;
                 String error = e.getMessage() == null ? "تعذر فحص الخادم" : e.getMessage();
                 runOnUiThread(() -> {
                     status.setText("● فشل الاتصال: " + error);
@@ -735,10 +743,12 @@ public class MainActivity extends Activity {
                         if (content.isEmpty()) continue;
                         addMessage("assistant".equals(role) ? "Mahdia AI" : "أنت", content);
                     }
-                    status.setText(externalChatEnabled && !localModelReady
-                        ? uiText("⚠ مزوّد خارجي مفعّل؛ قد تُرسل الرسائل إليه", "⚠ External AI provider enabled; messages may be sent to it", "⚠ Fournisseur IA externe activé ; les messages peuvent lui être envoyés")
-                        : uiText("● تم تحميل سجل المحادثة", "● Conversation history loaded", "● Historique chargé"));
-                    status.setTextColor(externalChatEnabled && !localModelReady ? 0xFFFFC36B : 0xFF62DCA8);
+                    status.setText(externalChatEnabled
+                        ? uiText("⚠ مسار خارجي متاح؛ إرسال الرسائل متوقف", "⚠ External route available; message sending is blocked", "⚠ Route externe disponible ; envoi bloqué")
+                        : !localModelReady
+                            ? uiText("⚠ النموذج المحلي غير جاهز؛ الإرسال متوقف", "⚠ Local model not ready; sending is blocked", "⚠ Modèle local non prêt ; envoi bloqué")
+                            : uiText("● تم تحميل سجل المحادثة", "● Conversation history loaded", "● Historique chargé"));
+                    status.setTextColor(externalChatEnabled || !localModelReady ? 0xFFFFC36B : 0xFF62DCA8);
                 });
             } catch (Exception e) {
                 final String error = e.getMessage() == null ? "تعذر تحميل السجل" : e.getMessage();
@@ -865,52 +875,30 @@ public class MainActivity extends Activity {
         status.setTextColor(0xFFFFC36B);
     }
 
-    // Build a short in-memory transcript for public fallback providers.
-    // The pending assistant bubble is excluded; the current user message is included.
-    private JSONArray buildFallbackHistory(TextView pendingBubble) {
-        JSONArray history = new JSONArray();
-        java.util.ArrayList<JSONObject> recent = new java.util.ArrayList<>();
-        for (int i = 0; i < messages.getChildCount(); i++) {
-            View child = messages.getChildAt(i);
-            if (!(child instanceof TextView) || child == pendingBubble) continue;
-            String value = ((TextView) child).getText().toString();
-            int newline = value.indexOf('\n');
-            if (newline < 0) continue;
-            String header = value.substring(0, newline).trim();
-            String content = value.substring(newline + 1).trim();
-            if (content.isEmpty()) continue;
-            String role;
-            if ("أنت".equals(header)) role = "user";
-            else if ("Mahdia AI".equals(header)) role = "assistant";
-            else continue;
-            try {
-                JSONObject item = new JSONObject();
-                item.put("role", role);
-                item.put("content", content);
-                recent.add(item);
-            } catch (Exception ignored) { }
-        }
-        int start = Math.max(0, recent.size() - 16);
-        for (int i = start; i < recent.size(); i++) history.put(recent.get(i));
-        return history;
-    }
-
     private void sendMessage() {
         String message = input.getText().toString().trim();
         if (message.isEmpty()) return;
         input.setText("");
         ((InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE))
             .hideSoftInputFromWindow(input.getWindowToken(), 0);
-        if (baseUrl().isEmpty()) {
-            addMessage("أنت", message);
-            final TextView fallbackBubble = addMessage("Mahdia AI", "جارٍ الاتصال بالخدمة الاحتياطية...");
-            final JSONArray fallbackHistory = buildFallbackHistory(fallbackBubble);
-            cancelRequested = false;
-            if (sendButton != null) sendButton.setEnabled(false);
-            if (stopButton != null) stopButton.setEnabled(false);
-            status.setText("● نتصل بخدمة الذكاء الاصطناعي الاحتياطية...");
+        if (!ChatPrivacyPolicy.canSend(healthChecked, localModelReady, externalChatEnabled)) {
+            input.setText(message);
+            input.setSelection(input.length());
+            String reason = !healthChecked
+                ? "انتظر حتى يكتمل فحص الخادم الخاص."
+                : externalChatEnabled
+                    ? "الإرسال متوقف لأن الخادم يتيح مساراً خارجياً. لن نرسل رسائلك إلى مزوّد عام."
+                    : "النموذج المحلي غير جاهز. لم يتم إرسال رسالتك.";
+            status.setText("● " + reason);
             status.setTextColor(0xFFFFC36B);
-            executor.execute(() -> sendAnonymousFallback(fallbackHistory, fallbackBubble, message));
+            Toast.makeText(this, reason, Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (baseUrl().isEmpty()) {
+            input.setText(message);
+            input.setSelection(input.length());
+            status.setText("● الخادم الخاص غير متصل — لم يتم إرسال الرسالة");
+            status.setTextColor(0xFFFF7777);
             return;
         }
 
@@ -1021,160 +1009,6 @@ public class MainActivity extends Activity {
                 });
             }
         });
-    }
-
-    // Public, keyless fallback. The user's private JASSIM token is never sent here.
-    // Requests go to a third-party gateway; users should not submit sensitive information.
-    private String requestAnonymousProvider(String endpoint, String model, JSONArray history,
-                                            TextView responseBubble) throws Exception {
-        HttpURLConnection connection = null;
-        StringBuilder answer = new StringBuilder();
-        try {
-            URL url = new URL(endpoint);
-            connection = (HttpURLConnection) url.openConnection();
-            activeChatConnection = connection;
-            connection.setRequestMethod("POST");
-            connection.setConnectTimeout(25000);
-            connection.setReadTimeout(180000);
-            connection.setDoOutput(true);
-            connection.setRequestProperty("Accept", "text/event-stream");
-            connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-
-            JSONArray chatMessages = new JSONArray();
-            JSONObject system = new JSONObject();
-            system.put("role", "system");
-            system.put("content", "أنت Mahdia AI، مساعد عربي مفيد ودقيق. أجب بالعربية الواضحة، وافهم اللهجة التونسية. لا تختلق معلومات، واذكر حدود معرفتك.");
-            chatMessages.put(system);
-            if (history != null) {
-                for (int i = 0; i < history.length(); i++) {
-                    JSONObject item = history.optJSONObject(i);
-                    if (item == null) continue;
-                    String role = item.optString("role", "");
-                    String content = item.optString("content", "");
-                    if (("user".equals(role) || "assistant".equals(role)) && !content.isEmpty()) {
-                        chatMessages.put(item);
-                    }
-                }
-            }
-
-            JSONObject body = new JSONObject();
-            body.put("model", model);
-            body.put("messages", chatMessages);
-            body.put("stream", true);
-            body.put("max_tokens", 1200);
-            try (OutputStream out = connection.getOutputStream()) {
-                out.write(body.toString().getBytes(StandardCharsets.UTF_8));
-            }
-
-            int code = connection.getResponseCode();
-            if (code < 200 || code >= 300) {
-                InputStream err = connection.getErrorStream();
-                StringBuilder detail = new StringBuilder();
-                if (err != null) {
-                    try (BufferedReader reader = new BufferedReader(
-                            new InputStreamReader(err, StandardCharsets.UTF_8))) {
-                        String line;
-                        while ((line = reader.readLine()) != null) detail.append(line);
-                    }
-                }
-                throw new IOException("HTTP " + code + ": " + detail);
-            }
-
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    if (cancelRequested) break;
-                    if (!line.startsWith("data:")) continue;
-                    String data = line.substring(5).trim();
-                    if (data.isEmpty()) continue;
-                    if ("[DONE]".equals(data)) break;
-                    JSONObject event = new JSONObject(data);
-                    JSONArray choices = event.optJSONArray("choices");
-                    if (choices == null || choices.length() == 0) continue;
-                    JSONObject choice = choices.optJSONObject(0);
-                    if (choice == null) continue;
-                    JSONObject delta = choice.optJSONObject("delta");
-                    if (delta == null) continue;
-                    String token = delta.optString("content", "");
-                    if (!token.isEmpty()) {
-                        answer.append(token);
-                        final String partial = answer.toString();
-                        runOnUiThread(() -> responseBubble.setText("Mahdia AI\n" + partial));
-                    }
-                }
-            }
-            if (cancelRequested) return "";
-            if (answer.length() == 0) throw new IOException("لم تُرجع الخدمة أي نص");
-            return answer.toString();
-        } finally {
-            if (connection != null) connection.disconnect();
-            if (activeChatConnection == connection) activeChatConnection = null;
-        }
-    }
-
-    private void sendAnonymousFallback(JSONArray history, TextView responseBubble, String userMessage) {
-        try {
-            runOnUiThread(() -> {
-                if (stopButton != null) stopButton.setEnabled(true);
-                status.setText("● نجرب مزود الذكاء الاصطناعي الأول...");
-                status.setTextColor(0xFFFFC36B);
-            });
-            String result;
-            String provider;
-            try {
-                result = requestAnonymousProvider(
-                    "https://api.jarvisclaw.ai/v1/chat/completions",
-                    "auto/free", history, responseBubble);
-                provider = "JarvisClaw";
-            } catch (Exception firstError) {
-                if (cancelRequested) return;
-                runOnUiThread(() -> {
-                    responseBubble.setText("Mahdia AI\nتعذر الوصول إلى المزود الأول؛ نجرب خادماً احتياطياً آخر...");
-                    status.setText("● نجرب OVHcloud كخيار ثانٍ...");
-                });
-                try {
-                    result = requestAnonymousProvider(
-                        "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions",
-                        "Meta-Llama-3_3-70B-Instruct", history, responseBubble);
-                    provider = "OVHcloud";
-                } catch (Exception secondError) {
-                    throw new IOException("لم يستجب أي من المزودين المجانيين. الأول: "
-                        + firstError.getMessage() + " | الثاني: " + secondError.getMessage());
-                }
-            }
-            if (cancelRequested) {
-                runOnUiThread(() -> status.setText("● تم إيقاف الإجابة"));
-                return;
-            }
-            final String answer = result;
-            final String usedProvider = provider;
-            runOnUiThread(() -> {
-                responseBubble.setText("Mahdia AI\n" + answer);
-                status.setText("● متصل عبر " + usedProvider + " — الخدمة العامة المجانية");
-                status.setTextColor(0xFFFFC36B);
-            });
-        } catch (Exception e) {
-            if (!cancelRequested) {
-                String error = e.getMessage() == null ? "تعذر الاتصال بالخدمات الاحتياطية" : e.getMessage();
-                runOnUiThread(() -> {
-                    responseBubble.setText("Mahdia AI\nتعذر الاتصال بالخدمات الاحتياطية: " + error
-                        + "\nاحتفظت برسالتك؛ يمكنك إعادة المحاولة لاحقاً.");
-                    status.setText("● تعذر الاتصال بالخدمات الاحتياطية");
-                    status.setTextColor(0xFFFF7777);
-                    if (input.getText().toString().trim().isEmpty()) {
-                        input.setText(userMessage);
-                        input.setSelection(input.length());
-                    }
-                });
-            }
-        } finally {
-            activeChatConnection = null;
-            runOnUiThread(() -> {
-                if (sendButton != null) sendButton.setEnabled(true);
-                if (stopButton != null) stopButton.setEnabled(false);
-            });
-        }
     }
 
     private void runProviderEvaluation() {
