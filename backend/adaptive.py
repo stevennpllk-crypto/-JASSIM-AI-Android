@@ -18,8 +18,11 @@ from pathlib import Path
 DATA_DIR = Path(os.environ.get("JASSIM_DATA_DIR", str(Path(__file__).resolve().parent / "data"))).expanduser()
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "jassim.db"
-ALLOW_EXTERNAL_CHAT = os.environ.get("JASSIM_ALLOW_EXTERNAL_CHAT", "false").lower() in ("1", "true", "yes")
-ENABLE_PUBLIC_PROVIDERS = os.environ.get("JASSIM_ENABLE_PUBLIC_PROVIDERS", "true").lower() in ("1", "true", "yes")
+# Privacy boundary: real prompts and inference must remain on our Ollama host.
+# Public model providers are deliberately hard-disabled; environment variables
+# cannot silently turn external inference back on.
+ALLOW_EXTERNAL_CHAT = False
+ENABLE_PUBLIC_PROVIDERS = False
 TIMEOUT = max(8, min(int(os.environ.get("JASSIM_PROVIDER_TIMEOUT", "45")), 120))
 # Keep fallback attempts bounded so one unavailable public provider cannot make
 # a single chat request wait through several full provider timeouts.
