@@ -19,6 +19,13 @@ from urllib.parse import urlparse, parse_qs
 
 import adaptive
 
+# Perform the same PBKDF2 work for unknown accounts as for known accounts.
+# This reduces username/email timing leaks during password authentication.
+DUMMY_PASSWORD_HASH = (
+    "pbkdf2_sha256$310000$8f3a2c1d6b904e77a15f3d2c9b6e4a10$"
+    "fded824e5d216e16b97201bab9c80ac186ce9e1a952dcb1fafae653598a8ad71"
+)
+
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = Path(os.environ.get("JASSIM_DATA_DIR", str(ROOT / "data"))).expanduser()
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -751,7 +758,14 @@ class Handler(BaseHTTPRequestHandler):
                         user = auth.create_user(db, email, password)
                     else:
                         row = auth.find_user_by_email(db, email)
-                        if not row or not auth.verify_password(password, row[2]):
+                        if row:
+                            password_ok = auth.verify_password(password, row[2])
+                        else:
+                            # Do not make unknown accounts return substantially faster
+                            # than existing accounts with an incorrect password.
+                            auth.verify_password(password, DUMMY_PASSWORD_HASH)
+                            password_ok = False
+                        if not password_ok:
                             self.send_json(401, {"error": "invalid_credentials"})
                             return
                         user = {"id": row[0], "email": row[1], "role": row[3]}
