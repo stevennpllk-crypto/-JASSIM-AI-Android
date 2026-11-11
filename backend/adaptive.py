@@ -1,7 +1,7 @@
-"""Adaptive provider evaluation and routing for JASSIM AI.
+"""Local-first model evaluation helpers for JASSIM AI.
 
-Only synthetic prompts are used by the evaluator. Real conversation content is
-sent to public providers only when JASSIM_ALLOW_EXTERNAL_CHAT=true.
+Public-provider routing is hard-disabled in this build. Evaluation of an actual
+JASSIM model must use the private Ollama endpoint and synthetic benchmark cases.
 """
 import ast
 import json
@@ -107,7 +107,13 @@ def _grade_benchmark_case(case, answer):
         return isinstance(expr, ast.BinOp) and isinstance(expr.op, ast.Add) and isinstance(expr.left, ast.Name) and expr.left.id == "a" and isinstance(expr.right, ast.Name) and expr.right.id == "b"
     if grader == "contains":
         normalized = _normalize_benchmark_text(answer)
-        return all(_normalize_benchmark_text(word) in normalized for word in case["expected"])
+        return all(
+            re.search(
+                r"(?<!\\w)" + re.escape(_normalize_benchmark_text(word)) + r"(?!\\w)",
+                normalized,
+            ) is not None
+            for word in case["expected"]
+        )
     return False
 
 
