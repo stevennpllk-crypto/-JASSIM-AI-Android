@@ -95,20 +95,53 @@ class ServerSmokeTest(unittest.TestCase):
                     os.environ["JASSIM_DATA_DIR"] = previous_data_dir
 
         messages = [{"role": "user", "content": "synthetic fallback test"}]
-        with patch.object(module, "ask_ollama", side_effect=RuntimeError("local model unavailable")):
-            with patch.object(module.adaptive, "answer_with_provider",
-                              return_value=("JASSIM ONLINE", "jarvisclaw")) as fallback:
-                answer, engine = module.generate_answer(messages)
-            self.assertEqual(answer, "JASSIM ONLINE")
-            self.assertEqual(engine, "jarvisclaw")
-            fallback.assert_called_once()
+        with patch.object(module, "ollama_status", return_value={
+            "reachable": True, "model_ready": True, "model_loaded": True
+        }):
+            with patch.object(module, "ask_ollama", side_effect=RuntimeError("local model unavailable")):
+                with patch.object(module.adaptive, "answer_with_provider",
+                                  return_value=("JASSIM ONLINE", "jarvisclaw")) as fallback:
+                    answer, engine = module.generate_answer(messages)
+                self.assertEqual(answer, "JASSIM ONLINE")
+                self.assertEqual(engine, "jarvisclaw")
+                fallback.assert_called_once()
 
-        with patch.object(module, "ask_ollama", return_value="LOCAL ANSWER"):
-            with patch.object(module.adaptive, "answer_with_provider") as fallback:
-                answer, engine = module.generate_answer(messages)
-            self.assertEqual(answer, "LOCAL ANSWER")
-            self.assertEqual(engine, "ollama")
-            fallback.assert_not_called()
+            with patch.object(module, "ask_ollama", return_value="LOCAL ANSWER"):
+                with patch.object(module.adaptive, "answer_with_provider") as fallback:
+                    answer, engine = module.generate_answer(messages)
+                self.assertEqual(answer, "LOCAL ANSWER")
+                self.assertEqual(engine, "ollama")
+                fallback.assert_not_called()
+
+    def test_generate_answer_skips_unavailable_local_model_immediately(self):
+        import importlib.util
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_fast_fallback_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+
+        messages = [{"role": "user", "content": "synthetic fast fallback test"}]
+        with patch.object(module, "ollama_status", return_value={
+            "reachable": False, "model_ready": False, "model_loaded": False
+        }):
+            with patch.object(module, "ask_ollama") as local_model:
+                with patch.object(module.adaptive, "answer_with_provider",
+                                  return_value=("FAST JASSIM ANSWER", "jarvisclaw")) as fallback:
+                    answer, engine = module.generate_answer(messages)
+                self.assertEqual(answer, "FAST JASSIM ANSWER")
+                self.assertEqual(engine, "jarvisclaw")
+                local_model.assert_not_called()
+                fallback.assert_called_once()
 
     def test_history_budget_preserves_recent_messages(self):
         import importlib.util
