@@ -127,29 +127,6 @@ public class MainActivity extends Activity {
     private static final String DISCOVERY_URL =
         "https://stevennpllk-crypto.github.io/-JASSIM-AI-Android/connection.json";
 
-    // A public discovery document must never redirect account credentials
-    // to an arbitrary HTTPS host. Trust only the production API and our
-    // temporary Cloudflare Quick Tunnel hosts.
-    private boolean isTrustedDiscoveredEndpoint(String candidate) {
-        try {
-            URL url = new URL(candidate);
-            String host = url.getHost().toLowerCase(java.util.Locale.ROOT);
-            boolean trustedHost =
-                "jassim-ai-core-final-production.up.railway.app".equals(host)
-                || host.endsWith(".trycloudflare.com");
-            String path = url.getPath();
-            return "https".equalsIgnoreCase(url.getProtocol())
-                && trustedHost
-                && url.getUserInfo() == null
-                && (url.getPort() == -1 || url.getPort() == 443)
-                && (path.isEmpty() || "/".equals(path))
-                && url.getQuery() == null
-                && url.getRef() == null;
-        } catch (Exception ignored) {
-            return false;
-        }
-    }
-
     private void autoConnect() {
         executor.execute(() -> {
             String discovered = "";
@@ -173,7 +150,7 @@ public class MainActivity extends Activity {
                     String candidate = registry.optString("url", "").trim();
                     if ("online".equals(registry.optString("status", "")) &&
                             candidate.length() <= 300 &&
-                            isTrustedDiscoveredEndpoint(candidate)) {
+                            TrustedEndpointPolicy.isTrusted(candidate)) {
                         discovered = candidate;
                     }
                 }
