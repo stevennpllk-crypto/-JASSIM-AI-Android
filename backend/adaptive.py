@@ -17,6 +17,14 @@ DB_PATH = DATA_DIR / "jassim.db"
 ALLOW_EXTERNAL_CHAT = os.environ.get("JASSIM_ALLOW_EXTERNAL_CHAT", "false").lower() in ("1", "true", "yes")
 ENABLE_PUBLIC_PROVIDERS = os.environ.get("JASSIM_ENABLE_PUBLIC_PROVIDERS", "true").lower() in ("1", "true", "yes")
 TIMEOUT = max(8, min(int(os.environ.get("JASSIM_PROVIDER_TIMEOUT", "45")), 120))
+# Keep fallback attempts bounded so one unavailable public provider cannot make
+# a single chat request wait through several full provider timeouts.
+PROVIDER_ATTEMPT_TIMEOUT = max(
+    3, min(int(os.environ.get("JASSIM_PROVIDER_ATTEMPT_TIMEOUT", "12")), 60)
+)
+PROVIDER_TOTAL_TIMEOUT = max(
+    8, min(int(os.environ.get("JASSIM_PROVIDER_TOTAL_TIMEOUT", "35")), 90)
+)
 
 PROVIDERS = [
     # Groq is the preferred managed candidate when an operator configures a key.
@@ -60,7 +68,7 @@ def _db():
     return db
 
 
-def _request(provider, messages, max_tokens=256):
+def _request(provider, messages, max_tokens=256, timeout=None):
     payload = json.dumps({
         "model": provider["model"],
         "messages": messages,
@@ -79,7 +87,8 @@ def _request(provider, messages, max_tokens=256):
         provider["url"], data=payload, headers=headers, method="POST"
     )
     started = time.monotonic()
-    with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+    request_timeout = TIMEOUT if timeout is None else max(1.0, min(float(timeout), float(TIMEOUT)))
+    with urllib.request.urlopen(request, timeout=request_timeout) as response:
         data = json.loads(response.read(1024 * 1024).decode("utf-8"))
     answer = str((((data.get("choices") or [{}])[0]).get("message") or {}).get("content", "")).strip()
     if not answer:
@@ -170,10 +179,18 @@ def answer_with_provider(messages):
     ranked = provider_stats()
     by_id = {item["id"]: item for item in _configured_providers()}
     errors = []
+    deadline = time.monotonic() + PROVIDER_TOTAL_TIMEOUT
     for item in ranked:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            errors.append("provider_budget_exhausted")
+            break
         provider = by_id[item["id"]]
+        attempt_timeout = min(PROVIDER_ATTEMPT_TIMEOUT, remaining, TIMEOUT)
         try:
-            answer, latency = _request(provider, messages, max_tokens=2048)
+            answer, latency = _request(
+                provider, messages, max_tokens=2048, timeout=attempt_timeout
+            )
             _record(provider["id"], latency, 0.65)
             return answer, provider["id"]
         except Exception as exc:
