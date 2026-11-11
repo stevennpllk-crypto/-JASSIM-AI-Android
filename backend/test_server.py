@@ -222,9 +222,10 @@ class ServerSmokeTest(unittest.TestCase):
             emit("world")
             return "Hello world", "provider-test"
         with patch.object(module.adaptive, "stream_answer_with_provider", side_effect=fake_stream):
-            with patch.object(module, "save_message") as save:
+            with patch.object(module, "save_turn") as save:
                 module.Handler.stream_external_provider_response(
                     stub, "conversation-test", "question", [], "user-test")
+        save.assert_called_once_with("conversation-test", "question", "Hello world", "user-test")
         self.assertEqual(stub.headers_sent, 1)
         self.assertEqual([event["type"] for event in stub.events], ["token", "token", "done"])
         self.assertEqual("".join(event.get("token", "") for event in stub.events), "Hello world")
@@ -268,13 +269,56 @@ class ServerSmokeTest(unittest.TestCase):
             emit("partial")
             raise RuntimeError("upstream interrupted")
         with patch.object(module.adaptive, "stream_answer_with_provider", side_effect=interrupted):
-            with patch.object(module, "save_message") as save:
+            with patch.object(module, "save_turn") as save:
                 module.Handler.stream_external_provider_response(
                     stub, "conversation-test", "question", [], "user-test")
         self.assertEqual(stub.headers_sent, 1)
         self.assertEqual([event["type"] for event in stub.events], ["token", "error"])
         save.assert_not_called()
         self.assertEqual(stub.errors, [])
+
+    def test_save_turn_rolls_back_user_message_when_assistant_insert_fails(self):
+        import importlib.util
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_atomic_turn_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                db = module.connect_db()
+                try:
+                    db.execute("""
+                        CREATE TRIGGER reject_assistant_message
+                        BEFORE INSERT ON messages
+                        WHEN NEW.role = 'assistant'
+                        BEGIN
+                            SELECT RAISE(ABORT, 'simulated assistant persistence failure');
+                        END
+                    """)
+                    db.commit()
+                finally:
+                    db.close()
+
+                with self.assertRaises(Exception):
+                    module.save_turn("atomic-test", "user prompt", "assistant reply", "user-test")
+
+                db = module.connect_db()
+                try:
+                    self.assertEqual(
+                        db.execute("SELECT COUNT(*) FROM messages WHERE conversation_id=?",
+                                   ("atomic-test",)).fetchone()[0], 0)
+                    self.assertEqual(
+                        db.execute("SELECT COUNT(*) FROM conversations WHERE conversation_id=?",
+                                   ("atomic-test",)).fetchone()[0], 0)
+                finally:
+                    db.close()
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
 
     def test_history_budget_preserves_recent_messages(self):
         import importlib.util
