@@ -445,8 +445,12 @@ public class MainActivity extends Activity {
 
     private String baseUrl() {
         String endpoint = prefs.getString("endpoint", "").trim();
-        if (endpoint.isEmpty()) endpoint = DEFAULT_SERVER_URL;
-        while (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
+        // Revalidate persisted values too: older app versions may have saved
+        // an endpoint before strict discovery validation was introduced.
+        if (!TrustedEndpointPolicy.isTrusted(endpoint)) {
+            endpoint = DEFAULT_SERVER_URL;
+            prefs.edit().remove("endpoint").apply();
+        }
         return endpoint;
     }
 
