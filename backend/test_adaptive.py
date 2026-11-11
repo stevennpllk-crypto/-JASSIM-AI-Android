@@ -82,6 +82,11 @@ class AdaptiveRouterTests(unittest.TestCase):
         try:
             result = adaptive.evaluate_providers()
             self.assertEqual(result["tested"], 1)
+            self.assertEqual(result["case_count"], 8)
+            self.assertEqual(result["benchmark_version"], adaptive.BENCHMARK_VERSION)
+            self.assertIn("pass_rate", result["results"][0])
+            self.assertIn("median_latency_ms", result["results"][0])
+            self.assertIn("p95_latency_ms", result["results"][0])
             self.assertEqual(len(calls), len(adaptive.EVALUATION_CASES))
             self.assertTrue(all("user" in call[-1]["role"] for call in calls))
             self.assertNotIn("conversation_id", str(calls))
@@ -90,6 +95,22 @@ class AdaptiveRouterTests(unittest.TestCase):
             adaptive.PROVIDERS = old_providers
             adaptive.ENABLE_PUBLIC_PROVIDERS = old_enabled
 
+
+    def test_deterministic_benchmark_graders(self):
+        cases = {case["id"]: case for case in adaptive.EVALUATION_CASES}
+        self.assertTrue(adaptive._grade_benchmark_case(cases["ar_capital_01"], "تونس."))
+        self.assertTrue(adaptive._grade_benchmark_case(cases["math_multiply_01"], "323"))
+        self.assertFalse(adaptive._grade_benchmark_case(cases["math_multiply_01"], "324"))
+        self.assertTrue(adaptive._grade_benchmark_case(
+            cases["json_schema_01"], '{"name":"Ali","age":16}'))
+        self.assertFalse(adaptive._grade_benchmark_case(
+            cases["json_schema_01"], 'Here is JSON: {"name":"Ali","age":16}'))
+        self.assertTrue(adaptive._grade_benchmark_case(
+            cases["python_ast_01"], "def add(a, b):\\n    return a + b"))
+        self.assertFalse(adaptive._grade_benchmark_case(
+            cases["python_ast_01"], "def add(a, b): return a - b"))
+        self.assertTrue(adaptive._grade_benchmark_case(
+            cases["french_translation_01"], "Bonjour!"))
 
     def test_external_fallback_bounds_each_provider_attempt(self):
         providers = [
