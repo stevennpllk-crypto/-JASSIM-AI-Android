@@ -17,8 +17,7 @@ final class TrustedEndpointPolicy {
         try {
             URL url = new URL(candidate);
             String host = url.getHost().toLowerCase(Locale.ROOT);
-            boolean trustedHost = PRODUCTION_HOST.equals(host)
-                || host.endsWith(".trycloudflare.com");
+            boolean trustedHost = PRODUCTION_HOST.equals(host);
             String path = url.getPath();
             return "https".equalsIgnoreCase(url.getProtocol())
                 && trustedHost
