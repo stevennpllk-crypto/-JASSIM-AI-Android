@@ -26,6 +26,14 @@ class LocalOnlyPolicyTests(unittest.TestCase):
                 [{"role": "user", "content": "private test"}], lambda token: None
             )
 
+    def test_public_provider_evaluation_is_disabled_without_network_calls(self):
+        with patch.object(adaptive, "_request", side_effect=AssertionError("network call forbidden")):
+            result = adaptive.evaluate_providers()
+        self.assertFalse(result["enabled"])
+        self.assertEqual(result["tested"], 0)
+        self.assertEqual(result["results"], [])
+
+
 
 if __name__ == "__main__":
     unittest.main()
