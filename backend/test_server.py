@@ -216,10 +216,14 @@ class ServerSmokeTest(unittest.TestCase):
         spec = importlib.util.spec_from_file_location("jassim_queue_test", Path(__file__).with_name("server.py"))
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        from unittest.mock import patch
         module.INFERENCE_SEMAPHORE.acquire()
         module.OLLAMA_QUEUE_TIMEOUT = 0.01
         try:
-            answer, engine = module.generate_answer([])
+            with patch.object(module, "ollama_status", return_value={
+                "reachable": True, "model_ready": True, "model_loaded": True
+            }):
+                answer, engine = module.generate_answer([])
             self.assertEqual(engine, "busy")
             self.assertIn("مشغول", answer)
         finally:
