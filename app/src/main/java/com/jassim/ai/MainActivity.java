@@ -598,7 +598,7 @@ public class MainActivity extends Activity {
         String endpoint = prefs.getString("endpoint", "").trim();
         // Revalidate persisted values too: older app versions may have saved
         // an endpoint before strict discovery validation was introduced.
-        if (!TrustedEndpointPolicy.isTrusted(endpoint)) {
+        if (!TrustedEndpointPolicy.isUserConfigured(endpoint)) {
             endpoint = DEFAULT_SERVER_URL;
             prefs.edit().remove("endpoint").apply();
         }
@@ -1469,6 +1469,21 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void saveConfiguredEndpoint(String value, String token) {
+        try {
+            if (!token.isEmpty()) saveApiToken(token);
+            prefs.edit().putString("endpoint", value).apply();
+            healthChecked = false;
+            localModelReady = false;
+            externalChatEnabled = false;
+            checkHealth();
+            if (!readApiToken().isEmpty()) loadHistory();
+            else status.setText("● تم حفظ الخادم — سجّل الدخول للمتابعة");
+        } catch (Exception error) {
+            Toast.makeText(this, "تعذر حفظ إعدادات الخادم: " + error.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
     private void endpointDialog() {
         LinearLayout fields = new LinearLayout(this);
         fields.setOrientation(LinearLayout.VERTICAL);
@@ -1497,10 +1512,19 @@ public class MainActivity extends Activity {
             .setPositiveButton("حفظ وفحص", (d, w) -> {
                 String value = field.getText().toString().trim();
                 String token = tokenField.getText().toString().trim();
-                if (!TrustedEndpointPolicy.isTrusted(value)) {
+                if (!TrustedEndpointPolicy.isUserConfigured(value)) {
                     Toast.makeText(this,
-                        "لأمان الحسابات، هذا الإصدار يقبل خادم Mahdia AI الرسمي فقط",
+                        "أدخل عنوان HTTPS صحيحاً لنطاق تملكه أو تثق به، دون مسار أو منفذ مخصص",
                         Toast.LENGTH_LONG).show();
+                    return;
+                }
+                if (!value.equalsIgnoreCase(DEFAULT_SERVER_URL)) {
+                    new AlertDialog.Builder(this)
+                        .setTitle("تأكيد خادم مخصص")
+                        .setMessage("سيتم إرسال رمز الجلسة ورسائلك إلى هذا الخادم عند تسجيل الدخول واستخدام التطبيق. لا تتابع إلا إذا كنت تملك هذا الخادم أو تثق بمديره. تأكد من تفعيل HTTPS وحماية الخادم.")
+                        .setNegativeButton("إلغاء", null)
+                        .setPositiveButton("أثق بهذا الخادم", (confirm, which) -> saveConfiguredEndpoint(value, token))
+                        .show();
                     return;
                 }
                 if (value.isEmpty()) {
