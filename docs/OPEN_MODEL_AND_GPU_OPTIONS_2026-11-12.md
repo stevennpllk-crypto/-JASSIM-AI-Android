@@ -74,3 +74,14 @@ Lambda's published options include A6000 48 GB from about $1.09/GPU-hour, A10 24
 Start with a **time-boxed 2-hour Secure RTX 4090 test**, using Qwen3.5 4B and 9B quantizations sequentially, persistent model cache only if its storage price is approved, and no public API endpoint for Ollama. Run the benchmark locally against the private worker. Shut the GPU down after the test. If 9B is too slow or memory-constrained, evaluate L40S next.
 
 This is a proposal only. No GPU, storage volume, paid plan, model download or deployment is authorized by this document.
+
+## Primary source links
+
+- Qwen3.5 9B model card and Apache-2.0 metadata: https://huggingface.co/Qwen/Qwen3.5-9B
+- Ollama Qwen3.5 library tags and quantized artifact sizes: https://ollama.com/library/qwen3.5
+- Gemma 3 model card, multilingual and multimodal details: https://gemma.ai/models/gemma-3/
+- Mistral Small 3.2 24B model card, Arabic language metadata and Apache-2.0: https://huggingface.co/mistralai/Mistral-Small-3.2-24B-Instruct-2506
+- Llama 3.3 70B model card and license: https://huggingface.co/meta-llama/Llama-3.3-70B-Instruct
+- Runpod GPU pricing: https://www.runpod.io/pricing
+- Lambda GPU pricing: https://lambda.com/pricing
+
