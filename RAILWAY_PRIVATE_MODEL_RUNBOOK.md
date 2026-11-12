@@ -42,13 +42,15 @@ Do not point the API at `127.0.0.1:11434` when Ollama is a separate Railway serv
 
 ## Private image-generation service (separate from Ollama)
 
-1. Provision a dedicated image worker only after explicit approval of its compute/storage cost. Prefer an open-weights model and a worker such as ComfyUI; select the exact model only after benchmarking quality, license, VRAM, and latency.
-2. Keep the worker on the private network with no public domain or exposed inference port. Store model weights and workflow assets on persistent storage.
-3. Configure the JASSIM API with a private worker URL and an allowlisted workflow/model identifier. Do not put provider tokens or private worker credentials in the Android APK.
-4. Add health/readiness checks that verify the worker is reachable and the selected model is actually loaded—not merely that the process is alive.
-5. Test text-to-image, Arabic prompts, invalid input, timeout, worker restart, and persistence. Verify API logs show only the private worker route.
-6. When the worker is unavailable, return a clear local-image-unavailable response. Do not switch to an external provider automatically.
-7. External image services, if ever supported, are opt-in backups only. Require an explicit per-user setting and a clear disclosure before transmitting any prompt or reference image outside JASSIM infrastructure.
+1. The worker implementation now lives in `image-worker/`: FastAPI authenticated API, CUDA-only Diffusers pipeline, Dockerfile, tests, and deployment notes. It defaults to the open-weights `stabilityai/sdxl-turbo` checkpoint; this is a self-hosted model, not a model trained from scratch by JASSIM. Review the model's current license and terms before public/commercial release.
+2. Provision a dedicated Railway service only after explicit approval of GPU and storage costs. Set the service root directory to `image-worker` and use its Dockerfile.
+3. Attach a persistent volume at `/models`; model cache is stored at `/models/huggingface`. First boot downloads weights; later restarts reuse the volume.
+4. Allocate a supported NVIDIA CUDA GPU with enough VRAM for the selected checkpoint and runtime overhead. The service intentionally stays not-ready if CUDA is unavailable or model loading fails. Benchmark the exact instance before public use.
+5. Set `JASSIM_IMAGE_WORKER_TOKEN` to a long random secret. Keep port 8188 private, with no public domain or TCP proxy.
+6. In the JASSIM API service set `JASSIM_IMAGE_WORKER_URL=http://image-worker.railway.internal:8188` and the same `JASSIM_IMAGE_WORKER_TOKEN`.
+7. Test authenticated readiness, Arabic prompts, invalid dimensions, timeouts, worker restart, and model persistence. Verify API logs show only the private worker route.
+8. When the worker is unavailable, return a clear local-image-unavailable response. Do not switch to an external provider automatically.
+9. External image services, if ever supported, are opt-in backups only. Require an explicit per-user setting and a clear disclosure before transmitting any prompt or reference image outside JASSIM infrastructure.
 
 ## JASSIM private image-worker API contract
 
@@ -62,7 +64,7 @@ The API client is implemented in `backend/private_image.py`. The image worker ma
 - The API validates the private hostname, bearer token, response type, image signature, and a 15 MiB decoded-image limit. It rejects public worker URLs.
 - The worker must not expose a public domain. Do not put the worker token in the Android app or repository.
 
-The worker's implementation/model remains a separate deployment task. A running process alone is not enough: readiness must stay false until the actual image model is loaded.
+The worker implementation is committed under `image-worker/`, but the Railway service, GPU, secret, and persistent volume have not been provisioned. A running process alone is not enough: readiness must stay false until the actual image model is loaded.
 
 ## Verification gate
 
@@ -80,7 +82,7 @@ Do not call the model server ready until all checks pass:
 
 - This repository's API code hard-disables external chat and public-provider routing. Keep both environment flags false.
 - Image generation is a separate inference workload from text chat. The Android/API product policy is **JASSIM-owned engines first; external providers are backup-only and disabled by default**. The intended image topology is a dedicated self-hosted image service (for example, a ComfyUI worker with an open-weights model) reachable only over the Railway private network, with persistent model storage and no public inference endpoint. Ollama handles text chat; it is not itself the image-generation engine.
-- The current branch deliberately fails image requests closed with HTTP 503 (`local_image_model_not_configured`) until that private image worker is deployed and verified. It must not silently call Hugging Face or another hosted image API. Do not add or use `JASSIM_HF_TOKEN` for the default path.
+- The current branch routes image requests only through the authenticated private image worker. Until its private URL/token are configured and the model is loaded, requests fail closed with HTTP 503. It must not silently call Hugging Face or another hosted image API. Do not add or use `JASSIM_HF_TOKEN` for the default path.
 - Any future external image provider may be offered only as an explicitly user-enabled backup, with a clear disclosure before sending the prompt or uploaded reference image off our infrastructure. A local-engine outage must never trigger silent external fallback.
 - The strict `/ready` check on the current development branch is not yet deployed to the production API.
 - The existing production API currently uses a loopback Ollama URL; that does not prove a separate Ollama service exists or that inference works.
