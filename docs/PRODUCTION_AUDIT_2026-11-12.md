@@ -6,7 +6,9 @@ This audit was performed against the Railway production environment, not inferre
 
 - The environment reported one online service named `mahdia-ai-api`, one running replica, no attached volume, and no pending deployment.
 - The Railway-generated domain `mahdia-ai-api-production.up.railway.app` is attached directly to that same service; domain listing returned no custom domains.
-- The Android app's current default API URL is `https://jassim-ai-core-final-production.up.railway.app`, which is a different hostname. This audit has **not** established which Railway service (if any) currently serves that app-configured hostname. The app's live backend mapping therefore remains unresolved and must be verified before any cutover.
+- The Android app's current default API URL is `https://jassim-ai-core-final-production.up.railway.app`. A separate Railway project named `JASSIM HUB` contains a `jassim-ai-core-final` service whose generated domain matches that URL exactly; the service is attached to this repository's `main` branch and is online with 2/2 replicas.
+- The `JASSIM HUB` API service has no mounted volume. Its separate PostgreSQL service is online and has a persistent volume. The API's current runtime logs identify the database as PostgreSQL and the configured model as `qwen3.5:4b` at `http://127.0.0.1:11434`.
+- `JASSIM HUB` contains no separate Ollama service. The configured loopback URL points inside each API container, not to an Ollama service in the project. No Ollama reachability or successful local inference was established in this audit. The actual variable values are redacted by the Railway connection, so the production privacy flags could not be independently read back.
 - The live service image was `ghcr.io/railwayapp/function-bun:1.4.4`, not the repository's Python API container.
 - Its start command contains an inline Bun handler rather than a checkout of this repository.
 - The decoded handler selects configured public providers when their variables exist and otherwise defaults to the anonymous `pollinations-anonymous-fallback` provider at `https://text.pollinations.ai/openai`.
@@ -14,7 +16,7 @@ This audit was performed against the Railway production environment, not inferre
 - The handler's health payload reports a provider/readiness mode, but does not implement the Python API's complete local-model readiness contract.
 - No production variables, domains, deployments, databases, or services were changed during this audit.
 
-**Conclusion:** production has not been verified as private-only. The inspected `mahdia-ai-api-production` service is not the repository's self-hosted Python + Ollama stack and contains an anonymous public-provider fallback. Because the Android default URL is a different hostname, do not assume this inspected service is the app's active backend; resolve that hostname-to-service mapping first. Do not describe either endpoint as a private JASSIM model server without direct verification.
+**Conclusion:** the Android default URL maps to the Python API service in `JASSIM HUB`, but the model endpoint currently points to loopback and no Ollama service exists in that project. The inspected `mahdia-ai-api-production` service is a separate Bun proxy with an anonymous public-provider fallback; it is not the Android app's default hostname. Neither API liveness nor the presence of PostgreSQL proves local inference readiness. Do not describe the production model as ready or private-only until Ollama reachability, model readiness, disabled external routing, and a successful synthetic inference are directly verified.
 
 ## Client-side safeguards added
 
