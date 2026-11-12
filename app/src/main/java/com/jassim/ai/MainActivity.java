@@ -128,7 +128,7 @@ public class MainActivity extends Activity {
         ensureConversationId();
         buildUi();
         initTextToSpeech();
-        // Discover the current Colab tunnel from the stable GitHub Pages registry.
+        // Discover the configured production endpoint from the stable GitHub Pages registry.
         status.setText("● جارٍ اكتشاف عنوان الخادم...");
         status.setTextColor(0xFFFFC36B);
         autoConnect();
