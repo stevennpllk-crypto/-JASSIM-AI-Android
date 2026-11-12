@@ -709,9 +709,9 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path in ("/health", "/ready"):
             model_state = ollama_status()
             external_ready = adaptive.external_chat_enabled()
-            ready = bool(
-                (model_state["reachable"] and model_state["model_ready"]) or external_ready
-            )
+            # Private-model readiness must never be satisfied by an external route.
+            # /ready is used by deployment health checks and must prove local Ollama.
+            ready = bool(model_state["reachable"] and model_state["model_ready"])
             if parsed.path == "/ready":
                 self.send_json(200 if ready else 503, {
                     "ready": ready,
