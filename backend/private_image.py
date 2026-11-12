@@ -6,7 +6,6 @@ never contains or calls a public image-provider integration.
 import base64
 import json
 import os
-import re
 import urllib.error
 import urllib.request
 from urllib.parse import urlparse
