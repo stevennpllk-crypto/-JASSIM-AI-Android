@@ -8,7 +8,7 @@ The API service exposes port 8787 and Railway's configured health check is `/hea
 
 ## Android endpoint selection
 
-The Android client first fetches a public GitHub Pages connection registry, then accepts the returned URL only if `TrustedEndpointPolicy` matches the exact production Railway hostname `jassim-ai-core-final-production.up.railway.app` over HTTPS with no custom port, path, query, or fragment. Therefore the nearby source comment describing discovery of a Colab tunnel is stale: arbitrary Colab or private-host URLs are not accepted by this policy. If the registry is unavailable, the app falls back to its last saved endpoint or the hard-coded production default. This means the client currently has no supported mechanism for discovering a separately hosted private model server; that needs an explicit, reviewed endpoint strategy before a private-server cutover.
+The Android client fetches a public GitHub Pages connection registry but accepts registry URLs only for the exact production Railway hostname over HTTPS. Separately, Connection Settings now supports a custom HTTPS DNS hostname after an explicit confirmation screen; the user is warned that bearer tokens and messages will be sent to that selected server. Custom endpoints must use the HTTPS origin only, default/443 port, and contain no credentials, path, query, or fragment. The broader custom-host validation is never used for unauthenticated public discovery. This creates a user-approved path to a privately hosted JASSIM API without allowing a modified public registry to redirect saved sessions.
 
 ## Model readiness and privacy findings
 
