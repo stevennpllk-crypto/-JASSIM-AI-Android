@@ -84,6 +84,9 @@ def generate(prompt, width=1024, height=1024):
     base = _private_worker_url()
     if not base:
         raise RuntimeError("local_image_model_not_configured")
+    status = worker_status()
+    if not status["reachable"] or not status["model_ready"]:
+        raise RuntimeError("private_image_worker_unavailable")
     body = json.dumps({
         "prompt": str(prompt),
         "width": max(256, min(int(width), 1536)),
