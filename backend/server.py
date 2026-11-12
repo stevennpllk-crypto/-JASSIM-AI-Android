@@ -911,9 +911,14 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     image_b64, mime, model = generate_image(prompt)
                 except RuntimeError as exc:
+                    not_configured = str(exc) == "local_image_model_not_configured"
                     self.send_json(503, {
-                        "error": "local_image_model_not_configured",
-                        "message": "توليد الصور المحلي غير مهيأ بعد. لم يُرسل وصف الصورة إلى أي خدمة خارجية.",
+                        "error": "local_image_model_not_configured" if not_configured else "private_image_worker_unavailable",
+                        "message": (
+                            "توليد الصور المحلي غير مهيأ بعد. لم يُرسل وصف الصورة إلى أي خدمة خارجية."
+                            if not_configured else
+                            "خادم توليد الصور الخاص غير متاح حالياً. لم يُرسل وصف الصورة إلى أي خدمة خارجية."
+                        ),
                         "detail": str(exc)
                     })
                     return
