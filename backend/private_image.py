@@ -8,11 +8,17 @@ import json
 import os
 import urllib.error
 import urllib.request
+import threading
+import time
 from urllib.parse import urlparse
 
 WORKER_URL = os.environ.get("JASSIM_IMAGE_WORKER_URL", "").strip().rstrip("/")
 WORKER_TOKEN = os.environ.get("JASSIM_IMAGE_WORKER_TOKEN", "").strip()
-STATUS_TIMEOUT = 2.5
+STATUS_TIMEOUT = 1.0
+STATUS_CACHE_TTL = 5.0
+_STATUS_LOCK = threading.Lock()
+_STATUS_CACHE = None
+_STATUS_CACHE_AT = 0.0
 GENERATION_TIMEOUT = max(30, min(int(os.environ.get("JASSIM_IMAGE_TIMEOUT", "240")), 600))
 MAX_IMAGE_BYTES = 15 * 1024 * 1024
 ALLOWED_MIME = {
@@ -50,8 +56,25 @@ def _private_worker_url():
     return WORKER_URL
 
 
-def worker_status():
-    """Return ready only when the authenticated private worker has its model loaded."""
+def worker_status(force_refresh=False):
+    """Return cached readiness briefly to keep API liveness checks responsive."""
+    global _STATUS_CACHE, _STATUS_CACHE_AT
+    with _STATUS_LOCK:
+        now = time.monotonic()
+        if (
+            not force_refresh
+            and _STATUS_CACHE is not None
+            and now - _STATUS_CACHE_AT < STATUS_CACHE_TTL
+        ):
+            return dict(_STATUS_CACHE)
+        status = _fetch_worker_status()
+        _STATUS_CACHE = dict(status)
+        _STATUS_CACHE_AT = time.monotonic()
+        return status
+
+
+def _fetch_worker_status():
+    """Probe the authenticated worker and require its actual model to be loaded."""
     base = _private_worker_url()
     if not base:
         return {"reachable": False, "model_ready": False, "model": "not_configured_private_worker"}
@@ -84,7 +107,7 @@ def generate(prompt, width=1024, height=1024):
     base = _private_worker_url()
     if not base:
         raise RuntimeError("local_image_model_not_configured")
-    status = worker_status()
+    status = worker_status(force_refresh=True)
     if not status["reachable"] or not status["model_ready"]:
         raise RuntimeError("private_image_worker_unavailable")
     body = json.dumps({
