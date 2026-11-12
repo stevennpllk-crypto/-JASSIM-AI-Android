@@ -50,6 +50,20 @@ Do not point the API at `127.0.0.1:11434` when Ollama is a separate Railway serv
 6. When the worker is unavailable, return a clear local-image-unavailable response. Do not switch to an external provider automatically.
 7. External image services, if ever supported, are opt-in backups only. Require an explicit per-user setting and a clear disclosure before transmitting any prompt or reference image outside JASSIM infrastructure.
 
+## JASSIM private image-worker API contract
+
+The API client is implemented in `backend/private_image.py`. The image worker may use ComfyUI internally, but only this authenticated contract is exposed to the JASSIM API:
+
+- API environment: `JASSIM_IMAGE_WORKER_URL=http://image-worker.railway.internal:8188`
+- API secret: `JASSIM_IMAGE_WORKER_TOKEN` (a long random token shared only with the private worker)
+- `GET /ready` with `Authorization: Bearer <token>` returns JSON with `ready: true`, `model_ready: true`, and a non-empty `model` only after model weights are loaded.
+- `POST /v1/images/generate` with the same bearer token accepts JSON `{"prompt":"...","width":1024,"height":1024}`.
+- A successful response contains `image_base64`, `mime_type` (`image/png`, `image/jpeg`, or `image/webp`), and a non-empty `model`.
+- The API validates the private hostname, bearer token, response type, image signature, and a 15 MiB decoded-image limit. It rejects public worker URLs.
+- The worker must not expose a public domain. Do not put the worker token in the Android app or repository.
+
+The worker's implementation/model remains a separate deployment task. A running process alone is not enough: readiness must stay false until the actual image model is loaded.
+
 ## Verification gate
 
 Do not call the model server ready until all checks pass:
