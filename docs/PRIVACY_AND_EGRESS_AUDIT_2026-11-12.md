@@ -39,6 +39,16 @@ The provider URL constants remain in the source for historical/test compatibilit
 
 The Railway production service was previously observed to be sourced from `main`, not this branch. Production network logs showed DNS lookups and outbound HTTPS flows involving external provider infrastructure near chat request timestamps. Those logs do not expose request bodies and therefore do not prove which prompt, if any, was transmitted. The old production code contains an external fallback path. Until the privacy branch is reviewed, merged and deliberately deployed, do not claim production is private-only.
 
+## Live Railway infrastructure snapshot (2026-11-12)
+
+The connected Railway workspace contains two JASSIM-related projects:
+- `JASSIM HUB`: PostgreSQL, `jassim-ai-core-final`, and `jassim-remote-mcp`.
+- `Mahdia AI Server`: `mahdia-ai-api` only.
+
+No Ollama inference service or private image-worker service was present in either project. In `JASSIM HUB`, `JASSIM_OLLAMA_URL` is unset, so the API falls back to its loopback default; the production health check reported `ollama_reachable=false` and `model_ready=false`. The same production health check reported `external_provider_ready=true`. Therefore, a real private model is not currently running in the connected Railway projects, and the production route is not private-only. No prompt was sent during this audit.
+
+This is the current hard blocker for the requested real chat test: do not test by sending a user prompt to production while its external-provider route is reported enabled. First deploy the privacy branch under review and provision an Ollama service on a dedicated approved compute host, then confirm the health endpoint reports the local model ready and external provider route disabled.
+
 ## Residual privacy work
 
 1. Decide whether voice input should display a clear disclosure before invoking the Android speech recognizer; offline preference is not a hard privacy boundary.
