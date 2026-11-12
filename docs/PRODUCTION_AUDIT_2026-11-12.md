@@ -6,6 +6,10 @@ The Android app's default API URL is `https://jassim-ai-core-final-production.up
 
 The API service exposes port 8787 and Railway's configured health check is `/health`. Its configured environment variable names include `JASSIM_ALLOW_EXTERNAL_CHAT`, `JASSIM_ENABLE_PUBLIC_PROVIDERS`, `JASSIM_OLLAMA_URL`, and `DATABASE_URL`; Railway's configuration inspection redacts variable values.
 
+## Android endpoint selection
+
+The Android client first fetches a public GitHub Pages connection registry, then accepts the returned URL only if `TrustedEndpointPolicy` matches the exact production Railway hostname `jassim-ai-core-final-production.up.railway.app` over HTTPS with no custom port, path, query, or fragment. Therefore the nearby source comment describing discovery of a Colab tunnel is stale: arbitrary Colab or private-host URLs are not accepted by this policy. If the registry is unavailable, the app falls back to its last saved endpoint or the hard-coded production default. This means the client currently has no supported mechanism for discovering a separately hosted private model server; that needs an explicit, reviewed endpoint strategy before a private-server cutover.
+
 ## Model readiness and privacy findings
 
 - Runtime/startup logs identify the configured model as `qwen3.5:4b` and the Ollama URL as `http://127.0.0.1:11434`.
