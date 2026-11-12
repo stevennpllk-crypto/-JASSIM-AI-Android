@@ -40,6 +40,16 @@ Do not point the API at `127.0.0.1:11434` when Ollama is a separate Railway serv
    - Start with a conservative `JASSIM_NUM_CTX` (for example, 4096) and raise it only after memory/latency tests.
 9. Redeploy the API only after verifying the Ollama service is healthy and reachable over the private network.
 
+## Private image-generation service (separate from Ollama)
+
+1. Provision a dedicated image worker only after explicit approval of its compute/storage cost. Prefer an open-weights model and a worker such as ComfyUI; select the exact model only after benchmarking quality, license, VRAM, and latency.
+2. Keep the worker on the private network with no public domain or exposed inference port. Store model weights and workflow assets on persistent storage.
+3. Configure the JASSIM API with a private worker URL and an allowlisted workflow/model identifier. Do not put provider tokens or private worker credentials in the Android APK.
+4. Add health/readiness checks that verify the worker is reachable and the selected model is actually loaded—not merely that the process is alive.
+5. Test text-to-image, Arabic prompts, invalid input, timeout, worker restart, and persistence. Verify API logs show only the private worker route.
+6. When the worker is unavailable, return a clear local-image-unavailable response. Do not switch to an external provider automatically.
+7. External image services, if ever supported, are opt-in backups only. Require an explicit per-user setting and a clear disclosure before transmitting any prompt or reference image outside JASSIM infrastructure.
+
 ## Verification gate
 
 Do not call the model server ready until all checks pass:
@@ -55,7 +65,9 @@ Do not call the model server ready until all checks pass:
 ## Current limitations and safety
 
 - This repository's API code hard-disables external chat and public-provider routing. Keep both environment flags false.
-- Important privacy distinction: image generation is a separate feature. The current `generate_image_hf` implementation sends image prompts to Hugging Face when `JASSIM_HF_TOKEN` is configured. A private Ollama chat deployment does **not** make image generation private. Until a self-hosted image model is implemented and tested, do not configure that token or advertise image generation as private.
+- Image generation is a separate inference workload from text chat. The Android/API product policy is **JASSIM-owned engines first; external providers are backup-only and disabled by default**. The intended image topology is a dedicated self-hosted image service (for example, a ComfyUI worker with an open-weights model) reachable only over the Railway private network, with persistent model storage and no public inference endpoint. Ollama handles text chat; it is not itself the image-generation engine.
+- The current branch deliberately fails image requests closed with HTTP 503 (`local_image_model_not_configured`) until that private image worker is deployed and verified. It must not silently call Hugging Face or another hosted image API. Do not add or use `JASSIM_HF_TOKEN` for the default path.
+- Any future external image provider may be offered only as an explicitly user-enabled backup, with a clear disclosure before sending the prompt or uploaded reference image off our infrastructure. A local-engine outage must never trigger silent external fallback.
 - The strict `/ready` check on the current development branch is not yet deployed to the production API.
 - The existing production API currently uses a loopback Ollama URL; that does not prove a separate Ollama service exists or that inference works.
 - Creating the service, attaching storage, increasing memory, enabling GPU, and redeploying production can incur cost or cause downtime. Obtain explicit owner approval before any of those actions.
