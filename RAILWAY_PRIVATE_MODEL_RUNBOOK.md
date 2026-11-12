@@ -55,6 +55,7 @@ Do not call the model server ready until all checks pass:
 ## Current limitations and safety
 
 - This repository's API code hard-disables external chat and public-provider routing. Keep both environment flags false.
+- Important privacy distinction: image generation is a separate feature. The current `generate_image_hf` implementation sends image prompts to Hugging Face when `JASSIM_HF_TOKEN` is configured. A private Ollama chat deployment does **not** make image generation private. Until a self-hosted image model is implemented and tested, do not configure that token or advertise image generation as private.
 - The strict `/ready` check on the current development branch is not yet deployed to the production API.
 - The existing production API currently uses a loopback Ollama URL; that does not prove a separate Ollama service exists or that inference works.
 - Creating the service, attaching storage, increasing memory, enabling GPU, and redeploying production can incur cost or cause downtime. Obtain explicit owner approval before any of those actions.
