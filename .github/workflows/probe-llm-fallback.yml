@@ -1,81 +1,37 @@
-name: Probe anonymous LLM providers
+name: Verify local-only inference privacy
 on:
   push:
     paths:
+      - "backend/**"
+      - ".github/workflows/probe-llm-fallback.yml"
+  pull_request:
+    paths:
+      - "backend/**"
       - ".github/workflows/probe-llm-fallback.yml"
   workflow_dispatch:
+
 permissions:
   contents: read
+
 jobs:
-  probe:
+  privacy:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe JarvisClaw free anonymous model (optional)
-        id: jarvis
-        continue-on-error: true
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify external inference is blocked without network access
         run: |
+          python -m unittest discover -s backend -p 'test_local_only.py' -v
           python - <<'PY'
-          import json, urllib.request
-          url = "https://api.jarvisclaw.ai/v1/chat/completions"
-          body = json.dumps({"model":"auto/free","messages":[{"role":"user","content":"Reply exactly: JASSIM ONLINE"}],"stream":True,"max_tokens":40}).encode()
-          req = urllib.request.Request(url,data=body,headers={"Content-Type":"application/json"})
-          try:
-              answer = []
-              with urllib.request.urlopen(req,timeout=90) as r:
-                  for raw in r:
-                      line = raw.decode("utf-8","replace").strip()
-                      if not line.startswith("data:"):
-                          continue
-                      data = line[5:].strip()
-                      if data == "[DONE]":
-                          break
-                      x = json.loads(data)
-                      choices = x.get("choices", [])
-                      if choices:
-                          answer.append(choices[0].get("delta", {}).get("content", ""))
-              result = "".join(answer)
-              if "JASSIM ONLINE" not in result.upper():
-                  raise RuntimeError("Provider returned no valid exact-response marker: " + result[:160])
-              print("JARVISCLAW_STREAM_OK:", result[:300])
-          except Exception as e:
-              print("JARVISCLAW_FAIL:",repr(e))
-              raise
+          import sys
+          sys.path.insert(0, "backend")
+          import adaptive
+          assert adaptive.ALLOW_EXTERNAL_CHAT is False
+          assert adaptive.ENABLE_PUBLIC_PROVIDERS is False
+          assert adaptive.external_chat_enabled() is False
+          print("PASS: user prompts cannot route to public inference providers.")
           PY
-      - name: Probe OVH anonymous model (optional)
-        id: ovh
-        continue-on-error: true
-        run: |
-          python - <<'PY'
-          import json, urllib.request
-          url = "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions"
-          body = json.dumps({"model":"Meta-Llama-3_3-70B-Instruct","messages":[{"role":"user","content":"Reply exactly: JASSIM ONLINE"}],"stream":True,"max_tokens":40}).encode()
-          req = urllib.request.Request(url,data=body,headers={"Content-Type":"application/json"})
-          try:
-              answer = []
-              with urllib.request.urlopen(req,timeout=90) as r:
-                  for raw in r:
-                      line = raw.decode("utf-8","replace").strip()
-                      if not line.startswith("data:"):
-                          continue
-                      data = line[5:].strip()
-                      if data == "[DONE]":
-                          break
-                      x = json.loads(data)
-                      choices = x.get("choices", [])
-                      if choices:
-                          answer.append(choices[0].get("delta", {}).get("content", ""))
-              result = "".join(answer)
-              if "JASSIM ONLINE" not in result.upper():
-                  raise RuntimeError("Provider returned no valid exact-response marker: " + result[:160])
-              print("OVH_STREAM_OK:", result[:300])
-          except Exception as e:
-              print("OVH_FAIL:",repr(e))
-              raise
-          PY
-
-      - name: Summarize optional provider probes
-        if: always()
-        run: |
-          echo '### Optional anonymous provider probes' >> "$GITHUB_STEP_SUMMARY"
-          echo 'JarvisClaw outcome: ${{ steps.jarvis.outcome }}' >> "$GITHUB_STEP_SUMMARY"
-          echo 'OVH outcome: ${{ steps.ovh.outcome }}' >> "$GITHUB_STEP_SUMMARY"
