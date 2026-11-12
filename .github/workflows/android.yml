@@ -29,13 +29,17 @@ jobs:
           import json
           from pathlib import Path
 
-          path = Path("notebooks/JASSIM_AI_Colab_GPU.ipynb")
-          notebook = json.loads(path.read_text(encoding="utf-8"))
-          for index, cell in enumerate(notebook.get("cells", [])):
-              if cell.get("cell_type") == "code":
-                  source = "".join(cell.get("source", []))
-                  compile(source, f"{path}:cell-{index}", "exec")
-          print(f"Validated {len(notebook.get('cells', []))} notebook cells")
+          paths = [
+              Path("notebooks/JASSIM_AI_Colab_GPU.ipynb"),
+              Path("notebooks/JASSIM_AI_Kaggle_Free_GPU.ipynb"),
+          ]
+          for path in paths:
+              notebook = json.loads(path.read_text(encoding="utf-8"))
+              for index, cell in enumerate(notebook.get("cells", [])):
+                  if cell.get("cell_type") == "code":
+                      source = "".join(cell.get("source", []))
+                      compile(source, f"{path}:cell-{index}", "exec")
+              print(f"Validated {path}: {len(notebook.get('cells', []))} cells")
           PY
 
       - name: Test self-hosted backend
