@@ -82,7 +82,7 @@ class AdaptiveRouterTests(unittest.TestCase):
         try:
             result = adaptive.evaluate_providers()
             self.assertEqual(result["tested"], 1)
-            self.assertEqual(result["case_count"], 8)
+            self.assertEqual(result["case_count"], 14)
             self.assertEqual(result["benchmark_version"], adaptive.BENCHMARK_VERSION)
             self.assertIn("pass_rate", result["results"][0])
             self.assertIn("median_latency_ms", result["results"][0])
