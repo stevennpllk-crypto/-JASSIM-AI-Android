@@ -58,7 +58,13 @@ EVALUATION_CASES = [
     {"id":"json_schema_01","category":"instructions","messages":[{"role":"user","content":"أخرج JSON صالحاً فقط بهذا الشكل: {\"name\":\"Ali\",\"age\":16}. لا تضف أي نص."}],"grader":"json","expected":{"name":"Ali","age":16}},
     {"id":"python_ast_01","category":"coding","messages":[{"role":"user","content":"اكتب كود Python فقط لتعريف دالة اسمها add تأخذ a و b وتعيد a + b."}],"grader":"python_add"},
     {"id":"english_api_01","category":"multilingual","messages":[{"role":"user","content":"In one short English sentence, explain what an API lets software do. Include the words request and response."}],"grader":"contains","expected":["request","response"]},
-    {"id":"french_translation_01","category":"multilingual","messages":[{"role":"user","content":"ترجم كلمة Hello إلى الفرنسية. أجب بكلمة واحدة."}],"grader":"exact","expected":"bonjour"}
+    {"id":"french_translation_01","category":"multilingual","messages":[{"role":"user","content":"ترجم كلمة Hello إلى الفرنسية. أجب بكلمة واحدة."}],"grader":"exact","expected":"bonjour"},
+    {"id":"tn_capital_01","category":"tunisian_arabic","messages":[{"role":"user","content":"شنوة عاصمة تونس؟ جاوب بكلمة وحدة."}],"grader":"exact","expected":"تونس"},
+    {"id":"ar_plural_01","category":"arabic","messages":[{"role":"user","content":"ما جمع كلمة كتاب؟ أجب بكلمة واحدة فقط."}],"grader":"exact","expected":"كتب"},
+    {"id":"ar_translation_01","category":"arabic","messages":[{"role":"user","content":"ترجم Good morning إلى العربية. أجب بالترجمة فقط."}],"grader":"exact","expected":"صباح الخير"},
+    {"id":"math_percent_01","category":"math","messages":[{"role":"user","content":"احسب 25% من 80. أعد العدد فقط."}],"grader":"number","expected":20},
+    {"id":"tn_math_01","category":"tunisian_arabic","messages":[{"role":"user","content":"ثلاث خبزات، ثمن الواحدة 450 مليم. قداش نخلّص بالمليم؟ جاوب بالعدد فقط."}],"grader":"number","expected":1350},
+    {"id":"context_recall_01","category":"memory","messages":[{"role":"user","content":"للتجربة فقط، اسم الشخصية في هذه المحادثة هو ريم."},{"role":"assistant","content":"حسناً، اسم الشخصية التجريبية ريم."},{"role":"user","content":"ما اسم الشخصية التي ذكرتها؟ أجب بكلمة واحدة."}],"grader":"exact","expected":"ريم"}
 ]
 
 
