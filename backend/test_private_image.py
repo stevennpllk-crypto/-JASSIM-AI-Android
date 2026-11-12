@@ -35,12 +35,15 @@ class PrivateImageWorkerTests(unittest.TestCase):
         png = b"\x89PNG\r\n\x1a\n" + b"private-test"
         encoded = base64.b64encode(png).decode("ascii")
         payload = {"image_base64": encoded, "mime_type": "image/png", "model": "jassim-image-local"}
+        ready = {"ready": True, "model_ready": True, "model": "jassim-image-local"}
         with patch.object(private_image, "WORKER_URL", "http://image-worker.railway.internal:8188"), \
              patch.object(private_image, "WORKER_TOKEN", "worker-secret"), \
-             patch("private_image.urllib.request.urlopen", return_value=self._response(payload)) as request:
+             patch("private_image.urllib.request.urlopen", side_effect=[
+                 self._response(ready), self._response(payload)
+             ]) as request:
             result = private_image.generate("منظر فضائي")
         self.assertEqual(result, (encoded, "image/png", "jassim-image-local"))
-        sent_request = request.call_args.args[0]
+        sent_request = request.call_args_list[-1].args[0]
         self.assertEqual(sent_request.full_url, "http://image-worker.railway.internal:8188/v1/images/generate")
         self.assertEqual(sent_request.get_header("Authorization"), "Bearer worker-secret")
         self.assertEqual(json.loads(sent_request.data.decode("utf-8"))["prompt"], "منظر فضائي")
@@ -59,9 +62,12 @@ class PrivateImageWorkerTests(unittest.TestCase):
             "mime_type": "image/png",
             "model": "jassim-image-local",
         }
+        ready = {"ready": True, "model_ready": True, "model": "jassim-image-local"}
         with patch.object(private_image, "WORKER_URL", "http://image-worker.railway.internal:8188"), \
              patch.object(private_image, "WORKER_TOKEN", "worker-secret"), \
-             patch("private_image.urllib.request.urlopen", return_value=self._response(payload)):
+             patch("private_image.urllib.request.urlopen", side_effect=[
+                 self._response(ready), self._response(payload)
+             ]):
             with self.assertRaisesRegex(RuntimeError, "private_image_worker_mime_mismatch"):
                 private_image.generate("اختبار")
 
