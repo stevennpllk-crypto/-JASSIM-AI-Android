@@ -173,7 +173,8 @@ public class MainActivity extends Activity {
             }
 
             final String endpoint = discovered;
-            if (!endpoint.isEmpty()) {
+            if (!endpoint.isEmpty()
+                    && !prefs.getBoolean("endpoint_user_configured", false)) {
                 prefs.edit().putString("endpoint", endpoint).apply();
             }
             runOnUiThread(() -> {
@@ -1472,7 +1473,8 @@ public class MainActivity extends Activity {
     private void saveConfiguredEndpoint(String value, String token) {
         try {
             if (!token.isEmpty()) saveApiToken(token);
-            prefs.edit().putString("endpoint", value).apply();
+            prefs.edit().putString("endpoint", value)
+                .putBoolean("endpoint_user_configured", true).apply();
             healthChecked = false;
             localModelReady = false;
             externalChatEnabled = false;
@@ -1533,7 +1535,8 @@ public class MainActivity extends Activity {
                 }
                 try {
                     if (!token.isEmpty()) saveApiToken(token);
-                    prefs.edit().putString("endpoint", value).apply();
+                    prefs.edit().putString("endpoint", value)
+                        .putBoolean("endpoint_user_configured", false).apply();
                     checkHealth();
                     if (!readApiToken().isEmpty()) {
                         loadHistory();
