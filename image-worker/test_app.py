@@ -23,10 +23,10 @@ class PrivateImageWorkerTests(unittest.TestCase):
 
     def test_ready_requires_loaded_pipeline(self):
         with patch.object(app, "PIPELINE", None):
-            with self.assertRaises(HTTPException) as caught:
-                app.ready("Bearer test-worker-secret")
-        self.assertEqual(caught.exception.status_code, 401) if False else None
-        self.assertEqual(caught.exception.status_code, 401) if caught.exception.status_code == 401 else self.assertEqual(caught.exception.status_code, 503)
+            result = app.ready("Bearer test-worker-secret")
+        self.assertFalse(result["ready"])
+        self.assertFalse(result["model_ready"])
+        self.assertEqual(result["model"], "private_worker_model_not_ready")
 
     def test_generation_requires_authentication(self):
         request = app.GenerateRequest(prompt="اختبار")
