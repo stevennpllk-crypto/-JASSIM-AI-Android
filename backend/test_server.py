@@ -314,7 +314,8 @@ class ServerSmokeTest(unittest.TestCase):
         def interrupted(messages, emit):
             emit("partial")
             raise RuntimeError("upstream interrupted")
-        with patch.object(module.adaptive, "stream_answer_with_provider", side_effect=interrupted):
+        with patch.object(module.adaptive, "external_chat_enabled", return_value=True), \
+             patch.object(module.adaptive, "stream_answer_with_provider", side_effect=interrupted):
             with patch.object(module, "save_turn") as save:
                 module.Handler.stream_external_provider_response(
                     stub, "conversation-test", "question", [], "user-test")
