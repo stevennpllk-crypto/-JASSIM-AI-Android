@@ -9,6 +9,10 @@ import private_image
 
 
 class PrivateImageWorkerTests(unittest.TestCase):
+    def setUp(self):
+        private_image._STATUS_CACHE = None
+        private_image._STATUS_CACHE_AT = 0.0
+
     def _response(self, payload):
         response = Mock()
         response.__enter__ = Mock(return_value=response)
@@ -27,7 +31,7 @@ class PrivateImageWorkerTests(unittest.TestCase):
                  patch.object(private_image, "WORKER_TOKEN", "secret"), \
                  patch("urllib.request.urlopen", side_effect=AssertionError("public network forbidden")):
                 self.assertIsNone(private_image._private_worker_url())
-                self.assertEqual(private_image.worker_status()["model_ready"], False)
+                self.assertEqual(private_image.worker_status(force_refresh=True)["model_ready"], False)
                 with self.assertRaisesRegex(RuntimeError, "local_image_model_not_configured"):
                     private_image.generate("اختبار")
 
@@ -53,7 +57,7 @@ class PrivateImageWorkerTests(unittest.TestCase):
         with patch.object(private_image, "WORKER_URL", "http://image-worker.railway.internal:8188"), \
              patch.object(private_image, "WORKER_TOKEN", "worker-secret"), \
              patch("private_image.urllib.request.urlopen", return_value=self._response(payload)):
-            status = private_image.worker_status()
+            status = private_image.worker_status(force_refresh=True)
         self.assertFalse(status["model_ready"])
 
     def test_mime_signature_is_checked(self):
