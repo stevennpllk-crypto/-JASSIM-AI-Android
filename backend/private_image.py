@@ -89,8 +89,8 @@ def generate(prompt, width=1024, height=1024):
         raise RuntimeError("private_image_worker_unavailable")
     body = json.dumps({
         "prompt": str(prompt),
-        "width": max(256, min(int(width), 1536)),
-        "height": max(256, min(int(height), 1536)),
+        "width": max(256, min(int(width), 1024)),
+        "height": max(256, min(int(height), 1024)),
     }).encode("utf-8")
     request = urllib.request.Request(
         base + "/v1/images/generate",
