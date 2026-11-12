@@ -373,7 +373,12 @@ def ollama_status():
 
 
 def answer_with_external_fallback(messages):
-    """Use a configured provider immediately when the local model is unavailable."""
+    """Fail closed unless an external inference route is explicitly enabled."""
+    if not adaptive.external_chat_enabled():
+        return (
+            "النموذج المحلي غير متاح حالياً. لم يتم إرسال رسالتك إلى أي مزوّد خارجي.",
+            "fallback"
+        )
     try:
         answer, provider = adaptive.answer_with_provider(
             [{"role": "system", "content": SYSTEM_PROMPT}] + messages
@@ -382,8 +387,9 @@ def answer_with_external_fallback(messages):
     except RuntimeError:
         return (
             "محرك الذكاء الاصطناعي غير متاح حالياً. "
-            "لم يتمكن الخادم من الوصول إلى Ollama أو إلى مزود احتياطي مفعّل."
-        ), "fallback"
+            "لم يتمكن الخادم من الوصول إلى Ollama أو إلى مزوّد احتياطي مفعّل.",
+            "fallback"
+        )
 
 
 def generate_answer(messages):
@@ -469,7 +475,15 @@ class Handler(BaseHTTPRequestHandler):
         self.send_sse_event({"type": "done", "conversation_id": conversation_id, "engine": engine})
 
     def stream_external_provider_response(self, conversation_id, message, context, user_id):
-        """Stream provider deltas to the client; persist only complete answers."""
+        """Stream provider deltas only when an external route is explicitly enabled."""
+        if not adaptive.external_chat_enabled():
+            self.send_json(503, {
+                "error": "model_unavailable",
+                "message": "النموذج المحلي غير متاح. لم يتم إرسال رسالتك إلى أي مزوّد خارجي.",
+                "retry_after_seconds": 30,
+                "conversation_id": conversation_id
+            })
+            return
         answer_parts = []
         headers_sent = False
         try:
