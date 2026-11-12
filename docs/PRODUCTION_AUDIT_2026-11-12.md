@@ -1,43 +1,41 @@
 # Production privacy and deployment audit — 2026-11-12
 
-## Verified state
+## Scope and verified production mapping
 
-This audit was performed against the Railway production environment, not inferred from repository files.
+The Android app's default API URL is `https://jassim-ai-core-final-production.up.railway.app`. The matching Railway service is `jassim-ai-core-final` in the `JASSIM HUB` production environment. The service is attached to this repository's `main` branch, has two online replicas, and currently has no attached volume. The separate PostgreSQL service is online and has a persistent volume. The project also contains an offline `jassim-remote-mcp` service.
 
-- The environment reported one online service named `mahdia-ai-api`, one running replica, no attached volume, and no pending deployment.
-- The Railway-generated domain `mahdia-ai-api-production.up.railway.app` is attached directly to that same service; domain listing returned no custom domains.
-- The Android app's current default API URL is `https://jassim-ai-core-final-production.up.railway.app`. A separate Railway project named `JASSIM HUB` contains a `jassim-ai-core-final` service whose generated domain matches that URL exactly; the service is attached to this repository's `main` branch and is online with 2/2 replicas.
-- The `JASSIM HUB` API service has no mounted volume. Its separate PostgreSQL service is online and has a persistent volume. The API's current runtime logs identify the database as PostgreSQL and the configured model as `qwen3.5:4b` at `http://127.0.0.1:11434`.
-- `JASSIM HUB` contains no separate Ollama service. The API startup logs show the configured loopback URL `http://127.0.0.1:11434`; that address points inside each API container, not to an Ollama service in the project. No Ollama reachability or successful local inference was established in this audit.
-- Railway's configured healthcheck is `/health`, which the Python API intentionally returns as HTTP 200 for API liveness. The stricter `/ready` endpoint returns 503 unless either Ollama is reachable with the model ready or external inference is enabled. Thus the green Railway deployment/health status is not proof of model readiness.
-- Railway returned production variable names but redacted their values. The source code defaults real-chat external routing to disabled when `JASSIM_ALLOW_EXTERNAL_CHAT` is unset, while public-provider evaluation defaults enabled; the actual production flag values could not be independently read back. Network DNS logs show provider domains being resolved by an older deployment, but DNS alone does not prove user prompts were sent to those providers.
-- The live service image was `ghcr.io/railwayapp/function-bun:1.4.4`, not the repository's Python API container.
-- Its start command contains an inline Bun handler rather than a checkout of this repository.
-- The decoded handler selects configured public providers when their variables exist and otherwise defaults to the anonymous `pollinations-anonymous-fallback` provider at `https://text.pollinations.ai/openai`.
-- The service's visible variable-name list contained only Railway platform variables; no model, Ollama, or provider credentials were listed.
-- The handler's health payload reports a provider/readiness mode, but does not implement the Python API's complete local-model readiness contract.
-- No production variables, domains, deployments, databases, or services were changed during this audit.
+The API service exposes port 8787 and Railway's configured health check is `/health`. Its configured environment variable names include `JASSIM_ALLOW_EXTERNAL_CHAT`, `JASSIM_ENABLE_PUBLIC_PROVIDERS`, `JASSIM_OLLAMA_URL`, and `DATABASE_URL`; Railway's configuration inspection redacts variable values.
 
-**Conclusion:** the Android default URL maps to the Python API service in `JASSIM HUB`, but its configured model endpoint points to loopback and no Ollama service exists in that project. Railway only checks API liveness, not model readiness. The inspected `mahdia-ai-api-production` service is a separate Bun proxy with an anonymous public-provider fallback; it is not the Android app's default hostname. Do not describe the production model as ready or private-only until Ollama reachability, model readiness, disabled external chat routing, and a successful synthetic inference are directly verified.
+## Model readiness and privacy findings
 
-## Client-side safeguards added
+- Runtime/startup logs identify the configured model as `qwen3.5:4b` and the Ollama URL as `http://127.0.0.1:11434`.
+- No separate Ollama service exists in the inspected `JASSIM HUB` project. Unless Ollama is running inside the same API container, loopback points to the API container itself and cannot reach a different Railway service.
+- The API container has no persistent volume. PostgreSQL does have persistent storage.
+- The Railway health check targets `/health`, which is an API liveness check; a green deployment does not prove that Ollama is reachable or that the model is loaded.
+- The source defines a stricter `/ready` check that should fail unless local model readiness is established or external inference is enabled. A successful `/ready` response alone must also be inspected to confirm which mode made it ready.
+- Production variable values were not exposed by the read-only configuration inspection. Therefore the actual values of `JASSIM_ALLOW_EXTERNAL_CHAT` and `JASSIM_ENABLE_PUBLIC_PROVIDERS` have not been independently verified in the running production process.
+- No successful synthetic inference through a confirmed local Ollama route was demonstrated in this audit. Do not claim that production inference is currently local-only or that the model is ready.
+- The separate Railway service/project named `mahdia-ai-api-production` is not the Android app's configured default hostname. Do not conflate that separate service with `JASSIM HUB`.
 
-The Android client now treats explicit external-provider flags, public/fallback provider modes, and non-local provider names as external. It only permits chat when the health check has completed, the local model is ready, and no external route is reported. This is a client-side fail-closed safeguard; it does not change the server's routing behavior.
+## Client-side safeguards in the development branch
+
+The Android client treats explicit external-provider flags, public/fallback provider modes, and non-local provider names as external. It only permits chat when the health check has completed, the local model is reported ready, and no external route is reported. This is a client-side fail-closed safeguard; it does not change server routing and cannot compensate for an incorrectly reported health payload.
 
 ## CI privacy change
 
-The Android workflow no longer sends a synthetic prompt to the public JarvisClaw endpoint. It now records production model readiness and external-provider routing as a CI summary and warning, without invoking a public AI inference provider.
+The Android workflow no longer sends a synthetic prompt to a public AI endpoint. It audits production health/readiness metadata without invoking a public AI inference provider.
 
-## Safe cutover requirements
+## Required safe deployment plan
 
-Do not switch the production domain until all of the following are true:
+Do not change the production domain or migrate real user data until all of the following are completed:
 
-1. Deploy the repository's `backend/server.py` API from a reviewed commit, not an inline generic provider proxy.
-2. Run Ollama with a locally installed, pinned model on infrastructure sized for that model. Keep model weights on persistent storage.
-3. Set `JASSIM_ALLOW_EXTERNAL_CHAT=false` and `JASSIM_ENABLE_PUBLIC_PROVIDERS=false`; verify both are disabled in the actual running process.
-4. Provide persistent storage for the API database and model weights; define backup and restore procedures before migrating any real accounts or conversations.
-5. Verify `/health` reports the local model as ready and external routing disabled, then verify `/ready` and a synthetic authenticated chat request use the `ollama` engine.
-6. Test Android registration, login, chat streaming, cancellation, and history isolation against the new service using synthetic test accounts and data.
-7. Only after these checks pass, plan a controlled domain cutover and rollback. Do not delete the existing service or migrate production data as part of an unreviewed build.
+1. Deploy the reviewed Python API from an explicitly approved commit, rather than an unreviewed generic provider proxy.
+2. Provide a real Ollama runtime reachable from the API service over a private service address, or co-locate it in the same container with a correct loopback configuration.
+3. Pin and install the selected model on persistent storage. Validate that the chosen Railway CPU/RAM/GPU resources can load and serve it before committing to a production topology.
+4. Set `JASSIM_ALLOW_EXTERNAL_CHAT=false` and `JASSIM_ENABLE_PUBLIC_PROVIDERS=false`; verify the effective values from the running process without exposing secrets.
+5. Verify `/health` reports the expected local engine, model readiness, and external routing disabled; verify `/ready`; then send a synthetic authenticated request and confirm the selected engine is Ollama.
+6. Test Android registration, login, chat streaming, cancellation, and history isolation with synthetic test accounts and data.
+7. Define database backup/restore and rollback procedures. PostgreSQL already has a persistent volume; do not recreate or overwrite it.
+8. Only after all checks pass, plan a controlled domain cutover and rollback.
 
-A dedicated GPU host, persistent database, or other paid resource must be explicitly approved before it is created or enabled. A passing APK build is not evidence that this server cutover has happened.
+No production variables, domains, deployments, databases, or services were changed during this audit. No GPU or other paid resource was created. A passing APK build is not evidence that production model inference is working.
