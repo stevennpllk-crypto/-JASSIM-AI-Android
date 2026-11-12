@@ -315,7 +315,24 @@ def fit_history_to_budget(messages):
     return kept
 
 
+def ollama_endpoint_is_private():
+    """Prevent user prompts from being sent to arbitrary public model hosts."""
+    parsed = urlparse(OLLAMA_URL)
+    host = (parsed.hostname or "").lower()
+    private_host = host in ("localhost", "127.0.0.1", "::1") or host.endswith(".railway.internal")
+    if parsed.scheme != "http" or not private_host or parsed.username or parsed.password:
+        return False
+    if parsed.query or parsed.fragment or parsed.path not in ("", "/"):
+        return False
+    try:
+        return parsed.port is None or 1 <= parsed.port <= 65535
+    except ValueError:
+        return False
+
+
 def ask_ollama(messages):
+    if not ollama_endpoint_is_private():
+        raise RuntimeError("ollama_endpoint_must_be_private")
     payload = json.dumps({
         "model": OLLAMA_MODEL,
         "messages": [{"role": "system", "content": SYSTEM_PROMPT}] + messages,
@@ -353,6 +370,8 @@ def ask_ollama(messages):
 
 def ollama_status():
     """Check model availability and whether Ollama currently keeps it loaded."""
+    if not ollama_endpoint_is_private():
+        return {"reachable": False, "model_ready": False, "model_loaded": False}
     base = OLLAMA_URL.rstrip("/")
     try:
         with urllib.request.urlopen(urllib.request.Request(base + "/api/tags"), timeout=1.0) as response:
