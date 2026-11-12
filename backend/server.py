@@ -417,6 +417,13 @@ def generate_image(prompt, width=1024, height=1024):
     """Fail closed until a self-hosted image inference engine is installed."""
     raise RuntimeError("local_image_model_not_configured")
 
+def image_generation_status():
+    """Report image inference unavailable until the private worker is verified."""
+    return {
+        "image_generation_ready": False,
+        "image_model": "not_configured_local_only"
+    }
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "JASSIM-AI/0.6.0"
 
@@ -712,8 +719,7 @@ class Handler(BaseHTTPRequestHandler):
                 "uptime_seconds": int(time.monotonic() - STARTED_AT),
                 "storage": storage.backend_name(),
                 "authentication": "account-sessions",
-                "image_generation_ready": False,
-                "image_model": "not_configured_local_only"
+                **image_generation_status()
             })
             return
         if parsed.path == "/api/auth/me":
@@ -910,7 +916,7 @@ class Handler(BaseHTTPRequestHandler):
                     })
                     return
                 self.send_json(200, {
-                    "ok": True, "provider": "huggingface-inference",
+                    "ok": True, "provider": "jassim-private",
                     "model": model, "mime_type": mime, "image_base64": image_b64
                 })
             except (UnicodeDecodeError, json.JSONDecodeError, AttributeError, TypeError, ValueError) as exc:
