@@ -18,6 +18,7 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 import adaptive
+from readiness import local_model_ready
 
 # Perform the same PBKDF2 work for unknown accounts as for known accounts.
 # This reduces username/email timing leaks during password authentication.
@@ -711,7 +712,7 @@ class Handler(BaseHTTPRequestHandler):
             external_ready = adaptive.external_chat_enabled()
             # Private-model readiness must never be satisfied by an external route.
             # /ready is used by deployment health checks and must prove local Ollama.
-            ready = bool(model_state["reachable"] and model_state["model_ready"])
+            ready = local_model_ready(model_state)
             if parsed.path == "/ready":
                 self.send_json(200 if ready else 503, {
                     "ready": ready,
