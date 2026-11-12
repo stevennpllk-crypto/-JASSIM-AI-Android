@@ -7,61 +7,55 @@ import static org.junit.Assert.assertTrue;
 
 public class TrustedEndpointPolicyTest {
     @Test
-    public void acceptsProductionApiHost() {
-        assertTrue(TrustedEndpointPolicy.isTrusted(
-            "https://jassim-ai-core-final-production.up.railway.app"));
+    public void acceptsProductionApiHostForDiscoveryAndManualSettings() {
+        String endpoint = "https://jassim-ai-core-final-production.up.railway.app";
+        assertTrue(TrustedEndpointPolicy.isTrusted(endpoint));
+        assertTrue(TrustedEndpointPolicy.isUserConfigured(endpoint));
     }
 
     @Test
-    public void rejectsUnsignedTemporaryTunnelHosts() {
-        // Quick Tunnel hostnames are user-controlled; without a signed registry
-        // they must not receive account bearer tokens.
+    public void discoveryRemainsPinnedToProductionHost() {
+        assertFalse(TrustedEndpointPolicy.isTrusted("https://my-private-jassim.example.com"));
         assertFalse(TrustedEndpointPolicy.isTrusted("https://abc-123.trycloudflare.com"));
-        assertFalse(TrustedEndpointPolicy.isTrusted("https://ABC-123.TRYCLOUDFLARE.COM"));
-    }
-
-    @Test
-    public void rejectsUntrustedAndLookalikeHosts() {
         assertFalse(TrustedEndpointPolicy.isTrusted("https://attacker.example"));
-        assertFalse(TrustedEndpointPolicy.isTrusted("https://trycloudflare.com"));
-        assertFalse(TrustedEndpointPolicy.isTrusted("https://abc.trycloudflare.com.attacker.example"));
-        assertFalse(TrustedEndpointPolicy.isTrusted("https://jassim-ai-core-final-production.up.railway.app.attacker.example"));
     }
 
     @Test
-    public void rejectsUnsafeUrlComponents() {
-        assertFalse(TrustedEndpointPolicy.isTrusted("http://abc.trycloudflare.com"));
-        assertFalse(TrustedEndpointPolicy.isTrusted("https://user:pass@abc.trycloudflare.com"));
-        assertFalse(TrustedEndpointPolicy.isTrusted("https://abc.trycloudflare.com:8443"));
-        assertFalse(TrustedEndpointPolicy.isTrusted("https://abc.trycloudflare.com/api"));
-        assertFalse(TrustedEndpointPolicy.isTrusted("https://abc.trycloudflare.com/?next=evil"));
-        assertFalse(TrustedEndpointPolicy.isTrusted("https://abc.trycloudflare.com/#fragment"));
+    public void manualSettingsAcceptsExplicitPrivateHttpsDomain() {
+        assertTrue(TrustedEndpointPolicy.isUserConfigured("https://ai.example.com"));
+        assertTrue(TrustedEndpointPolicy.isUserConfigured("https://my-jassim-server.example.org:443"));
     }
 
     @Test
-    public void acceptsOnlyTheCanonicalProductionOrigin() {
-        assertTrue(TrustedEndpointPolicy.isTrusted(
-            "https://JASSIM-AI-CORE-FINAL-PRODUCTION.UP.RAILWAY.APP"));
-        assertTrue(TrustedEndpointPolicy.isTrusted(
-            "https://jassim-ai-core-final-production.up.railway.app:443"));
+    public void rejectsUnsafeCustomOrigins() {
+        assertFalse(TrustedEndpointPolicy.isUserConfigured("http://ai.example.com"));
+        assertFalse(TrustedEndpointPolicy.isUserConfigured("https://user:pass@ai.example.com"));
+        assertFalse(TrustedEndpointPolicy.isUserConfigured("https://ai.example.com:8443"));
+        assertFalse(TrustedEndpointPolicy.isUserConfigured("https://ai.example.com/api"));
+        assertFalse(TrustedEndpointPolicy.isUserConfigured("https://ai.example.com/?next=evil"));
+        assertFalse(TrustedEndpointPolicy.isUserConfigured("https://ai.example.com/#fragment"));
+        assertFalse(TrustedEndpointPolicy.isUserConfigured("https://localhost"));
+        assertFalse(TrustedEndpointPolicy.isUserConfigured("https://ai.example.com."));
+        assertFalse(TrustedEndpointPolicy.isUserConfigured("https://127.0.0.1"));
     }
 
     @Test
-    public void rejectsUnsafeComponentsOnTheTrustedProductionHost() {
+    public void rejectsLookalikeAndUnsafeProductionUrls() {
         String host = "jassim-ai-core-final-production.up.railway.app";
+        assertFalse(TrustedEndpointPolicy.isTrusted("https://" + host + ".attacker.example"));
         assertFalse(TrustedEndpointPolicy.isTrusted("https://user:pass@" + host));
         assertFalse(TrustedEndpointPolicy.isTrusted("https://" + host + ":8443"));
         assertFalse(TrustedEndpointPolicy.isTrusted("https://" + host + "/api"));
         assertFalse(TrustedEndpointPolicy.isTrusted("https://" + host + "/?next=evil"));
         assertFalse(TrustedEndpointPolicy.isTrusted("https://" + host + "/#fragment"));
-        assertFalse(TrustedEndpointPolicy.isTrusted("https://" + host + "."));
     }
 
     @Test
     public void rejectsEmptyMalformedAndOversizedValues() {
         assertFalse(TrustedEndpointPolicy.isTrusted(null));
         assertFalse(TrustedEndpointPolicy.isTrusted(""));
-        assertFalse(TrustedEndpointPolicy.isTrusted("not a URL"));
-        assertFalse(TrustedEndpointPolicy.isTrusted("https://" + "a".repeat(301) + ".trycloudflare.com"));
+        assertFalse(TrustedEndpointPolicy.isUserConfigured(null));
+        assertFalse(TrustedEndpointPolicy.isUserConfigured("not a URL"));
+        assertFalse(TrustedEndpointPolicy.isUserConfigured("https://" + "a".repeat(301) + ".example.com"));
     }
 }
