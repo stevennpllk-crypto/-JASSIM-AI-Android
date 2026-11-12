@@ -12,6 +12,24 @@ Purpose: choose candidates for a controlled private benchmark. No model or GPU h
 | Mistral Small 3.2 24B Instruct | Larger quality/function-calling challenger | 24B parameters; full repository artifacts are much larger than quantized runtime | Apache 2.0; model card lists Arabic among 24 languages; improved instruction following and function calling | Heavier GPU/RAM requirement; test quantized serving before selecting |
 | Llama 3.3 70B Instruct | High-capacity reference, not first deployment | 70B parameters | Strong published reasoning/coding results | Official supported-language list does not include Arabic; custom Llama Community License; high VRAM and cost |
 
+## Reproducible local benchmark harness
+
+The repository now includes `backend/local_model_benchmark.py`. It:
+- tests only synthetic prompts from the frozen 14-case evaluation set;
+- connects only to loopback or a `*.railway.internal` Ollama endpoint;
+- refuses public Ollama URLs before making a request;
+- tests only exact model tags already present in `/api/tags`;
+- never runs `ollama pull` or downloads missing model weights;
+- reports pass rate, median/p95 latency and generated tokens/second to a local JSON file.
+
+Example on the Ollama host after the operator has installed the desired tags:
+```sh
+cd backend
+python local_model_benchmark.py --models qwen3.5:4b,qwen3.5:9b --output comparison.json
+```
+
+The benchmark should be run separately for each model set and repeated at the same context and concurrency settings. Keep the JSON reports with the GPU type, quantization and Ollama version.
+
 ## Recommended benchmark order
 
 1. Qwen3.5 4B as a low-cost baseline.
