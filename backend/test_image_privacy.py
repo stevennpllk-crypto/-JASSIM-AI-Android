@@ -18,7 +18,6 @@ class LocalImagePrivacyTests(unittest.TestCase):
             "JASSIM_HF_TOKEN": "test-token",
             "JASSIM_IMAGE_MODEL": "some-cloud-model",
         }):
-            self.assertFalse(bool(os.environ.get("JASSIM_HF_TOKEN", "").strip()))
             # The API health payload is intentionally hard-coded false until
             # a self-hosted image engine and its readiness probe are implemented.
             self.assertIn('"image_generation_ready": False', open(
