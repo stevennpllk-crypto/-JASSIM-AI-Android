@@ -140,6 +140,22 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("لم يتم إرسال رسالتك", answer)
         external.assert_not_called()
 
+        class StubHandler:
+            def __init__(self):
+                self.error = None
+            def send_json(self, status, payload):
+                self.error = (status, payload)
+
+        stub = StubHandler()
+        with patch.object(module.adaptive, "external_chat_enabled", return_value=False):
+            with patch.object(module.adaptive, "stream_answer_with_provider",
+                              side_effect=AssertionError("external stream must not be called")) as stream:
+                module.Handler.stream_external_provider_response(
+                    stub, "conversation-test", "question", [], "user-test")
+        self.assertEqual(stub.error[0], 503)
+        self.assertIn("لم يتم إرسال رسالتك", stub.error[1]["message"])
+        stream.assert_not_called()
+
     def test_generate_answer_skips_unavailable_local_model_immediately(self):
         import importlib.util
         from unittest.mock import patch
