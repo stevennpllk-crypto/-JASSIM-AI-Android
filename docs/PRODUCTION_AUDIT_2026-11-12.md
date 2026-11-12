@@ -5,6 +5,7 @@
 This audit was performed against the Railway production environment, not inferred from repository files.
 
 - The environment reported one online service named `mahdia-ai-api`, one running replica, no attached volume, and no pending deployment.
+- The Railway-generated domain `mahdia-ai-api-production.up.railway.app` is attached directly to that same service; domain listing returned no custom domains. This resolves the earlier uncertainty about whether the inspected Bun service was the service behind the production hostname.
 - The live service image was `ghcr.io/railwayapp/function-bun:1.4.4`, not the repository's Python API container.
 - Its start command contains an inline Bun handler rather than a checkout of this repository.
 - The decoded handler selects configured public providers when their variables exist and otherwise defaults to the anonymous `pollinations-anonymous-fallback` provider at `https://text.pollinations.ai/openai`.
@@ -12,7 +13,7 @@ This audit was performed against the Railway production environment, not inferre
 - The handler's health payload reports a provider/readiness mode, but does not implement the Python API's complete local-model readiness contract.
 - No production variables, domains, deployments, databases, or services were changed during this audit.
 
-**Conclusion:** production has not been verified as private-only. The inspected service is not the repository's self-hosted Python + Ollama stack and contains an anonymous public-provider fallback. Do not describe it as a private JASSIM model server.
+**Conclusion:** production has not been verified as private-only. The inspected service is the service behind the current Railway hostname; it is not the repository's self-hosted Python + Ollama stack and contains an anonymous public-provider fallback. Do not describe it as a private JASSIM model server.
 
 ## Client-side safeguards added
 
