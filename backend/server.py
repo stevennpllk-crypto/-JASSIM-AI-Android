@@ -393,9 +393,8 @@ def answer_with_external_fallback(messages):
 
 
 def generate_answer(messages):
-    # Railway currently has no reachable local Ollama model. Probe readiness
-    # first (bounded to one second) instead of waiting for the 240s inference
-    # timeout before routing to an already-enabled external provider.
+    # Probe local readiness first. If private inference is unavailable, the
+    # guarded fallback returns a clear error unless external routing is enabled.
     model_state = ollama_status()
     if not model_state["reachable"] or not model_state["model_ready"]:
         return answer_with_external_fallback(messages)
@@ -546,9 +545,8 @@ class Handler(BaseHTTPRequestHandler):
                 })
 
     def stream_chat_response(self, conversation_id, message, context, user_id):
-        # Avoid a long Ollama connection timeout on hosts where no local model
-        # is provisioned. The readiness probe is bounded and fallback routing
-        # can begin immediately.
+        # Avoid waiting for a long Ollama timeout when the local model is absent.
+        # The guarded fallback either uses an explicitly enabled route or fails closed.
         model_state = ollama_status()
         if not model_state["reachable"] or not model_state["model_ready"]:
             self.stream_external_provider_response(conversation_id, message, context, user_id)
