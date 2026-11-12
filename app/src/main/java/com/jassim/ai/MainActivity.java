@@ -172,10 +172,13 @@ public class MainActivity extends Activity {
                 if (discovery != null) discovery.disconnect();
             }
 
+            if (prefs.getBoolean("endpoint_user_configured", false)) {
+                discovered = "";
+            }
             final String endpoint = discovered;
-            if (!endpoint.isEmpty()
-                    && !prefs.getBoolean("endpoint_user_configured", false)) {
-                prefs.edit().putString("endpoint", endpoint).apply();
+            if (!endpoint.isEmpty()) {
+                prefs.edit().putString("endpoint", endpoint)
+                    .putBoolean("endpoint_user_configured", false).apply();
             }
             runOnUiThread(() -> {
                 if (baseUrl().isEmpty()) {
@@ -601,7 +604,8 @@ public class MainActivity extends Activity {
         // an endpoint before strict discovery validation was introduced.
         if (!TrustedEndpointPolicy.isUserConfigured(endpoint)) {
             endpoint = DEFAULT_SERVER_URL;
-            prefs.edit().remove("endpoint").apply();
+            prefs.edit().remove("endpoint")
+                .putBoolean("endpoint_user_configured", false).apply();
         }
         return endpoint;
     }
@@ -1472,7 +1476,11 @@ public class MainActivity extends Activity {
 
     private void saveConfiguredEndpoint(String value, String token) {
         try {
-            if (!token.isEmpty()) saveApiToken(token);
+            if (!value.equalsIgnoreCase(baseUrl())) {
+                saveApiToken("");
+            } else if (!token.isEmpty()) {
+                saveApiToken(token);
+            }
             prefs.edit().putString("endpoint", value)
                 .putBoolean("endpoint_user_configured", true).apply();
             healthChecked = false;
@@ -1534,7 +1542,11 @@ public class MainActivity extends Activity {
                     return;
                 }
                 try {
-                    if (!token.isEmpty()) saveApiToken(token);
+                    if (!value.equalsIgnoreCase(baseUrl())) {
+                        saveApiToken("");
+                    } else if (!token.isEmpty()) {
+                        saveApiToken(token);
+                    }
                     prefs.edit().putString("endpoint", value)
                         .putBoolean("endpoint_user_configured", false).apply();
                     checkHealth();
