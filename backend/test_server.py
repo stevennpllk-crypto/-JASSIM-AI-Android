@@ -67,6 +67,35 @@ class FakeOllamaHandler(BaseHTTPRequestHandler):
 
 
 class ServerSmokeTest(unittest.TestCase):
+    def test_ollama_endpoint_rejects_public_hosts(self):
+        import importlib.util
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_private_endpoint_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+        original = module.OLLAMA_URL
+        try:
+            for url in ("https://api.example.com", "http://example.com:11434",
+                        "http://user:pass@ollama.railway.internal:11434",
+                        "http://ollama.railway.internal/path"):
+                module.OLLAMA_URL = url
+                self.assertFalse(module.ollama_endpoint_is_private(), url)
+                self.assertFalse(module.ollama_status()["reachable"], url)
+            for url in ("http://127.0.0.1:11434", "http://ollama.railway.internal:11434"):
+                module.OLLAMA_URL = url
+                self.assertTrue(module.ollama_endpoint_is_private(), url)
+        finally:
+            module.OLLAMA_URL = original
+
     def test_colab_notebook_code_cells_compile(self):
         notebook_path = Path(__file__).resolve().parents[1] / "notebooks" / "JASSIM_AI_Colab_GPU.ipynb"
         notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
