@@ -17,7 +17,7 @@ class LocalImagePrivacyTests(unittest.TestCase):
     def test_image_readiness_is_truthful_and_centralized(self):
         self.assertEqual(server.image_generation_status(), {
             "image_generation_ready": False,
-            "image_model": "not_configured_local_only",
+            "image_model": "not_configured_private_worker",
         })
 
     def test_environment_cannot_enable_external_chat_backup(self):
