@@ -160,9 +160,7 @@ def main():
     cases = adaptive.EVALUATION_CASES
     reports = []
     for model in requested:
-        if model not in installed and not any(
-            name.split(":")[0] == model.split(":")[0] for name in installed
-        ):
+        if model not in installed:
             reports.append({
                 "model": model,
                 "status": "not_installed",
