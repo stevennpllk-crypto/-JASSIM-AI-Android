@@ -21,13 +21,13 @@ See [ROADMAP.md](ROADMAP.md) for shipped and planned capabilities. Individual em
 - The Android client stores its API token encrypted with Android Keystore (AES-GCM); the token is entered on the device and is not compiled into the APK.
 - The dashboard stores its endpoint in browser local storage and its token in session storage. Use it only on a trusted device and close the browser session when finished.
 - Use HTTPS for any server reachable over the internet. The Android app intentionally rejects plain HTTP endpoints.
-- Automatic Colab endpoint discovery accepts only the production Railway API host or a `*.trycloudflare.com` HTTPS tunnel. Arbitrary URLs, user-info credentials, custom ports, query strings, and URL paths are rejected so a modified public discovery document cannot redirect saved account sessions to an unrelated host.
+- Automatic endpoint discovery is pinned to the canonical production Railway API host; it does not trust arbitrary URLs from the public registry. In Connection Settings, a user may explicitly approve a custom HTTPS DNS hostname (default/443 port, origin only, no credentials, path, query, or fragment). The app warns that the selected server receives account bearer tokens and chat messages. Use only a domain you own or trust. This explicit approval is separate from public-registry discovery.
 - For self-hosted Docker, bind the API to `127.0.0.1` behind a trusted HTTPS reverse proxy/tunnel. On managed platforms such as Railway, bind to the platform-required interface only behind the provider's HTTPS edge; do not expose the raw Python server port directly.
 - Regular users create accounts and authenticate through `/api/auth/register`, `/api/auth/login`, `/api/auth/me`, and `/api/auth/logout`. Passwords are stored as PBKDF2-HMAC-SHA256 hashes; random session tokens are returned once and only their SHA-256 hashes are stored server-side. Conversations are assigned to an account and access is checked server-side. The optional `JASSIM_API_TOKEN` remains a legacy owner/admin credential for maintenance and migration; it is not required for ordinary account sign-in and must never be embedded in the APK.
 - Google OAuth and email-based password recovery are not implemented/configured yet; the Android UI marks both unavailable rather than pretending they work.
 - Image generation requires `JASSIM_HF_TOKEN` on the server. Without it, the image endpoint returns `image_provider_not_configured`.
 - `/health` is a public liveness/diagnostics endpoint. `/ready` returns HTTP 200 when the configured Ollama model is reachable and installed OR external-chat routing is enabled. The external flag means the route is enabled, not that a provider is currently reachable; `api_token_configured` is informational. A successful authenticated chat request remains the definitive inference test.
-- If both `JASSIM_ALLOW_EXTERNAL_CHAT` and `JASSIM_ENABLE_PUBLIC_PROVIDERS` are enabled while local Ollama is unavailable, user prompts may be sent to public external AI providers. This is not local-only/private inference; disable the external-chat opt-in if prompts must remain on your own infrastructure.
+- In the current development branch, public-provider inference is hard-disabled in `backend/adaptive.py`; setting external-provider environment variables cannot enable it. The server returns an unavailable response when local Ollama is missing. Do not treat old provider configuration examples as active functionality.
 
 ## Run the API
 
@@ -120,27 +120,6 @@ Image generation is a hosted pretrained model call; it does not train or fine-tu
 Adobe Firefly/Photoshop Services can be added as a separate provider, but requires Adobe Developer Console credentials and an eligible Firefly Services contract.
 
 
-## Optional Groq inference provider
+## External-provider status
 
-Groq can be used as a managed inference candidate when the operator configures
-`GROQ_API_KEY` as a Railway secret. The key is read only by the backend and is
-never included in the Android app or returned by an API endpoint. The candidate
-model is `openai/gpt-oss-20b`; model availability and free-tier quotas can change.
-
-**Privacy and cost safeguards**
-- `JASSIM_ALLOW_EXTERNAL_CHAT=false` remains the default. Adding a key alone
-  does not send users' conversations to Groq.
-- `JASSIM_ENABLE_PUBLIC_PROVIDERS=true` allows synthetic benchmark probes only;
-  the evaluator uses fixed test prompts, not users' chat history.
-- Real chat is sent to a public provider only after the operator explicitly sets
-  `JASSIM_ALLOW_EXTERNAL_CHAT=true`. This is a global server-side switch, not
-  a per-account preference in the current version.
-- Groq's Free tier is rate-limited, not an unlimited production guarantee.
-  Check current quotas and billing settings; do not upgrade to a paid tier without
-  explicit authorization.
-- Groq states inference inputs/outputs are not retained by default, but may be
-  temporarily retained for reliability or abuse investigations (up to 30 days);
-  usage metadata is retained. Review current data controls and terms.
-
-Set `GROQ_API_KEY` as a secret in Railway service variables. Never put it in
-GitHub source, the APK, dashboard JavaScript, or a chat message.
+Groq, JarvisClaw, and OVH provider definitions remain in the source for reference, but real chat routing and public-provider evaluation are hard-disabled in the current development branch. They are not a fallback and no API key should be configured for them. The intended production architecture is a private Ollama service reachable only from the JASSIM API over a private network.
