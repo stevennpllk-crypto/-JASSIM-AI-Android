@@ -413,32 +413,9 @@ def generate_answer(messages):
     finally:
         INFERENCE_SEMAPHORE.release()
 
-def generate_image_hf(prompt, width=1024, height=1024):
-    """Generate an image through Hugging Face Inference Providers; secrets stay server-side."""
-    token = os.environ.get("JASSIM_HF_TOKEN", "").strip()
-    if not token:
-        raise RuntimeError("image_provider_not_configured")
-    model = os.environ.get("JASSIM_IMAGE_MODEL", "black-forest-labs/FLUX.1-schnell").strip()
-    payload = json.dumps({"inputs": prompt, "parameters": {"width": width, "height": height}}).encode("utf-8")
-    request = urllib.request.Request(
-        "https://router.huggingface.co/hf-inference/models/" + model, data=payload,
-        headers={"Authorization": "Bearer " + token, "Content-Type": "application/json", "Accept": "image/png"},
-        method="POST"
-    )
-    timeout = max(30, min(int(os.environ.get("JASSIM_IMAGE_TIMEOUT", "180")), 300))
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        image_bytes = response.read(12 * 1024 * 1024 + 1)
-        content_type = response.headers.get("Content-Type", "image/png").split(";")[0].strip()
-    if len(image_bytes) > 12 * 1024 * 1024:
-        raise RuntimeError("generated_image_too_large")
-    if not content_type.startswith("image/"):
-        try:
-            detail = json.loads(image_bytes.decode("utf-8")).get("error", "provider_error")
-        except Exception:
-            detail = "provider_returned_non_image"
-        raise RuntimeError(str(detail)[:240])
-    import base64
-    return base64.b64encode(image_bytes).decode("ascii"), content_type, model
+def generate_image(prompt, width=1024, height=1024):
+    """Fail closed until a self-hosted image inference engine is installed."""
+    raise RuntimeError("local_image_model_not_configured")
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "JASSIM-AI/0.6.0"
@@ -735,8 +712,8 @@ class Handler(BaseHTTPRequestHandler):
                 "uptime_seconds": int(time.monotonic() - STARTED_AT),
                 "storage": storage.backend_name(),
                 "authentication": "account-sessions",
-                "image_generation_ready": bool(os.environ.get("JASSIM_HF_TOKEN", "").strip()),
-                "image_model": os.environ.get("JASSIM_IMAGE_MODEL", "black-forest-labs/FLUX.1-schnell")
+                "image_generation_ready": False,
+                "image_model": "not_configured_local_only"
             })
             return
         if parsed.path == "/api/auth/me":
@@ -924,13 +901,12 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(413, {"error": "prompt_too_long", "limit": 1800})
                     return
                 try:
-                    image_b64, mime, model = generate_image_hf(prompt)
+                    image_b64, mime, model = generate_image(prompt)
                 except RuntimeError as exc:
-                    reason = str(exc)
-                    status = 503 if reason == "image_provider_not_configured" else 502
-                    self.send_json(status, {
-                        "error": "image_provider_not_configured" if status == 503 else "image_generation_failed",
-                        "detail": reason
+                    self.send_json(503, {
+                        "error": "local_image_model_not_configured",
+                        "message": "توليد الصور المحلي غير مهيأ بعد. لم يُرسل وصف الصورة إلى أي خدمة خارجية.",
+                        "detail": str(exc)
                     })
                     return
                 self.send_json(200, {
