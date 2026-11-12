@@ -70,40 +70,30 @@ jobs:
                   time.sleep(5)
           PY
 
-      - name: Probe anonymous JarvisClaw fallback (optional)
-        id: jarvis_probe
-        continue-on-error: true
+      - name: Audit production private-inference readiness
         run: |
           python - <<'PY'
-          import json, urllib.request, urllib.error
-          url = "https://api.jarvisclaw.ai/v1/chat/completions"
-          body = json.dumps({
-              "model": "auto/free",
-              "messages": [{"role": "user", "content": "Reply exactly: JASSIM ONLINE"}],
-              "stream": False,
-              "max_tokens": 40
-          }).encode()
-          req = urllib.request.Request(url, data=body, headers={
-              "Content-Type": "application/json"
-          })
-          try:
-              with urllib.request.urlopen(req, timeout=90) as response:
-                  data = json.loads(response.read())
-                  answer = data["choices"][0]["message"]["content"]
-                  if "JASSIM ONLINE" not in answer.upper():
-                      print("ANONYMOUS_LLM_INVALID_RESPONSE:", answer[:300])
-                      raise RuntimeError("Provider returned content but failed the exact-response check")
-                  print("ANONYMOUS_LLM_OK:", answer[:300])
-          except Exception as exc:
-              print("ANONYMOUS_LLM_UNAVAILABLE:", repr(exc))
-              raise
+          import json, os, urllib.request
+          url = "https://jassim-ai-core-final-production.up.railway.app/health"
+          with urllib.request.urlopen(url, timeout=20) as response:
+              data = json.loads(response.read().decode("utf-8"))
+          model_ready = bool(data.get("model_ready", False))
+          external_enabled = bool(data.get("external_provider_ready", False))
+          provider = data.get("provider") or data.get("engine") or "unknown"
+          print("PRODUCTION_MODEL_READY:", model_ready)
+          print("PRODUCTION_EXTERNAL_ROUTE_ENABLED:", external_enabled)
+          print("PRODUCTION_PROVIDER_OR_ENGINE:", provider)
+          if not model_ready:
+              print("::warning::Production local model is not ready; private inference is not verified.")
+          if external_enabled:
+              print("::warning::Production external-provider routing is enabled; this is not private-only inference.")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write("### Production private-inference readiness\\n")
+              summary.write(f"- Local model ready: **{model_ready}**\\n")
+              summary.write(f"- External-provider route enabled: **{external_enabled}**\\n")
+              summary.write(f"- Provider/engine reported: `{provider}`\\n")
+              summary.write("- This audit does not send a prompt to any public AI provider.\\n")
           PY
-
-      - name: Summarize optional provider probe
-        if: always()
-        run: |
-          echo '### Optional anonymous provider probe' >> "$GITHUB_STEP_SUMMARY"
-          echo 'JarvisClaw outcome: ${{ steps.jarvis_probe.outcome }}' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
