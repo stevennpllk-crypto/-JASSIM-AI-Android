@@ -19,6 +19,7 @@ from urllib.parse import urlparse, parse_qs
 
 import adaptive
 from readiness import local_model_ready
+import private_image
 
 # Perform the same PBKDF2 work for unknown accounts as for known accounts.
 # This reduces username/email timing leaks during password authentication.
@@ -414,14 +415,15 @@ def generate_answer(messages):
         INFERENCE_SEMAPHORE.release()
 
 def generate_image(prompt, width=1024, height=1024):
-    """Fail closed until a self-hosted image inference engine is installed."""
-    raise RuntimeError("local_image_model_not_configured")
+    """Generate images only through the authenticated private JASSIM worker."""
+    return private_image.generate(prompt, width, height)
 
 def image_generation_status():
-    """Report image inference unavailable until the private worker is verified."""
+    """Expose private image worker readiness without advertising external providers."""
+    status = private_image.worker_status()
     return {
-        "image_generation_ready": False,
-        "image_model": "not_configured_local_only"
+        "image_generation_ready": bool(status["reachable"] and status["model_ready"]),
+        "image_model": status["model"]
     }
 
 class Handler(BaseHTTPRequestHandler):
