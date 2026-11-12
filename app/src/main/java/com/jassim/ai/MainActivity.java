@@ -655,10 +655,14 @@ public class MainActivity extends Activity {
             try {
                 connection = openConnection("/health", "GET");
                 JSONObject result = readJsonResponse(connection);
-                boolean ok = result.optBoolean("ok", false);
-                boolean modelReady = result.optBoolean("model_ready", false);
-                boolean externalEnabled = result.optBoolean("external_provider_ready", false);
-                localModelReady = ok && modelReady;
+                String provider = result.optString("provider", "");
+                String providerMode = result.optString("providerMode", "");
+                boolean ok = ServerHealthPolicy.isHealthy(
+                    result.optBoolean("ok", false), result.optString("status", ""));
+                boolean externalEnabled = ServerHealthPolicy.isExternalRoute(
+                    result.optBoolean("external_provider_ready", false), providerMode, provider);
+                boolean modelReady = result.optBoolean("model_ready", false) && !externalEnabled;
+                localModelReady = ok && modelReady && !externalEnabled;
                 externalChatEnabled = externalEnabled;
                 healthChecked = true;
                 String engine = result.optString("model", result.optString("engine", "غير معروف"));
