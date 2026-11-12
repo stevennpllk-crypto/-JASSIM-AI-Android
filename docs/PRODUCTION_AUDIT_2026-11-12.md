@@ -8,7 +8,7 @@ The API service exposes port 8787 and Railway's configured health check is `/hea
 
 ## Android endpoint selection
 
-The Android client fetches a public GitHub Pages connection registry but accepts registry URLs only for the exact production Railway hostname over HTTPS. Separately, Connection Settings now supports a custom HTTPS DNS hostname after an explicit confirmation screen; the user is warned that bearer tokens and messages will be sent to that selected server. Custom endpoints must use the HTTPS origin only, default/443 port, and contain no credentials, path, query, or fragment. The broader custom-host validation is never used for unauthenticated public discovery. This creates a user-approved path to a privately hosted JASSIM API without allowing a modified public registry to redirect saved sessions.
+The Android client fetches a public GitHub Pages connection registry but accepts registry URLs only for the exact production Railway hostname over HTTPS. Separately, Connection Settings now supports a custom HTTPS DNS hostname after an explicit confirmation screen; the user is warned that bearer tokens and messages will be sent to that selected server. Custom endpoints must use the HTTPS origin only, default/443 port, and contain no credentials, path, query, or fragment. When the API host changes, the app clears the stored bearer token and requires a fresh sign-in rather than forwarding the previous server's session to the new host. The broader custom-host validation is never used for unauthenticated public discovery. This creates a user-approved path to a privately hosted JASSIM API without allowing a modified public registry to redirect saved sessions.
 
 ## Model readiness and privacy findings
 
