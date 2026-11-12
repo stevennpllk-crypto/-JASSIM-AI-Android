@@ -43,7 +43,7 @@ class PrivateImageWorkerTests(unittest.TestCase):
         sent_request = request.call_args.args[0]
         self.assertEqual(sent_request.full_url, "http://image-worker.railway.internal:8188/v1/images/generate")
         self.assertEqual(sent_request.get_header("Authorization"), "Bearer worker-secret")
-        self.assertIn("منظر فضائي", sent_request.data.decode("utf-8"))
+        self.assertEqual(json.loads(sent_request.data.decode("utf-8"))["prompt"], "منظر فضائي")
 
     def test_worker_readiness_requires_model_loaded(self):
         payload = {"ready": True, "model_ready": False, "model": "not-loaded"}
