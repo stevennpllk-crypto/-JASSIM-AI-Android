@@ -99,7 +99,8 @@ class ServerSmokeTest(unittest.TestCase):
             "reachable": True, "model_ready": True, "model_loaded": True
         }):
             with patch.object(module, "ask_ollama", side_effect=RuntimeError("local model unavailable")):
-                with patch.object(module.adaptive, "answer_with_provider",
+                with patch.object(module.adaptive, "external_chat_enabled", return_value=True), \
+                     patch.object(module.adaptive, "answer_with_provider",
                                   return_value=("JASSIM ONLINE", "jarvisclaw")) as fallback:
                     answer, engine = module.generate_answer(messages)
                 self.assertEqual(answer, "JASSIM ONLINE")
@@ -112,6 +113,32 @@ class ServerSmokeTest(unittest.TestCase):
                 self.assertEqual(answer, "LOCAL ANSWER")
                 self.assertEqual(engine, "ollama")
                 fallback.assert_not_called()
+
+    def test_private_mode_does_not_attempt_external_fallback(self):
+        import importlib.util
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_private_mode_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+
+        messages = [{"role": "user", "content": "private synthetic test"}]
+        with patch.object(module.adaptive, "external_chat_enabled", return_value=False):
+            with patch.object(module.adaptive, "answer_with_provider",
+                              side_effect=AssertionError("external inference must not be called")) as external:
+                answer, engine = module.answer_with_external_fallback(messages)
+        self.assertEqual(engine, "fallback")
+        self.assertIn("لم يتم إرسال رسالتك", answer)
+        external.assert_not_called()
 
     def test_generate_answer_skips_unavailable_local_model_immediately(self):
         import importlib.util
@@ -135,7 +162,8 @@ class ServerSmokeTest(unittest.TestCase):
             "reachable": False, "model_ready": False, "model_loaded": False
         }):
             with patch.object(module, "ask_ollama") as local_model:
-                with patch.object(module.adaptive, "answer_with_provider",
+                with patch.object(module.adaptive, "external_chat_enabled", return_value=True), \
+                     patch.object(module.adaptive, "answer_with_provider",
                                   return_value=("FAST JASSIM ANSWER", "jarvisclaw")) as fallback:
                     answer, engine = module.generate_answer(messages)
                 self.assertEqual(answer, "FAST JASSIM ANSWER")
@@ -176,8 +204,9 @@ class ServerSmokeTest(unittest.TestCase):
         with patch.object(module, "ollama_status", return_value={
             "reachable": False, "model_ready": False, "model_loaded": False
         }):
-            with patch.object(module.adaptive, "stream_answer_with_provider",
-                              return_value=("STREAM FALLBACK ANSWER", "jarvisclaw")) as fallback:
+            with patch.object(module.adaptive, "external_chat_enabled", return_value=True), \
+                     patch.object(module.adaptive, "stream_answer_with_provider",
+                                  return_value=("STREAM FALLBACK ANSWER", "jarvisclaw")) as fallback:
                 module.Handler.stream_chat_response(
                     stub, "conversation-test", "question", context, "user-test")
         self.assertEqual(stub.stream_result,
@@ -221,7 +250,8 @@ class ServerSmokeTest(unittest.TestCase):
             emit("Hello ")
             emit("world")
             return "Hello world", "provider-test"
-        with patch.object(module.adaptive, "stream_answer_with_provider", side_effect=fake_stream):
+        with patch.object(module.adaptive, "external_chat_enabled", return_value=True), \
+             patch.object(module.adaptive, "stream_answer_with_provider", side_effect=fake_stream):
             with patch.object(module, "save_turn") as save:
                 module.Handler.stream_external_provider_response(
                     stub, "conversation-test", "question", [], "user-test")
