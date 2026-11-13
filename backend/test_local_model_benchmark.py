@@ -21,6 +21,22 @@ class LocalModelBenchmarkPolicyTests(unittest.TestCase):
             with self.subTest(value=value):
                 self.assertFalse(is_private_ollama_url(value))
 
+
+    def test_run_benchmark_rejects_public_url_before_any_request(self):
+        from unittest.mock import patch
+        from local_model_benchmark import run_benchmark
+
+        with patch("local_model_benchmark.request_json") as request:
+            with self.assertRaises(ValueError):
+                run_benchmark("https://example.com", "model", [], 10)
+            request.assert_not_called()
+
+    def test_private_request_redirects_are_disabled(self):
+        from local_model_benchmark import _NoRedirectHandler
+
+        handler = _NoRedirectHandler()
+        self.assertIsNone(handler.redirect_request(None, None, 302, "Found", {}, "https://example.com"))
+
     def test_percentile_handles_empty_and_nonempty_samples(self):
         self.assertIsNone(percentile([], 0.95))
         self.assertEqual(percentile([1, 2, 3, 4, 5], 0.95), 5)
