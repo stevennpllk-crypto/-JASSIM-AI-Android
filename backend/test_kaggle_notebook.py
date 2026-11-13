@@ -23,6 +23,11 @@ class KaggleNotebookPrivacyTests(unittest.TestCase):
 
     def test_inference_endpoint_is_loopback_only(self):
         self.assertIn("http://127.0.0.1:11434", self.source)
+        self.assertIn("OLLAMA_HOST", self.source)
+        self.assertIn("127.0.0.1:11434", self.source)
+        self.assertIn("ProxyHandler({})", self.source)
+        self.assertIn("_NoRedirectHandler", self.source)
+        self.assertNotIn("urllib.request.urlopen", self.source)
         self.assertNotIn("ngrok", self.source.lower())
         self.assertNotIn("cloudflared", self.source.lower())
         self.assertNotIn("trycloudflare", self.source.lower())
@@ -44,6 +49,10 @@ class KaggleNotebookPrivacyTests(unittest.TestCase):
     def test_model_download_is_explicit_and_single_baseline(self):
         self.assertIn("MODEL = 'qwen3.5:4b'", self.source)
         self.assertIn("ollama', 'pull'", self.source.replace("['ollama','pull'", "['ollama', 'pull'"))
+        self.assertIn("PINNED_COMMIT = '3a88523fb649f92f1f812476268725255ff85c1e'", self.source)
+        self.assertIn("OLLAMA_VERSION = '0.40.16'", self.source)
+        self.assertIn("INSTALLER_SHA256", self.source)
+        self.assertNotIn("curl -fsSL https://ollama.com/install.sh | sh", self.source)
         self.assertNotIn("JASSIM_OLLAMA_URL", self.source)
 
     def test_notebook_requires_verified_gpu_model_placement(self):
