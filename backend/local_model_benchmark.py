@@ -47,7 +47,19 @@ def is_private_ollama_url(value):
         return False
 
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Do not let a private Ollama URL redirect benchmark prompts elsewhere."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_PRIVATE_OPENER = urllib.request.build_opener(_NoRedirectHandler)
+
+
 def request_json(url, payload=None, timeout=240):
+    if not is_private_ollama_url(url.split("/api/", 1)[0]):
+        raise ValueError("Refusing non-private Ollama request URL.")
     data = None if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8")
     headers = {"Accept": "application/json"}
     if data is not None:
@@ -55,7 +67,7 @@ def request_json(url, payload=None, timeout=240):
     request = urllib.request.Request(
         url, data=data, headers=headers, method="GET" if data is None else "POST"
     )
-    with urllib.request.urlopen(request, timeout=timeout) as response:
+    with _PRIVATE_OPENER.open(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
@@ -68,6 +80,8 @@ def percentile(values, fraction):
 
 
 def run_benchmark(base_url, model, cases, timeout):
+    if not is_private_ollama_url(base_url):
+        raise ValueError("Refusing non-private Ollama URL; no prompt was sent.")
     results = []
     for case in cases:
         started = time.perf_counter()
