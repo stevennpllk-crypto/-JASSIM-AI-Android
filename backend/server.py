@@ -315,10 +315,20 @@ def fit_history_to_budget(messages):
 
 
 def ollama_endpoint_is_private():
-    """Prevent user prompts from being sent to arbitrary public model hosts."""
+    """Prevent user prompts from being sent to arbitrary public model hosts.
+
+    Docker Desktop's host gateway is accepted only when the operator explicitly
+    enables it. This supports the documented Compose topology without silently
+    widening the production hostname allowlist.
+    """
     parsed = urlparse(OLLAMA_URL)
     host = (parsed.hostname or "").lower()
-    private_host = host in ("localhost", "127.0.0.1", "::1") or host.endswith(".railway.internal")
+    allow_docker_gateway = os.environ.get("JASSIM_ALLOW_DOCKER_HOST_GATEWAY", "").strip().lower() == "true"
+    private_host = (
+        host in ("localhost", "127.0.0.1", "::1")
+        or host.endswith(".railway.internal")
+        or (allow_docker_gateway and host == "host.docker.internal")
+    )
     if parsed.scheme != "http" or not private_host or parsed.username or parsed.password:
         return False
     if parsed.query or parsed.fragment or parsed.path not in ("", "/"):
