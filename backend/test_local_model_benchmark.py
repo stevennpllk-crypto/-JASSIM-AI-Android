@@ -58,8 +58,9 @@ class LocalModelBenchmarkPolicyTests(unittest.TestCase):
             item for item in _PRIVATE_OPENER.handlers
             if isinstance(item, urllib.request.ProxyHandler)
         ]
-        self.assertEqual(len(handlers), 1)
-        self.assertEqual(handlers[0].proxies, {})
+        # build_opener may omit an empty ProxyHandler entirely; either way,
+        # no non-empty proxy configuration may be present.
+        self.assertFalse(any(item.proxies for item in handlers))
 
     def test_percentile_handles_empty_and_nonempty_samples(self):
         self.assertIsNone(percentile([], 0.95))
