@@ -119,3 +119,11 @@ Every conversation has one owner in the `conversations` table. History, memory, 
 Registration is open and currently protected by the API's per-process IP rate limiter. Email verification and password reset are not yet implemented. Do not treat this as a finished public launch until registration abuse protection is moved to shared storage, email verification/recovery is configured, and the Android and dashboard login screens are deployed. Always use HTTPS for public traffic.
 
 The merged main branch includes Android and dashboard login/register/logout controls. Android stores the opaque session token using Android Keystore-backed encryption; the dashboard keeps it in sessionStorage for the current tab. These changes require a successful Railway deployment before clients can use the new account endpoints. The production Railway service still needs its GitHub source connection authorized for this repository.
+
+## Private Ollama endpoint hardening
+
+The backend accepts only plain-HTTP Ollama endpoints on loopback (localhost, 127.0.0.1, ::1) or a private *.railway.internal hostname. Requests are restricted to /api/chat, /api/tags, and /api/ps on the exact configured origin.
+
+The Ollama HTTP opener disables environment proxies and refuses redirects. This prevents a proxy setting or HTTP redirect from silently forwarding prompts to a different host. The local benchmark harness applies the same no-proxy/no-redirect policy and validates the complete request URL before sending synthetic evaluation prompts.
+
+Do not configure a public hostname or public inference provider. If the private Ollama service is unavailable, the backend should fail closed rather than forward user prompts elsewhere.
