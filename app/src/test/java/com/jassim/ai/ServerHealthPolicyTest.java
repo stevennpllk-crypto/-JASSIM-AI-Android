@@ -17,9 +17,14 @@ public class ServerHealthPolicyTest {
         assertTrue(ServerHealthPolicy.isExternalRoute(false, "credentialed", "openrouter"));
     }
 
-    @Test public void trustsOnlyKnownLocalEngines() {
-        assertFalse(ServerHealthPolicy.isExternalRoute(false, "local", "ollama"));
-        assertFalse(ServerHealthPolicy.isExternalRoute(false, "", "memory"));
+    @Test public void trustsOnlyExplicitPrivateLocalEngineIdentity() {
+        assertTrue(ServerHealthPolicy.isPrivateLocalEngine("jassim-private-local-only"));
+        assertTrue(ServerHealthPolicy.isPrivateLocalEngine("JASSIM-PRIVATE-LOCAL-ONLY"));
+        assertFalse(ServerHealthPolicy.isPrivateLocalEngine(""));
+        assertFalse(ServerHealthPolicy.isPrivateLocalEngine(null));
+        assertFalse(ServerHealthPolicy.isPrivateLocalEngine("adaptive-router"));
+        assertFalse(ServerHealthPolicy.isPrivateLocalEngine("ollama"));
+        assertFalse(ServerHealthPolicy.isPrivateLocalEngine("memory"));
     }
 
     @Test public void explicitExternalFlagAlwaysWins() {
