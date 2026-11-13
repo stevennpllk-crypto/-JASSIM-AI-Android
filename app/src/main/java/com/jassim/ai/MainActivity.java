@@ -666,10 +666,13 @@ public class MainActivity extends Activity {
                 JSONObject result = readJsonResponse(connection);
                 String provider = result.optString("provider", "");
                 String providerMode = result.optString("providerMode", "");
+                String engineId = result.optString("engine", "");
                 boolean ok = ServerHealthPolicy.isHealthy(
                     result.optBoolean("ok", false), result.optString("status", ""));
-                boolean externalEnabled = ServerHealthPolicy.isExternalRoute(
-                    result.optBoolean("external_provider_ready", false), providerMode, provider);
+                // Missing or unknown engine identity is NOT proof of private inference.
+                boolean externalEnabled = !ServerHealthPolicy.isPrivateLocalEngine(engineId)
+                    || ServerHealthPolicy.isExternalRoute(
+                        result.optBoolean("external_provider_ready", false), providerMode, provider);
                 boolean modelReady = result.optBoolean("model_ready", false) && !externalEnabled;
                 localModelReady = ok && modelReady && !externalEnabled;
                 externalChatEnabled = externalEnabled;
