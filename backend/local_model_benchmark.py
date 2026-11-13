@@ -47,6 +47,21 @@ def is_private_ollama_url(value):
         return False
 
 
+def is_private_ollama_request_url(value):
+    """Allow only known Ollama API paths on a private host, without URL extras."""
+    try:
+        parsed = urlparse(value)
+        base = f"{parsed.scheme}://{parsed.netloc}"
+        return (
+            is_private_ollama_url(base)
+            and parsed.path in ("/api/chat", "/api/tags", "/api/ps")
+            and not parsed.query
+            and not parsed.fragment
+        )
+    except (TypeError, ValueError):
+        return False
+
+
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Do not let a private Ollama URL redirect benchmark prompts elsewhere."""
 
@@ -58,8 +73,8 @@ _PRIVATE_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _
 
 
 def request_json(url, payload=None, timeout=240):
-    if not is_private_ollama_url(url.split("/api/", 1)[0]):
-        raise ValueError("Refusing non-private Ollama request URL.")
+    if not is_private_ollama_request_url(url):
+        raise ValueError("Refusing non-private or malformed Ollama request URL.")
     data = None if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8")
     headers = {"Accept": "application/json"}
     if data is not None:
