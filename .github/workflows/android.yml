@@ -23,7 +23,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Validate Colab notebook JSON and Python cells
+      - name: Validate Colab and Kaggle notebook JSON and Python cells
         run: |
           python - <<'PY'
           import json
