@@ -744,5 +744,19 @@ class ServerSmokeTest(unittest.TestCase):
                 fake_ollama.server_close()
                 fake_thread.join(timeout=2)
 
+
+    def test_server_has_no_public_provider_invocation_paths(self):
+        source = Path(__file__).with_name("server.py").read_text(encoding="utf-8")
+        for forbidden in (
+            "adaptive.answer_with_provider(",
+            "adaptive.stream_answer_with_provider(",
+            "adaptive.evaluate_providers(",
+        ):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, source)
+        self.assertIn('"external_chat_enabled": False', source)
+        self.assertIn('"error": "external_provider_evaluation_disabled"', source)
+
+
 if __name__ == "__main__":
     unittest.main()
