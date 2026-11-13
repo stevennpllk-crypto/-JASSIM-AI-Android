@@ -2,6 +2,7 @@
 import base64
 import json
 import os
+from pathlib import Path
 import unittest
 import urllib.request
 from unittest.mock import Mock, patch
@@ -18,6 +19,13 @@ class PrivateImageWorkerTests(unittest.TestCase):
             h, private_image._NoWorkerRedirects))
         self.assertIsNone(redirect.redirect_request(
             None, None, 302, "Found", {}, "https://public.example/steal"))
+
+    def test_source_uses_only_the_hardened_private_transport(self):
+        source = Path(__file__).with_name("private_image.py").read_text(encoding="utf-8")
+        self.assertNotIn("urllib.request.urlopen(", source)
+        self.assertIn("urllib.request.ProxyHandler({})", source)
+        self.assertIn("_NoWorkerRedirects()", source)
+        self.assertIn('requested.path not in ("/ready", "/v1/images/generate")', source)
 
     def test_worker_rejects_mismatched_origin_and_unapproved_paths(self):
         with patch.object(private_image, "WORKER_URL",
