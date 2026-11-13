@@ -145,6 +145,8 @@ public class MainActivity extends Activity {
             HttpURLConnection discovery = null;
             try {
                 discovery = (HttpURLConnection) new URL(DISCOVERY_URL + "?t=" + System.currentTimeMillis()).openConnection();
+                // Never follow a registry redirect: discovery is a fixed, public origin.
+                discovery.setInstanceFollowRedirects(false);
                 discovery.setRequestMethod("GET");
                 discovery.setConnectTimeout(12000);
                 discovery.setReadTimeout(12000);
@@ -616,6 +618,8 @@ public class MainActivity extends Activity {
             throw new IOException("الاتصال الآمن HTTPS فقط مسموح به");
         }
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        // A redirect could move authenticated requests or chat prompts to another host.
+        connection.setInstanceFollowRedirects(false);
         connection.setRequestMethod(method);
         connection.setConnectTimeout(20000);
         connection.setReadTimeout(180000);
@@ -1398,6 +1402,8 @@ public class MainActivity extends Activity {
             try {
                 URL url = new URL(baseUrl() + (register ? "/api/auth/register" : "/api/auth/login"));
                 connection = (HttpURLConnection) url.openConnection();
+                // Login and registration bodies must never be replayed to a redirect target.
+                connection.setInstanceFollowRedirects(false);
                 connection.setRequestMethod("POST");
                 connection.setConnectTimeout(15000);
                 connection.setReadTimeout(20000);
