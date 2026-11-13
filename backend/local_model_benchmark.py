@@ -54,7 +54,7 @@ class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
         return None
 
 
-_PRIVATE_OPENER = urllib.request.build_opener(_NoRedirectHandler)
+_PRIVATE_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirectHandler)
 
 
 def request_json(url, payload=None, timeout=240):
