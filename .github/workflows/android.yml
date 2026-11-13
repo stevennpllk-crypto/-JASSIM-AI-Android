@@ -3,7 +3,7 @@ name: Build JASSIM AI APK
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "fix/android-message-line-breaks" ]
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
