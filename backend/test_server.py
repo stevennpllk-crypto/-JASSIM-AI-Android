@@ -86,13 +86,26 @@ class ServerSmokeTest(unittest.TestCase):
         try:
             for url in ("https://api.example.com", "http://example.com:11434",
                         "http://user:pass@ollama.railway.internal:11434",
-                        "http://ollama.railway.internal/path"):
+                        "http://ollama.railway.internal/path",
+                        "http://host.docker.internal:11434"):
                 module.OLLAMA_URL = url
                 self.assertFalse(module.ollama_endpoint_is_private(), url)
                 self.assertFalse(module.ollama_status()["reachable"], url)
             for url in ("http://127.0.0.1:11434", "http://ollama.railway.internal:11434"):
                 module.OLLAMA_URL = url
                 self.assertTrue(module.ollama_endpoint_is_private(), url)
+
+            # Docker Desktop gateway is accepted only by explicit local opt-in.
+            previous_gateway_opt_in = os.environ.get("JASSIM_ALLOW_DOCKER_HOST_GATEWAY")
+            try:
+                os.environ["JASSIM_ALLOW_DOCKER_HOST_GATEWAY"] = "true"
+                module.OLLAMA_URL = "http://host.docker.internal:11434"
+                self.assertTrue(module.ollama_endpoint_is_private())
+            finally:
+                if previous_gateway_opt_in is None:
+                    os.environ.pop("JASSIM_ALLOW_DOCKER_HOST_GATEWAY", None)
+                else:
+                    os.environ["JASSIM_ALLOW_DOCKER_HOST_GATEWAY"] = previous_gateway_opt_in
         finally:
             module.OLLAMA_URL = original
 
