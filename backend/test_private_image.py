@@ -13,8 +13,9 @@ import private_image
 class PrivateImageWorkerTests(unittest.TestCase):
     def test_worker_transport_disables_proxies_and_redirects(self):
         handlers = private_image._WORKER_OPENER.handlers
-        self.assertTrue(any(isinstance(h, urllib.request.ProxyHandler)
-                            and h.proxies == {} for h in handlers))
+        proxy_handlers = [h for h in handlers if isinstance(h, urllib.request.ProxyHandler)]
+        # urllib may omit an empty ProxyHandler entirely; no configured proxy is allowed.
+        self.assertFalse(any(h.proxies for h in proxy_handlers))
         redirect = next(h for h in handlers if isinstance(
             h, private_image._NoWorkerRedirects))
         self.assertIsNone(redirect.redirect_request(
@@ -25,7 +26,7 @@ class PrivateImageWorkerTests(unittest.TestCase):
         self.assertNotIn("urllib.request.urlopen(", source)
         self.assertIn("urllib.request.ProxyHandler({})", source)
         self.assertIn("_NoWorkerRedirects()", source)
-        self.assertIn('requested.path not in ("/ready", "/v1/images/generate")', source)
+        self.assertIn('allowed_methods = {"/ready": "GET", "/v1/images/generate": "POST"}', source)
 
     def test_worker_rejects_mismatched_origin_and_unapproved_paths(self):
         with patch.object(private_image, "WORKER_URL",
