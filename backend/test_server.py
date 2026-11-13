@@ -123,6 +123,13 @@ class ServerSmokeTest(unittest.TestCase):
         finally:
             module.OLLAMA_URL = original
 
+        proxy_handlers = [
+            item for item in module._OLLAMA_OPENER.handlers
+            if isinstance(item, module.urllib.request.ProxyHandler)
+        ]
+        self.assertEqual(len(proxy_handlers), 1)
+        self.assertEqual(proxy_handlers[0].proxies, {})
+
         handler = module._NoOllamaRedirects()
         self.assertIsNone(handler.redirect_request(
             None, None, 307, "Temporary Redirect", {}, "https://example.com/collect"
