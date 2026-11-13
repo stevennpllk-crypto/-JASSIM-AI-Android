@@ -78,13 +78,16 @@ def open_worker(request, timeout):
     requested = urlparse(request.full_url)
     configured_origin = (configured.scheme, configured.hostname, configured.port)
     requested_origin = (requested.scheme, requested.hostname, requested.port)
+    allowed_methods = {"/ready": "GET", "/v1/images/generate": "POST"}
+    expected_method = allowed_methods.get(requested.path)
     if (
         requested_origin != configured_origin
         or requested.username
         or requested.password
         or requested.query
         or requested.fragment
-        or requested.path not in ("/ready", "/v1/images/generate")
+        or expected_method is None
+        or request.get_method() != expected_method
     ):
         raise RuntimeError("private_image_worker_request_target_mismatch")
     return _WORKER_OPENER.open(request, timeout=timeout)
