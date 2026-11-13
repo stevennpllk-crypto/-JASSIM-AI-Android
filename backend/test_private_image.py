@@ -44,6 +44,15 @@ class PrivateImageWorkerTests(unittest.TestCase):
                         RuntimeError, "private_image_worker_request_target_mismatch"
                     ):
                         private_image.open_worker(request, timeout=1)
+            wrong_method = private_image.urllib.request.Request(
+                "http://image-worker.railway.internal:8188/ready",
+                data=b"unexpected",
+                method="POST",
+            )
+            with self.assertRaisesRegex(
+                RuntimeError, "private_image_worker_request_target_mismatch"
+            ):
+                private_image.open_worker(wrong_method, timeout=1)
             opener.assert_not_called()
 
 
