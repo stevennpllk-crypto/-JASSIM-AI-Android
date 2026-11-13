@@ -341,9 +341,22 @@ _OLLAMA_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _N
 
 
 def open_ollama(request, timeout):
-    """Open only the configured private Ollama endpoint, without redirects."""
+    """Open only an approved API path on the configured private Ollama origin."""
     if not ollama_endpoint_is_private():
         raise RuntimeError("ollama_endpoint_must_be_private")
+    configured = urlparse(OLLAMA_URL)
+    requested = urlparse(request.full_url)
+    configured_origin = (configured.scheme, configured.hostname, configured.port)
+    requested_origin = (requested.scheme, requested.hostname, requested.port)
+    if (
+        requested_origin != configured_origin
+        or requested.username
+        or requested.password
+        or requested.query
+        or requested.fragment
+        or requested.path not in ("/api/chat", "/api/tags", "/api/ps")
+    ):
+        raise RuntimeError("ollama_request_target_mismatch")
     return _OLLAMA_OPENER.open(request, timeout=timeout)
 
 
