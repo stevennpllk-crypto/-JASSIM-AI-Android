@@ -133,8 +133,8 @@ class ServerSmokeTest(unittest.TestCase):
             item for item in module._OLLAMA_OPENER.handlers
             if isinstance(item, module.urllib.request.ProxyHandler)
         ]
-        self.assertEqual(len(proxy_handlers), 1)
-        self.assertEqual(proxy_handlers[0].proxies, {})
+        # An empty ProxyHandler can be omitted from opener.handlers by urllib.
+        self.assertFalse(any(item.proxies for item in proxy_handlers))
 
         handler = module._NoOllamaRedirects()
         self.assertIsNone(handler.redirect_request(
@@ -262,6 +262,8 @@ class ServerSmokeTest(unittest.TestCase):
                 self.errors = []
             def send_json(self, status, payload):
                 self.errors.append((status, payload))
+            def reject_external_provider_stream(self, *args):
+                return module.Handler.reject_external_provider_stream(self, *args)
 
         stub = StubHandler()
         with patch.object(module, "ollama_status", return_value={
