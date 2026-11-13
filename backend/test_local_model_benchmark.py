@@ -1,6 +1,6 @@
 import unittest
 
-from local_model_benchmark import is_private_ollama_url, percentile
+from local_model_benchmark import is_private_ollama_url, is_private_ollama_request_url, percentile
 
 
 class LocalModelBenchmarkPolicyTests(unittest.TestCase):
@@ -8,6 +8,19 @@ class LocalModelBenchmarkPolicyTests(unittest.TestCase):
         self.assertTrue(is_private_ollama_url("http://127.0.0.1:11434"))
         self.assertTrue(is_private_ollama_url("http://localhost:11434"))
         self.assertTrue(is_private_ollama_url("http://ollama.railway.internal:11434"))
+
+    def test_request_url_allows_only_known_private_api_paths(self):
+        self.assertTrue(is_private_ollama_request_url("http://127.0.0.1:11434/api/chat"))
+        self.assertTrue(is_private_ollama_request_url("http://ollama.railway.internal:11434/api/tags"))
+        for value in (
+            "http://127.0.0.1:11434/api/chat?redirect=https://evil.example",
+            "http://127.0.0.1:11434/other/api/chat",
+            "http://127.0.0.1:11434/api/delete",
+            "http://user:pass@127.0.0.1:11434/api/chat",
+            "http://127.0.0.1:11434/api/ps#fragment",
+        ):
+            with self.subTest(value=value):
+                self.assertFalse(is_private_ollama_request_url(value))
 
     def test_rejects_public_hosts_and_url_injection(self):
         for value in (
