@@ -17,7 +17,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
-import adaptive
 from readiness import local_model_ready
 import private_image
 
@@ -423,7 +422,7 @@ def ollama_status():
         return {"reachable": False, "model_ready": False, "model_loaded": False}
 
 
-def answer_with_external_fallback(messages):
+def local_model_unavailable_response(messages):
     """Return a local-only unavailable response; never call public inference."""
     return (
         "النموذج المحلي غير متاح حالياً. لم يتم إرسال رسالتك إلى أي مزوّد خارجي.",
@@ -434,7 +433,7 @@ def answer_with_external_fallback(messages):
 def generate_answer(messages):
     # Probe local readiness first. If private inference is unavailable, fail
     # closed. Public inference providers are never a fallback, regardless of
-    # environment variables or adaptive routing state.
+    # environment variables or retired routing configuration.
     model_state = ollama_status()
     if not model_state["reachable"] or not model_state["model_ready"]:
         return answer_with_external_fallback(messages)
@@ -498,7 +497,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_sse_event({"type": "token", "token": answer})
         self.send_sse_event({"type": "done", "conversation_id": conversation_id, "engine": engine})
 
-    def stream_external_provider_response(self, conversation_id, message, context, user_id):
+    def reject_external_provider_stream(self, conversation_id, message, context, user_id):
         """Reject the retired external-provider streaming path unconditionally."""
         self.send_json(503, {
             "error": "model_unavailable",
