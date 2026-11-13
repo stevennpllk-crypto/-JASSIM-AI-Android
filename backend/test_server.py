@@ -152,14 +152,15 @@ class ServerSmokeTest(unittest.TestCase):
             self.assertTrue(source.strip(), f"Notebook code cell {index} is empty")
             compile(source, f"JASSIM_AI_Colab_GPU.ipynb:cell-{index}", "exec")
 
-    def test_generate_answer_falls_back_only_after_local_ollama_failure(self):
+    def test_generate_answer_fails_closed_after_local_ollama_failure(self):
         import importlib.util
         from unittest.mock import patch
         with tempfile.TemporaryDirectory() as tmp:
             previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
             os.environ["JASSIM_DATA_DIR"] = tmp
             try:
-                spec = importlib.util.spec_from_file_location("jassim_fallback_test", Path(__file__).with_name("server.py"))
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_local_only_failure_test", Path(__file__).with_name("server.py"))
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
             finally:
@@ -168,25 +169,18 @@ class ServerSmokeTest(unittest.TestCase):
                 else:
                     os.environ["JASSIM_DATA_DIR"] = previous_data_dir
 
-        messages = [{"role": "user", "content": "synthetic fallback test"}]
+        messages = [{"role": "user", "content": "synthetic private test"}]
         with patch.object(module, "ollama_status", return_value={
             "reachable": True, "model_ready": True, "model_loaded": True
         }):
-            with patch.object(module, "ask_ollama", side_effect=RuntimeError("local model unavailable")):
-                with patch.object(module.adaptive, "external_chat_enabled", return_value=True), \
-                     patch.object(module.adaptive, "answer_with_provider",
-                                  return_value=("JASSIM ONLINE", "jarvisclaw")) as fallback:
-                    answer, engine = module.generate_answer(messages)
-                self.assertEqual(answer, "JASSIM ONLINE")
-                self.assertEqual(engine, "jarvisclaw")
-                fallback.assert_called_once()
-
-            with patch.object(module, "ask_ollama", return_value="LOCAL ANSWER"):
-                with patch.object(module.adaptive, "answer_with_provider") as fallback:
-                    answer, engine = module.generate_answer(messages)
-                self.assertEqual(answer, "LOCAL ANSWER")
-                self.assertEqual(engine, "ollama")
-                fallback.assert_not_called()
+            with patch.object(module, "ask_ollama", side_effect=RuntimeError("offline")):
+                with patch.object(module.adaptive, "external_chat_enabled", return_value=True):
+                    with patch.object(module.adaptive, "answer_with_provider",
+                                      side_effect=AssertionError("public provider called")) as external:
+                        answer, engine = module.generate_answer(messages)
+        self.assertEqual(engine, "fallback")
+        self.assertIn("لم يتم إرسال رسالتك", answer)
+        external.assert_not_called()
 
     def test_private_mode_does_not_attempt_external_fallback(self):
         import importlib.util
@@ -230,7 +224,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("لم يتم إرسال رسالتك", stub.error[1]["message"])
         stream.assert_not_called()
 
-    def test_generate_answer_skips_unavailable_local_model_immediately(self):
+    def test_generate_answer_never_uses_public_provider_when_local_model_is_missing(self):
         import importlib.util
         from unittest.mock import patch
         with tempfile.TemporaryDirectory() as tmp:
@@ -238,7 +232,7 @@ class ServerSmokeTest(unittest.TestCase):
             os.environ["JASSIM_DATA_DIR"] = tmp
             try:
                 spec = importlib.util.spec_from_file_location(
-                    "jassim_fast_fallback_test", Path(__file__).with_name("server.py"))
+                    "jassim_local_only_missing_test", Path(__file__).with_name("server.py"))
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
             finally:
@@ -247,21 +241,18 @@ class ServerSmokeTest(unittest.TestCase):
                 else:
                     os.environ["JASSIM_DATA_DIR"] = previous_data_dir
 
-        messages = [{"role": "user", "content": "synthetic fast fallback test"}]
         with patch.object(module, "ollama_status", return_value={
             "reachable": False, "model_ready": False, "model_loaded": False
         }):
-            with patch.object(module, "ask_ollama") as local_model:
-                with patch.object(module.adaptive, "external_chat_enabled", return_value=True), \
-                     patch.object(module.adaptive, "answer_with_provider",
-                                  return_value=("FAST JASSIM ANSWER", "jarvisclaw")) as fallback:
-                    answer, engine = module.generate_answer(messages)
-                self.assertEqual(answer, "FAST JASSIM ANSWER")
-                self.assertEqual(engine, "jarvisclaw")
-                local_model.assert_not_called()
-                fallback.assert_called_once()
+            with patch.object(module.adaptive, "external_chat_enabled", return_value=True):
+                with patch.object(module.adaptive, "answer_with_provider",
+                                  side_effect=AssertionError("public provider called")) as external:
+                    answer, engine = module.generate_answer([{"role": "user", "content": "private"}])
+        self.assertEqual(engine, "fallback")
+        self.assertIn("لم يتم إرسال رسالتك", answer)
+        external.assert_not_called()
 
-    def test_stream_chat_uses_fallback_without_waiting_for_unavailable_ollama(self):
+    def test_stream_chat_fails_closed_when_local_model_is_unavailable(self):
         import importlib.util
         from unittest.mock import patch
         with tempfile.TemporaryDirectory() as tmp:
@@ -269,7 +260,7 @@ class ServerSmokeTest(unittest.TestCase):
             os.environ["JASSIM_DATA_DIR"] = tmp
             try:
                 spec = importlib.util.spec_from_file_location(
-                    "jassim_stream_fallback_test", Path(__file__).with_name("server.py"))
+                    "jassim_stream_local_only_test", Path(__file__).with_name("server.py"))
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
             finally:
@@ -280,80 +271,25 @@ class ServerSmokeTest(unittest.TestCase):
 
         class StubHandler:
             def __init__(self):
-                self.stream_result = None
-                self.error_result = None
-
-            def stream_external_provider_response(self, conversation_id, message, context, user_id):
-                self.stream_result = ("live-stream", conversation_id, user_id)
-
-            def send_json(self, status, payload):
-                self.error_result = (status, payload)
-
-        stub = StubHandler()
-        context = [{"role": "user", "content": "synthetic streaming fallback test"}]
-        with patch.object(module, "ollama_status", return_value={
-            "reachable": False, "model_ready": False, "model_loaded": False
-        }):
-            with patch.object(module.adaptive, "external_chat_enabled", return_value=True), \
-                     patch.object(module.adaptive, "stream_answer_with_provider",
-                                  return_value=("STREAM FALLBACK ANSWER", "jarvisclaw")) as fallback:
-                module.Handler.stream_chat_response(
-                    stub, "conversation-test", "question", context, "user-test")
-        self.assertEqual(stub.stream_result,
-                         ("live-stream", "conversation-test", "user-test"))
-        self.assertIsNone(stub.error_result)
-        fallback.assert_not_called()
-
-    def test_external_provider_stream_sends_tokens_and_persists_complete_turn(self):
-        import importlib.util
-        from unittest.mock import patch
-        with tempfile.TemporaryDirectory() as tmp:
-            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
-            os.environ["JASSIM_DATA_DIR"] = tmp
-            try:
-                spec = importlib.util.spec_from_file_location(
-                    "jassim_provider_stream_test", Path(__file__).with_name("server.py"))
-                module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
-            finally:
-                if previous_data_dir is None:
-                    os.environ.pop("JASSIM_DATA_DIR", None)
-                else:
-                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
-
-        class StubHandler:
-            def __init__(self):
-                self.events = []
-                self.headers_sent = 0
                 self.errors = []
-            def client_disconnected(self):
-                return False
-            def send_sse_headers(self):
-                self.headers_sent += 1
-            def send_sse_event(self, event):
-                self.events.append(event)
             def send_json(self, status, payload):
                 self.errors.append((status, payload))
 
         stub = StubHandler()
-        def fake_stream(messages, emit):
-            emit("Hello ")
-            emit("world")
-            return "Hello world", "provider-test"
-        with patch.object(module.adaptive, "external_chat_enabled", return_value=True), \
-             patch.object(module.adaptive, "stream_answer_with_provider", side_effect=fake_stream):
-            with patch.object(module, "save_turn") as save:
-                module.Handler.stream_external_provider_response(
-                    stub, "conversation-test", "question", [], "user-test")
-        save.assert_called_once_with("conversation-test", "question", "Hello world", "user-test")
-        self.assertEqual(stub.headers_sent, 1)
-        self.assertEqual([event["type"] for event in stub.events], ["token", "token", "done"])
-        self.assertEqual("".join(event.get("token", "") for event in stub.events), "Hello world")
-        self.assertEqual(stub.events[-1]["engine"], "provider-test")
-        self.assertEqual(save.call_count, 1)
-        self.assertEqual(stub.errors, [])
+        with patch.object(module, "ollama_status", return_value={
+            "reachable": False, "model_ready": False, "model_loaded": False
+        }):
+            with patch.object(module.adaptive, "external_chat_enabled", return_value=True):
+                with patch.object(module.adaptive, "stream_answer_with_provider",
+                                  side_effect=AssertionError("public stream called")) as external:
+                    module.Handler.stream_chat_response(
+                        stub, "conversation-test", "question",
+                        [{"role": "user", "content": "question"}], "user-test")
+        self.assertEqual(stub.errors[0][0], 503)
+        self.assertIn("لم يتم إرسال رسالتك", stub.errors[0][1]["message"])
+        external.assert_not_called()
 
-    def test_interrupted_external_stream_is_not_persisted_as_complete(self):
+    def test_external_provider_stream_is_hard_disabled(self):
         import importlib.util
         from unittest.mock import patch
         with tempfile.TemporaryDirectory() as tmp:
@@ -361,7 +297,7 @@ class ServerSmokeTest(unittest.TestCase):
             os.environ["JASSIM_DATA_DIR"] = tmp
             try:
                 spec = importlib.util.spec_from_file_location(
-                    "jassim_interrupted_stream_test", Path(__file__).with_name("server.py"))
+                    "jassim_provider_disabled_test", Path(__file__).with_name("server.py"))
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
             finally:
@@ -372,31 +308,52 @@ class ServerSmokeTest(unittest.TestCase):
 
         class StubHandler:
             def __init__(self):
-                self.events = []
-                self.headers_sent = 0
                 self.errors = []
-            def client_disconnected(self):
-                return False
-            def send_sse_headers(self):
-                self.headers_sent += 1
-            def send_sse_event(self, event):
-                self.events.append(event)
             def send_json(self, status, payload):
                 self.errors.append((status, payload))
 
         stub = StubHandler()
-        def interrupted(messages, emit):
-            emit("partial")
-            raise RuntimeError("upstream interrupted")
-        with patch.object(module.adaptive, "external_chat_enabled", return_value=True), \
-             patch.object(module.adaptive, "stream_answer_with_provider", side_effect=interrupted):
-            with patch.object(module, "save_turn") as save:
+        with patch.object(module.adaptive, "external_chat_enabled", return_value=True):
+            with patch.object(module.adaptive, "stream_answer_with_provider",
+                              side_effect=AssertionError("public stream called")) as external:
                 module.Handler.stream_external_provider_response(
                     stub, "conversation-test", "question", [], "user-test")
-        self.assertEqual(stub.headers_sent, 1)
-        self.assertEqual([event["type"] for event in stub.events], ["token", "error"])
+        self.assertEqual(stub.errors[0][0], 503)
+        self.assertIn("لم يتم إرسال رسالتك", stub.errors[0][1]["message"])
+        external.assert_not_called()
+
+    def test_disabled_external_stream_never_persists_a_turn(self):
+        import importlib.util
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_no_external_persist_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+
+        class StubHandler:
+            def __init__(self):
+                self.errors = []
+            def send_json(self, status, payload):
+                self.errors.append((status, payload))
+
+        stub = StubHandler()
+        with patch.object(module.adaptive, "external_chat_enabled", return_value=True):
+            with patch.object(module.adaptive, "stream_answer_with_provider",
+                              side_effect=AssertionError("public stream called")):
+                with patch.object(module, "save_turn") as save:
+                    module.Handler.stream_external_provider_response(
+                        stub, "conversation-test", "question", [], "user-test")
         save.assert_not_called()
-        self.assertEqual(stub.errors, [])
+        self.assertEqual(stub.errors[0][0], 503)
 
     def test_save_turn_rolls_back_user_message_when_assistant_insert_fails(self):
         import importlib.util
