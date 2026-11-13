@@ -46,6 +46,11 @@ class KaggleNotebookPrivacyTests(unittest.TestCase):
         self.assertIn("ollama', 'pull'", self.source.replace("['ollama','pull'", "['ollama', 'pull'"))
         self.assertNotIn("JASSIM_OLLAMA_URL", self.source)
 
+    def test_notebook_requires_verified_gpu_model_placement(self):
+        self.assertIn("ollama', 'ps'", self.source)
+        self.assertIn("'GPU' not in processor.stdout.upper()", self.source)
+        self.assertIn("do not label this a GPU benchmark", self.source)
+
     def test_benchmark_fails_on_incomplete_inference_runs(self):
         self.assertIn("report['completed'] != report['case_count']", self.source)
         self.assertIn("failed_calls", self.source)
