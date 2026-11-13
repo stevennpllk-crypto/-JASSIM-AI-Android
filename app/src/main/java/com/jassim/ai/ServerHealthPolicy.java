@@ -9,6 +9,11 @@ final class ServerHealthPolicy {
             || "ok".equalsIgnoreCase(status) || "healthy".equalsIgnoreCase(status);
     }
 
+    static boolean isPrivateLocalEngine(String engine) {
+        return "jassim-private-local-only".equalsIgnoreCase(
+            engine == null ? "" : engine.trim());
+    }
+
     static boolean isExternalRoute(boolean explicitExternal, String providerMode,
                                    String providerName) {
         if (explicitExternal) return true;
