@@ -23,6 +23,9 @@ class PostgresConnection:
     def commit(self):
         self.connection.commit()
 
+    def rollback(self):
+        self.connection.rollback()
+
     def close(self):
         self.connection.close()
 
@@ -175,52 +178,65 @@ def ensure_schema(db, sqlite_path=None):
         _SCHEMA_READY_KEY = schema_key
 
 
+def _copy_sqlite_data(target, source_path):
+    """Copy all legacy SQLite account and conversation data into a shared target."""
+    source_path = Path(source_path)
+    if not source_path.exists():
+        return
+    source = sqlite3.connect(source_path, timeout=5)
+    try:
+        tables = {row[0] for row in source.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()}
+        migrations = [
+            ("users",
+             "SELECT id,email_normalized,password_hash,role,created_at FROM users",
+             """INSERT INTO users(id,email_normalized,password_hash,role,created_at)
+                VALUES(?,?,?,?,?) ON CONFLICT(id) DO NOTHING"""),
+            ("sessions",
+             "SELECT token_hash,user_id,created_at,expires_at,revoked_at FROM sessions",
+             """INSERT INTO sessions(token_hash,user_id,created_at,expires_at,revoked_at)
+                VALUES(?,?,?,?,?) ON CONFLICT(token_hash) DO NOTHING"""),
+            ("conversations",
+             "SELECT conversation_id,user_id,created_at,updated_at FROM conversations",
+             """INSERT INTO conversations(conversation_id,user_id,created_at,updated_at)
+                VALUES(?,?,?,?) ON CONFLICT(conversation_id) DO NOTHING"""),
+            ("messages",
+             "SELECT id,conversation_id,role,content,created_at FROM messages ORDER BY id",
+             """INSERT INTO messages(id,conversation_id,role,content,created_at)
+                VALUES(?,?,?,?,?) ON CONFLICT(id) DO NOTHING"""),
+            ("memories",
+             "SELECT conversation_id,content,updated_at FROM memories",
+             """INSERT INTO memories(conversation_id,content,updated_at) VALUES(?,?,?)
+                ON CONFLICT(conversation_id) DO NOTHING"""),
+            ("provider_scores",
+             """SELECT provider_id,attempts,successes,avg_latency_ms,quality_score,last_success,last_error
+                FROM provider_scores""",
+             """INSERT INTO provider_scores(provider_id,attempts,successes,avg_latency_ms,
+                quality_score,last_success,last_error) VALUES(?,?,?,?,?,?,?)
+                ON CONFLICT(provider_id) DO NOTHING"""),
+        ]
+        for table, select_sql, insert_sql in migrations:
+            if table not in tables:
+                continue
+            for row in source.execute(select_sql):
+                target.execute(insert_sql, tuple(row))
+    finally:
+        source.close()
+
+
 def _migrate_sqlite_once(target):
-    marker = "sqlite_to_postgres_v1"
+    marker = "sqlite_to_postgres_v2_accounts"
     if target.execute("SELECT name FROM schema_migrations WHERE name=?", (marker,)).fetchone():
         return
-    source_path = SQLITE_PATH
-    if source_path.exists():
-        source = sqlite3.connect(source_path, timeout=5)
-        source.row_factory = sqlite3.Row
-        try:
-            tables = {row[0] for row in source.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()}
-            if "messages" in tables:
-                for row in source.execute(
-                    "SELECT id,conversation_id,role,content,created_at FROM messages ORDER BY id"
-                ):
-                    target.execute(
-                        """INSERT INTO messages(id,conversation_id,role,content,created_at)
-                           VALUES(?,?,?,?,?) ON CONFLICT(id) DO NOTHING""",
-                        tuple(row)
-                    )
-            if "memories" in tables:
-                for row in source.execute(
-                    "SELECT conversation_id,content,updated_at FROM memories"
-                ):
-                    target.execute(
-                        """INSERT INTO memories(conversation_id,content,updated_at) VALUES(?,?,?)
-                           ON CONFLICT(conversation_id) DO UPDATE SET
-                           content=EXCLUDED.content,updated_at=EXCLUDED.updated_at""",
-                        tuple(row)
-                    )
-            if "provider_scores" in tables:
-                for row in source.execute(
-                    """SELECT provider_id,attempts,successes,avg_latency_ms,quality_score,last_success,last_error
-                       FROM provider_scores"""
-                ):
-                    target.execute(
-                        """INSERT INTO provider_scores(provider_id,attempts,successes,avg_latency_ms,
-                           quality_score,last_success,last_error) VALUES(?,?,?,?,?,?,?)
-                           ON CONFLICT(provider_id) DO NOTHING""",
-                        tuple(row)
-                    )
-        finally:
-            source.close()
+    _copy_sqlite_data(target, SQLITE_PATH)
+    # Keep BIGSERIAL aligned with imported IDs; an empty table must next yield ID 1.
     target.execute(
-        "SELECT setval(pg_get_serial_sequence('messages','id'), GREATEST(COALESCE((SELECT MAX(id) FROM messages), 1), 1), true)"
+        """SELECT setval(
+               pg_get_serial_sequence('messages','id'),
+               COALESCE((SELECT MAX(id) FROM messages), 1),
+               EXISTS(SELECT 1 FROM messages)
+           )"""
     )
     target.execute("INSERT INTO schema_migrations(name) VALUES(?) ON CONFLICT(name) DO NOTHING", (marker,))
     target.commit()

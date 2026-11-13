@@ -1,11 +1,15 @@
-"""Adaptive provider evaluation and routing for JASSIM AI.
+"""Synthetic benchmark helpers and guarded provider-routing code for JASSIM AI.
 
-Only synthetic prompts are used by the evaluator. Real conversation content is
-sent to public providers only when JASSIM_ALLOW_EXTERNAL_CHAT=true.
+Public-provider routing is hard-disabled in this build. This module does not
+claim that a local Ollama model is installed, reachable, or benchmarked.
 """
+import ast
 import json
 import os
+import re
 import sqlite3
+import statistics
+import unicodedata
 import time
 import urllib.request
 import urllib.error
@@ -14,9 +18,20 @@ from pathlib import Path
 DATA_DIR = Path(os.environ.get("JASSIM_DATA_DIR", str(Path(__file__).resolve().parent / "data"))).expanduser()
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "jassim.db"
-ALLOW_EXTERNAL_CHAT = os.environ.get("JASSIM_ALLOW_EXTERNAL_CHAT", "false").lower() in ("1", "true", "yes")
-ENABLE_PUBLIC_PROVIDERS = os.environ.get("JASSIM_ENABLE_PUBLIC_PROVIDERS", "true").lower() in ("1", "true", "yes")
+# Privacy boundary: real prompts and inference must remain on our Ollama host.
+# Public model providers are deliberately hard-disabled; environment variables
+# cannot silently turn external inference back on.
+ALLOW_EXTERNAL_CHAT = False
+ENABLE_PUBLIC_PROVIDERS = False
 TIMEOUT = max(8, min(int(os.environ.get("JASSIM_PROVIDER_TIMEOUT", "45")), 120))
+# Keep fallback attempts bounded so one unavailable public provider cannot make
+# a single chat request wait through several full provider timeouts.
+PROVIDER_ATTEMPT_TIMEOUT = max(
+    3, min(int(os.environ.get("JASSIM_PROVIDER_ATTEMPT_TIMEOUT", "12")), 60)
+)
+PROVIDER_TOTAL_TIMEOUT = max(
+    8, min(int(os.environ.get("JASSIM_PROVIDER_TOTAL_TIMEOUT", "35")), 90)
+)
 
 PROVIDERS = [
     # Groq is the preferred managed candidate when an operator configures a key.
@@ -34,11 +49,78 @@ def _configured_providers():
         if not provider.get("key_env") or os.environ.get(provider["key_env"], "").strip()
     ]
 
+BENCHMARK_VERSION = "jassim-core-2026-11-v1"
 EVALUATION_CASES = [
-    {"messages": [{"role": "user", "content": "أجب بالعربية بكلمة واحدة: ما عاصمة تونس؟"}], "needles": ["تونس"]},
-    {"messages": [{"role": "user", "content": "احسب 17 × 19، وأعطني العدد فقط."}], "needles": ["323"]},
-    {"messages": [{"role": "user", "content": "Explain in one short English sentence what an API does."}], "needles": ["request", "software", "application", "communicate"]},
+    {"id":"ar_capital_01","category":"arabic","messages":[{"role":"user","content":"أجب بكلمة واحدة فقط: ما عاصمة تونس؟"}],"grader":"exact","expected":"تونس"},
+    {"id":"math_multiply_01","category":"math","messages":[{"role":"user","content":"احسب 17 × 19. أعد العدد فقط دون شرح."}],"grader":"number","expected":323},
+    {"id":"math_multistep_01","category":"reasoning","messages":[{"role":"user","content":"لدي 4 صناديق، في كل صندوق 12 كرة، ثم أضفت 7 كرات. كم كرة لدي؟ أجب بالعدد فقط."}],"grader":"number","expected":55},
+    {"id":"logic_chain_01","category":"reasoning","messages":[{"role":"user","content":"كل الزهور في الحديقة حمراء. الوردة زهرة في الحديقة. ما لون الوردة؟ أجب بكلمة واحدة."}],"grader":"exact","expected":"حمراء"},
+    {"id":"json_schema_01","category":"instructions","messages":[{"role":"user","content":"أخرج JSON صالحاً فقط بهذا الشكل: {\"name\":\"Ali\",\"age\":16}. لا تضف أي نص."}],"grader":"json","expected":{"name":"Ali","age":16}},
+    {"id":"python_ast_01","category":"coding","messages":[{"role":"user","content":"اكتب كود Python فقط لتعريف دالة اسمها add تأخذ a و b وتعيد a + b."}],"grader":"python_add"},
+    {"id":"english_api_01","category":"multilingual","messages":[{"role":"user","content":"In one short English sentence, explain what an API lets software do. Include the words request and response."}],"grader":"contains","expected":["request","response"]},
+    {"id":"french_translation_01","category":"multilingual","messages":[{"role":"user","content":"ترجم كلمة Hello إلى الفرنسية. أجب بكلمة واحدة."}],"grader":"exact","expected":"bonjour"},
+    {"id":"tn_capital_01","category":"tunisian_arabic","messages":[{"role":"user","content":"شنوة عاصمة تونس؟ جاوب بكلمة وحدة."}],"grader":"exact","expected":"تونس"},
+    {"id":"ar_plural_01","category":"arabic","messages":[{"role":"user","content":"ما جمع كلمة كتاب؟ أجب بكلمة واحدة فقط."}],"grader":"exact","expected":"كتب"},
+    {"id":"ar_translation_01","category":"arabic","messages":[{"role":"user","content":"ترجم Good morning إلى العربية. أجب بالترجمة فقط."}],"grader":"exact","expected":"صباح الخير"},
+    {"id":"math_percent_01","category":"math","messages":[{"role":"user","content":"احسب 25% من 80. أعد العدد فقط."}],"grader":"number","expected":20},
+    {"id":"tn_math_01","category":"tunisian_arabic","messages":[{"role":"user","content":"ثلاث خبزات، ثمن الواحدة 450 مليم. قداش نخلّص بالمليم؟ جاوب بالعدد فقط."}],"grader":"number","expected":1350},
+    {"id":"context_recall_01","category":"memory","messages":[{"role":"user","content":"للتجربة فقط، اسم الشخصية في هذه المحادثة هو ريم."},{"role":"assistant","content":"حسناً، اسم الشخصية التجريبية ريم."},{"role":"user","content":"ما اسم الشخصية التي ذكرتها؟ أجب بكلمة واحدة."}],"grader":"exact","expected":"ريم"}
 ]
+
+
+def _normalize_benchmark_text(value):
+    value = unicodedata.normalize("NFKC", str(value)).casefold().strip()
+    value = re.sub(r"^[\s\W_]+|[\s\W_]+$", "", value)
+    return re.sub(r"\s+", " ", value)
+
+
+def _grade_benchmark_case(case, answer):
+    grader = case["grader"]
+    if grader == "exact":
+        return _normalize_benchmark_text(answer) == _normalize_benchmark_text(case["expected"])
+    if grader == "number":
+        normalized_answer = str(answer).translate(str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")).strip()
+        # The prompt requests a number only: reject explanations and extra numbers.
+        if not re.fullmatch(r"[-+]?\d+(?:[.٫]\d+)?", normalized_answer):
+            return False
+        return abs(float(normalized_answer.replace("٫", ".")) - float(case["expected"])) <= 1e-9
+    if grader == "json":
+        candidate = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", str(answer).strip(), flags=re.IGNORECASE)
+        try:
+            parsed = json.loads(candidate)
+        except (TypeError, ValueError):
+            return False
+        return isinstance(parsed, dict) and parsed == case["expected"]
+    if grader == "python_add":
+        candidate = re.sub(r"^\s*```(?:python)?\s*|\s*```\s*$", "", str(answer).strip(), flags=re.IGNORECASE)
+        try:
+            tree = ast.parse(candidate)
+        except (SyntaxError, ValueError, TypeError):
+            return False
+        # Accept only the requested single, plain function definition.
+        if len(tree.body) != 1 or not isinstance(tree.body[0], ast.FunctionDef):
+            return False
+        fn = tree.body[0]
+        if fn.name != "add" or fn.decorator_list or fn.returns is not None:
+            return False
+        if (fn.args.posonlyargs or [arg.arg for arg in fn.args.args] != ["a", "b"]
+                or fn.args.vararg or fn.args.kwonlyargs or fn.args.kwarg
+                or fn.args.defaults or fn.args.kw_defaults):
+            return False
+        if len(fn.body) != 1 or not isinstance(fn.body[0], ast.Return):
+            return False
+        expr = fn.body[0].value
+        return isinstance(expr, ast.BinOp) and isinstance(expr.op, ast.Add) and isinstance(expr.left, ast.Name) and expr.left.id == "a" and isinstance(expr.right, ast.Name) and expr.right.id == "b"
+    if grader == "contains":
+        normalized = _normalize_benchmark_text(answer)
+        return all(
+            re.search(
+                r"(?<!\w)" + re.escape(_normalize_benchmark_text(word)) + r"(?!\w)",
+                normalized,
+            ) is not None
+            for word in case["expected"]
+        )
+    return False
 
 
 def _db():
@@ -60,7 +142,7 @@ def _db():
     return db
 
 
-def _request(provider, messages, max_tokens=256):
+def _request(provider, messages, max_tokens=256, timeout=None):
     payload = json.dumps({
         "model": provider["model"],
         "messages": messages,
@@ -79,7 +161,8 @@ def _request(provider, messages, max_tokens=256):
         provider["url"], data=payload, headers=headers, method="POST"
     )
     started = time.monotonic()
-    with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+    request_timeout = TIMEOUT if timeout is None else max(1.0, min(float(timeout), float(TIMEOUT)))
+    with urllib.request.urlopen(request, timeout=request_timeout) as response:
         data = json.loads(response.read(1024 * 1024).decode("utf-8"))
     answer = str((((data.get("choices") or [{}])[0]).get("message") or {}).get("content", "")).strip()
     if not answer:
@@ -87,15 +170,96 @@ def _request(provider, messages, max_tokens=256):
     return answer, (time.monotonic() - started) * 1000
 
 
-def _quality(answer, needles):
-    text = answer.casefold()
-    if len(answer.strip()) < 2:
-        return 0.0
-    matched = sum(1 for needle in needles if needle.casefold() in text)
-    return 0.25 + (0.75 * matched / max(1, len(needles)))
+
+def _stream_request(provider, messages, max_tokens=2048, timeout=None, on_delta=None):
+    """Read OpenAI-compatible SSE and emit text deltas as soon as they arrive."""
+    payload = json.dumps({
+        "model": provider["model"], "messages": messages, "stream": True,
+        "max_tokens": max_tokens, "temperature": 0.2
+    }).encode("utf-8")
+    headers = {"Content-Type": "application/json", "Accept": "text/event-stream"}
+    key_env = provider.get("key_env")
+    if key_env:
+        api_key = os.environ.get(key_env, "").strip()
+        if not api_key:
+            raise RuntimeError("provider_key_not_configured:" + provider["id"])
+        headers["Authorization"] = "Bearer " + api_key
+    request = urllib.request.Request(provider["url"], data=payload, headers=headers, method="POST")
+    started = time.monotonic()
+    request_timeout = TIMEOUT if timeout is None else max(1.0, min(float(timeout), float(TIMEOUT)))
+    parts = []
+    saw_done = False
+    with urllib.request.urlopen(request, timeout=request_timeout) as response:
+        for raw_line in response:
+            line = raw_line.decode("utf-8").strip()
+            if not line or line.startswith(":") or not line.startswith("data:"):
+                continue
+            data = line[5:].strip()
+            if data == "[DONE]":
+                saw_done = True
+                break
+            try:
+                item = json.loads(data)
+            except json.JSONDecodeError as exc:
+                raise RuntimeError("invalid_provider_stream_event") from exc
+            if item.get("error"):
+                raise RuntimeError("provider_stream_error")
+            choices = item.get("choices") or []
+            if not choices:
+                continue
+            choice = choices[0]
+            delta = choice.get("delta") or {}
+            token = delta.get("content")
+            if token is None and choice.get("message"):
+                # Some compatible endpoints ignore stream=true and return JSON.
+                token = choice["message"].get("content", "")
+            if isinstance(token, str) and token:
+                parts.append(token)
+                if on_delta:
+                    on_delta(token)
+            if choice.get("finish_reason"):
+                saw_done = True
+                break
+    answer = "".join(parts).strip()
+    if not answer:
+        raise RuntimeError("empty_provider_stream")
+    if not saw_done:
+        raise RuntimeError("incomplete_provider_stream")
+    return answer, (time.monotonic() - started) * 1000
 
 
-def _record(provider_id, latency, quality, error=""):
+def stream_answer_with_provider(messages, on_delta):
+    """Try providers in rank order; never switch after text reached the client."""
+    if not ALLOW_EXTERNAL_CHAT or not ENABLE_PUBLIC_PROVIDERS:
+        raise RuntimeError("external_chat_disabled")
+    ranked = provider_stats()
+    by_id = {item["id"]: item for item in _configured_providers()}
+    errors = []
+    deadline = time.monotonic() + PROVIDER_TOTAL_TIMEOUT
+    for item in ranked:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            errors.append("provider_budget_exhausted")
+            break
+        provider = by_id[item["id"]]
+        attempt_timeout = min(PROVIDER_ATTEMPT_TIMEOUT, remaining, TIMEOUT)
+        emitted = []
+        try:
+            answer, latency = _stream_request(
+                provider, messages, max_tokens=2048, timeout=attempt_timeout,
+                on_delta=lambda token: (emitted.append(token), on_delta(token))
+            )
+            _record(provider["id"], latency, None)
+            return answer, provider["id"]
+        except Exception as exc:
+            _record(provider["id"], 0, None, type(exc).__name__ + ": " + str(exc))
+            if emitted:
+                raise RuntimeError("provider_stream_interrupted:" + provider["id"]) from exc
+            errors.append(provider["id"])
+    raise RuntimeError("all_external_providers_failed:" + ",".join(errors))
+
+
+def _record(provider_id, latency, quality=None, error=""):
     db = _db()
     try:
         row = db.execute("SELECT attempts, successes, avg_latency_ms, quality_score FROM provider_scores WHERE provider_id=?", (provider_id,)).fetchone()
@@ -103,10 +267,21 @@ def _record(provider_id, latency, quality, error=""):
             attempts, successes, avg_latency, old_quality = row
             new_attempts = attempts + 1
             new_successes = successes + (1 if not error else 0)
-            new_latency = latency if not attempts else (avg_latency * 0.7 + latency * 0.3)
-            new_quality = quality if not attempts else (old_quality * 0.7 + quality * 0.3)
+            # Failed requests do not make a provider appear faster, and live
+            # chat has no ground-truth label from which to infer answer quality.
+            new_latency = (
+                latency if not attempts else
+                (avg_latency * 0.7 + latency * 0.3 if not error and latency > 0 else avg_latency)
+            )
+            new_quality = (
+                old_quality if quality is None else
+                (quality if not attempts else old_quality * 0.7 + quality * 0.3)
+            )
         else:
-            new_attempts, new_successes, new_latency, new_quality = 1, (0 if error else 1), latency, quality
+            new_attempts = 1
+            new_successes = 0 if error else 1
+            new_latency = latency if not error and latency > 0 else 0
+            new_quality = 0 if quality is None else quality
         db.execute("""INSERT INTO provider_scores(provider_id,attempts,successes,avg_latency_ms,quality_score,last_success,last_error)
             VALUES(?,?,?,?,?,?,?) ON CONFLICT(provider_id) DO UPDATE SET
             attempts=excluded.attempts, successes=excluded.successes, avg_latency_ms=excluded.avg_latency_ms,
@@ -131,8 +306,10 @@ def provider_stats():
         values = known.get(provider["id"], (0, 0, 0, 0, None, None))
         attempts, successes, latency, quality, last_success, last_error = values
         reliability = successes / attempts if attempts else 0.5
-        # Quality dominates; reliability and latency break ties.
-        score = (quality * 0.65) + (reliability * 0.25) + (max(0, 1 - latency / 30000) * 0.10 if latency else 0.05)
+        # Route on observable service behavior only. Answer quality requires
+        # benchmark labels and must never be inferred from live-chat success.
+        latency_score = max(0, 1 - latency / 30000) if latency else 0.5
+        score = (reliability * 0.75) + (latency_score * 0.25)
         result.append({
             "id": provider["id"], "name": provider["name"], "model": provider["model"],
             "attempts": attempts, "successes": successes,
@@ -144,23 +321,40 @@ def provider_stats():
 
 
 def evaluate_providers():
-    """Benchmark only fixed synthetic prompts; never reads user conversation data."""
+    """Run versioned deterministic checks against synthetic prompts only."""
     if not ENABLE_PUBLIC_PROVIDERS:
-        return {"enabled": False, "tested": 0, "results": [], "message": "Public provider evaluation is disabled."}
+        return {"enabled": False, "benchmark_version": BENCHMARK_VERSION, "tested": 0, "results": [], "message": "Public provider evaluation is disabled."}
     results = []
     for provider in _configured_providers():
-        case_results = []
+        case_results, latencies = [], []
+        category_totals, failures = {}, 0
         for case in EVALUATION_CASES:
+            category = category_totals.setdefault(case["category"], {"passed": 0, "total": 0})
+            category["total"] += 1
             try:
-                answer, latency = _request(provider, case["messages"], max_tokens=120)
-                quality = _quality(answer, case["needles"])
-                _record(provider["id"], latency, quality)
-                case_results.append({"ok": True, "latency_ms": round(latency), "quality": round(quality, 2)})
+                answer, latency = _request(provider, case["messages"], max_tokens=256)
+                passed = _grade_benchmark_case(case, answer)
+                latencies.append(latency)
+                category["passed"] += int(passed)
+                _record(provider["id"], latency, 1.0 if passed else 0.0)
+                case_results.append({"id": case["id"], "category": case["category"], "passed": passed, "latency_ms": round(latency)})
             except Exception as exc:
-                _record(provider["id"], 0, 0, type(exc).__name__ + ": " + str(exc))
-                case_results.append({"ok": False, "error": type(exc).__name__})
-        results.append({"provider": provider["id"], "cases": case_results})
-    return {"enabled": True, "tested": len(results), "results": results, "ranking": provider_stats()}
+                failures += 1
+                _record(provider["id"], 0, None, type(exc).__name__ + ": " + str(exc))
+                case_results.append({"id": case["id"], "category": case["category"], "passed": False, "error": type(exc).__name__})
+        ordered = sorted(latencies)
+        p95 = ordered[max(0, int(len(ordered) * 0.95 + 0.999999) - 1)] if ordered else None
+        total, passed_count = len(case_results), sum(1 for item in case_results if item["passed"])
+        results.append({
+            "provider": provider["id"], "benchmark_version": BENCHMARK_VERSION,
+            "pass_rate": round(passed_count / total, 3) if total else 0,
+            "median_latency_ms": round(statistics.median(latencies)) if latencies else None,
+            "p95_latency_ms": round(p95) if p95 is not None else None,
+            "error_rate": round(failures / total, 3) if total else 0,
+            "categories": {name: {"passed": values["passed"], "total": values["total"], "pass_rate": round(values["passed"] / values["total"], 3)} for name, values in category_totals.items()},
+            "cases": case_results
+        })
+    return {"enabled": True, "benchmark_version": BENCHMARK_VERSION, "case_count": len(EVALUATION_CASES), "tested": len(results), "results": results, "routing": provider_stats()}
 
 
 def answer_with_provider(messages):
@@ -170,14 +364,22 @@ def answer_with_provider(messages):
     ranked = provider_stats()
     by_id = {item["id"]: item for item in _configured_providers()}
     errors = []
+    deadline = time.monotonic() + PROVIDER_TOTAL_TIMEOUT
     for item in ranked:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            errors.append("provider_budget_exhausted")
+            break
         provider = by_id[item["id"]]
+        attempt_timeout = min(PROVIDER_ATTEMPT_TIMEOUT, remaining, TIMEOUT)
         try:
-            answer, latency = _request(provider, messages, max_tokens=2048)
-            _record(provider["id"], latency, 0.65)
+            answer, latency = _request(
+                provider, messages, max_tokens=2048, timeout=attempt_timeout
+            )
+            _record(provider["id"], latency, None)
             return answer, provider["id"]
         except Exception as exc:
-            _record(provider["id"], 0, 0, type(exc).__name__ + ": " + str(exc))
+            _record(provider["id"], 0, None, type(exc).__name__ + ": " + str(exc))
             errors.append(provider["id"])
     raise RuntimeError("all_external_providers_failed:" + ",".join(errors))
 

@@ -3,10 +3,10 @@
   const state = { endpoint: localStorage.getItem("jassim_endpoint") || "https://jassim-ai-core-final-production.up.railway.app", token: sessionStorage.getItem("jassim_token") || "", conversation: "web-" + Math.random().toString(36).slice(2,10), connected: false, health: null, activeController: null };
   $("conversationId").textContent = state.conversation;
   function toast(message){const el=$("toast");el.textContent=message;el.classList.add("show");setTimeout(()=>el.classList.remove("show"),2600)}
-  function setStatus(ok,label){state.connected=ok;$("connectionLabel").textContent=label;$("sideStatus").textContent=label;$("chatConnection").textContent=label;document.querySelectorAll(".live-dot").forEach(x=>x.classList.toggle("online",ok));$("apiStat").textContent=ok?"متصل":"غير متصل";$("apiDetail").textContent=ok?"تم فحص /health بنجاح":"تحقق من عنوان الخادم";$("step1").textContent=ok?"✓":"●"}
+  function setStatus(ok,label){state.connected=ok;$("connectionLabel").textContent=label;$("sideStatus").textContent=label;$("chatConnection").textContent=label;document.querySelectorAll(".live-dot").forEach(x=>x.classList.toggle("online",ok));$("apiStat").textContent=ok?"متصل":"غير متصل";$("apiDetail").textContent=ok?"تم فحص حياة API فقط؛ لا يثبت ذلك جاهزية النموذج":"تحقق من عنوان الخادم";$("step1").textContent=ok?"✓":"●"}
   function openSettings(){$("endpoint").value=state.endpoint;$("accountEmail").value="";$("accountPassword").value="";$("accountStatus").textContent=state.token?"هناك جلسة حساب محفوظة في علامة التبويب هذه.":"سجّل الدخول أو أنشئ حساباً. لا تحتاج إلى رمز الخادم.";$("logoutAccount").disabled=!state.token;$("settingsDialog").showModal()}
   async function request(path,options={}){if(!state.endpoint)throw new Error("أدخل عنوان الخادم أولاً");const url=state.endpoint.replace(/\/$/,"")+path;const response=await fetch(url,{...options,headers:{"Content-Type":"application/json",...(state.token?{"Authorization":"Bearer "+state.token}:{}),...(options.headers||{})}});if(!response.ok)throw new Error("HTTP "+response.status);return response.json()}
-  async function checkHealth(){if(!state.endpoint){setStatus(false,"لم يتم إعداد الخادم");$("engineStat").textContent="غير معروف";$("storageStat").textContent="—";return}try{const h=await request("/health");state.health=h;setStatus(!!h.ok,h.ok?"الخادم متصل":"الخادم غير جاهز");if($("imageStatus"))$("imageStatus").textContent=h.image_generation_ready?"توليد الصور جاهز · "+(h.image_model||"FLUX"):"الخادم متصل، لكن توليد الصور ينتظر ضبط JASSIM_HF_TOKEN في Railway.";$("engineStat").textContent=h.model||h.engine||"غير معروف";$("engineDetail").textContent=h.model_ready?"النموذج جاهز للطلبات":(h.ollama_reachable?"Ollama متصل لكن النموذج غير محمّل":"محرك Ollama غير متاح");$("storageStat").textContent=h.storage||"غير معروف";$("checkedStat").textContent=new Date().toLocaleTimeString("ar-TN");$("systemEngine").textContent=h.engine||"غير معروف";$("systemStorage").textContent=h.storage||"غير معروف";$("serverUrlText").textContent=state.endpoint}catch(e){setStatus(false,"تعذر الاتصال");$("apiDetail").textContent=e.message;toast("فشل فحص الخادم: "+e.message)}}
+  async function checkHealth(){if(!state.endpoint){setStatus(false,"لم يتم إعداد الخادم");$("engineStat").textContent="غير معروف";$("storageStat").textContent="—";return}try{const h=await request("/health");state.health=h;setStatus(!!h.ok,h.ok?"الخادم متصل":"الخادم غير جاهز");if($("imageStatus"))$("imageStatus").textContent=h.image_generation_ready?"توليد الصور جاهز · "+(h.image_model||"FLUX"):"الخادم متصل، لكن توليد الصور ينتظر ضبط JASSIM_HF_TOKEN في Railway.";$("engineStat").textContent=h.model||h.engine||"غير معروف";$("engineDetail").textContent=h.model_ready?"النموذج المحلي جاهز للطلبات":(h.external_provider_ready?"⚠ مسار خارجي مفعّل؛ قد تُرسل رسائلك إلى مزود AI خارجي":(h.ollama_reachable?"Ollama متصل لكن النموذج غير محمّل":"محرك Ollama غير متاح"));$("storageStat").textContent=h.storage||"غير معروف";$("checkedStat").textContent=new Date().toLocaleTimeString("ar-TN");$("systemEngine").textContent=h.engine||"غير معروف";$("systemStorage").textContent=h.storage||"غير معروف";$("serverUrlText").textContent=state.endpoint}catch(e){setStatus(false,"تعذر الاتصال");$("apiDetail").textContent=e.message;toast("فشل فحص الخادم: "+e.message)}}
   function addBubble(text,who){const box=document.createElement("div");box.className="bubble "+who;box.textContent=text; $("messages").appendChild(box); $("messages").scrollTop=$("messages").scrollHeight;return box}
   function showView(id){document.querySelectorAll(".view").forEach(x=>x.classList.toggle("active",x.id===id));document.querySelectorAll(".nav").forEach(x=>x.classList.toggle("active",x.dataset.view===id));const names={overview:"نظرة عامة",chat:"مركز المحادثة",memory:"الذاكرة والسجل",images:"استوديو الصور",systems:"الخادم والمحركات"};$("pageTitle").textContent=names[id]||"JASSIM AI"}
   document.querySelectorAll(".nav").forEach(b=>b.addEventListener("click",()=>showView(b.dataset.view)));
@@ -31,8 +31,19 @@
   $("registerAccount").addEventListener("click",()=>authenticateAccount("register"));
   $("logoutAccount").addEventListener("click",async()=>{
     if(!state.token)return;
-    try{await request("/api/auth/logout",{method:"POST",body:"{}"})}catch(_){}
-    state.token="";sessionStorage.removeItem("jassim_token");toast("تم تسجيل الخروج");openSettings();
+    try{
+      const result=await request("/api/auth/logout",{method:"POST",body:"{}"});
+      if(!result.revoked)throw new Error("لم يؤكد الخادم إبطال الجلسة");
+      state.token="";sessionStorage.removeItem("jassim_token");
+      toast("تم تسجيل الخروج وإبطال الجلسة");openSettings();
+    }catch(error){
+      if(error.message==="HTTP 401"){
+        state.token="";sessionStorage.removeItem("jassim_token");
+        toast("الجلسة منتهية أو ملغاة بالفعل");openSettings();
+      }else{
+        toast("تعذر تأكيد تسجيل الخروج؛ احتفظنا بالجلسة لإعادة المحاولة: "+error.message);
+      }
+    }
   });
   $("chatForm").addEventListener("submit",async e=>{
     e.preventDefault();
@@ -79,8 +90,10 @@
     btn.disabled=true;btn.textContent="جارٍ التوليد…";status.textContent="قد يستغرق التوليد بعض الوقت.";result.innerHTML="";
     try{
       const data=await request("/api/images/generate",{method:"POST",body:JSON.stringify({prompt})});
+      if(!data.image_base64||!["image/png","image/jpeg","image/webp"].includes(String(data.mime_type||"").toLowerCase()))throw new Error("أعاد مزود الصور صيغة غير مدعومة");
       const img=document.createElement("img");img.alt="الصورة التي أنشأها JASSIM AI";img.src="data:"+data.mime_type+";base64,"+data.image_base64;result.appendChild(img);
-      const link=document.createElement("a");link.href=img.src;link.download="jassim-ai-image.png";link.textContent="تنزيل الصورة";link.className="secondary image-download";result.appendChild(link);
+      const extension={"image/png":"png","image/jpeg":"jpg","image/webp":"webp"}[data.mime_type.toLowerCase()];
+      const link=document.createElement("a");link.href=img.src;link.download="jassim-ai-image."+extension;link.textContent="تنزيل الصورة";link.className="secondary image-download";result.appendChild(link);
       status.textContent="تم التوليد بواسطة "+data.model;
     }catch(e){status.textContent="تعذر التوليد: "+e.message;toast("فشل توليد الصورة")}
     finally{btn.disabled=false;btn.textContent="توليد الصورة ✦"}

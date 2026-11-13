@@ -1,8 +1,9 @@
 name: Build JASSIM AI APK
+# CI validation for the fast local-model availability routing path.
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "fix/android-message-line-breaks" ]
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
@@ -22,25 +23,43 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Validate Colab notebook JSON and Python cells
+      - name: Validate Colab and Kaggle notebook JSON and Python cells
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
 
-          path = Path("notebooks/JASSIM_AI_Colab_GPU.ipynb")
-          notebook = json.loads(path.read_text(encoding="utf-8"))
-          for index, cell in enumerate(notebook.get("cells", [])):
-              if cell.get("cell_type") == "code":
-                  source = "".join(cell.get("source", []))
-                  compile(source, f"{path}:cell-{index}", "exec")
-          print(f"Validated {len(notebook.get('cells', []))} notebook cells")
+          paths = [
+              Path("notebooks/JASSIM_AI_Colab_GPU.ipynb"),
+              Path("notebooks/JASSIM_AI_Kaggle_Free_GPU.ipynb"),
+          ]
+          for path in paths:
+              notebook = json.loads(path.read_text(encoding="utf-8"))
+              for index, cell in enumerate(notebook.get("cells", [])):
+                  if cell.get("cell_type") == "code":
+                      source = "".join(cell.get("source", []))
+                      compile(source, f"{path}:cell-{index}", "exec")
+              print(f"Validated {path}: {len(notebook.get('cells', []))} cells")
           PY
 
       - name: Test self-hosted backend
         run: python -m unittest discover -s backend -p 'test_*.py' -v
 
-      - name: Verify deployed JASSIM server health
+      - name: Test private local-model benchmark harness
+        run: python -m unittest discover -s backend -p 'test_local_model_benchmark.py' -v
+
+      - name: Test Kaggle notebook privacy policy
+        run: python -m unittest discover -s backend -p 'test_kaggle_notebook.py' -v
+
+      - name: Test private image worker API
+        run: |
+          python -m pip install -r image-worker/requirements-test.txt
+          python -m unittest discover -s image-worker -p 'test_*.py' -v
+
+      - name: Validate dashboard JavaScript syntax
+        run: node --check dashboard/app.js
+
+      - name: Verify deployed JASSIM API liveness
         run: |
           python - <<'PY'
           import json, time, urllib.request
@@ -52,7 +71,11 @@ jobs:
                       data = json.loads(response.read().decode("utf-8"))
                   if not data.get("ok"):
                       raise RuntimeError(f"Unexpected health payload: {data}")
-                  print("JASSIM_SERVER_ONLINE:", data.get("version"), data.get("engine"))
+                  print("JASSIM_API_LIVE:", data.get("version"), data.get("engine"))
+                  print("OLLAMA_REACHABLE:", data.get("ollama_reachable"))
+                  print("MODEL_READY:", data.get("model_ready"))
+                  print("EXTERNAL_PROVIDER_ROUTE_ENABLED:", data.get("external_provider_ready"))
+                  print("NOTE: /health proves API liveness only; it does not prove model readiness or successful inference.")
                   break
               except Exception as exc:
                   last_error = exc
@@ -62,29 +85,29 @@ jobs:
                   time.sleep(5)
           PY
 
-      - name: Probe anonymous JarvisClaw fallback
-        continue-on-error: true
+      - name: Audit production private-inference readiness
         run: |
           python - <<'PY'
-          import json, urllib.request, urllib.error
-          url = "https://api.jarvisclaw.ai/v1/chat/completions"
-          body = json.dumps({
-              "model": "auto/free",
-              "messages": [{"role": "user", "content": "Reply exactly: JASSIM ONLINE"}],
-              "stream": False,
-              "max_tokens": 40
-          }).encode()
-          req = urllib.request.Request(url, data=body, headers={
-              "Content-Type": "application/json"
-          })
-          try:
-              with urllib.request.urlopen(req, timeout=90) as response:
-                  data = json.loads(response.read())
-                  answer = data["choices"][0]["message"]["content"]
-                  print("ANONYMOUS_LLM_OK:", answer[:300])
-          except Exception as exc:
-              print("ANONYMOUS_LLM_UNAVAILABLE:", repr(exc))
-              raise
+          import json, os, urllib.request
+          url = "https://jassim-ai-core-final-production.up.railway.app/health"
+          with urllib.request.urlopen(url, timeout=20) as response:
+              data = json.loads(response.read().decode("utf-8"))
+          model_ready = bool(data.get("model_ready", False))
+          external_enabled = bool(data.get("external_provider_ready", False))
+          provider = data.get("provider") or data.get("engine") or "unknown"
+          print("PRODUCTION_MODEL_READY:", model_ready)
+          print("PRODUCTION_EXTERNAL_ROUTE_ENABLED:", external_enabled)
+          print("PRODUCTION_PROVIDER_OR_ENGINE:", provider)
+          if not model_ready:
+              print("::warning::Production local model is not ready; private inference is not verified.")
+          if external_enabled:
+              print("::warning::Production external-provider routing is enabled; this is not private-only inference.")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write("### Production private-inference readiness\\n")
+              summary.write(f"- Local model ready: **{model_ready}**\\n")
+              summary.write(f"- External-provider route enabled: **{external_enabled}**\\n")
+              summary.write(f"- Provider/engine reported: `{provider}`\\n")
+              summary.write("- This audit does not send a prompt to any public AI provider.\\n")
           PY
 
       - name: Set up JDK 17
@@ -97,6 +120,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+
+      - name: Run Android unit tests
+        run: gradle testDebugUnitTest
 
       - name: Build debug APK
         run: gradle assembleDebug

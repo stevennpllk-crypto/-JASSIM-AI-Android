@@ -3,6 +3,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import json
 import threading
 from http.server import ThreadingHTTPServer
@@ -113,6 +114,41 @@ class MultiUserAuthTest(unittest.TestCase):
             with self.assertRaises(HTTPError) as revoked:
                 call("/api/auth/me", token=first_token)
             self.assertEqual(revoked.exception.code, 401)
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=3)
+
+
+    def test_login_hides_unknown_accounts_and_performs_dummy_password_check(self):
+        auth.create_user(self.db, "known@example.com", "known-account-password")
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), self.server.Handler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        base = "http://127.0.0.1:" + str(httpd.server_port)
+
+        def login(email, password):
+            request = Request(
+                base + "/api/auth/login",
+                data=json.dumps({"email": email, "password": password}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                with urlopen(request, timeout=5) as response:
+                    return response.status, json.loads(response.read().decode("utf-8"))
+            except HTTPError as error:
+                return error.code, json.loads(error.read().decode("utf-8"))
+
+        try:
+            with mock.patch.object(auth, "verify_password", wraps=auth.verify_password) as verify:
+                unknown = login("missing@example.com", "wrong-password-123")
+                incorrect = login("known@example.com", "wrong-password-123")
+                self.assertEqual(verify.call_count, 2)
+            self.assertEqual(unknown[0], 401)
+            self.assertEqual(incorrect[0], 401)
+            self.assertEqual(unknown[1], {"error": "invalid_credentials"})
+            self.assertEqual(incorrect[1], {"error": "invalid_credentials"})
         finally:
             httpd.shutdown()
             httpd.server_close()

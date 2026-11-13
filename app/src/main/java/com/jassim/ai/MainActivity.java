@@ -2,6 +2,12 @@ package com.jassim.ai;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.Dialog;
+import android.content.Intent;
+import android.speech.RecognizerIntent;
+import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
+import java.util.Locale;
 import android.os.Bundle;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -40,8 +46,18 @@ public class MainActivity extends Activity {
     private SharedPreferences prefs;
     private Button sendButton;
     private Button stopButton;
+    private Button improveButton;
+    private Button speakButton;
+    private TextToSpeech textToSpeech;
+    private boolean textToSpeechReady;
+    private String latestAssistantText = "";
+    private static final int REQUEST_SPEECH_INPUT = 4101;
+    private volatile boolean adminSession;
     private volatile HttpURLConnection activeChatConnection;
     private volatile boolean cancelRequested;
+    private volatile boolean localModelReady;
+    private volatile boolean externalChatEnabled;
+    private volatile boolean healthChecked;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private static final String KEY_ALIAS = "jassim_api_token_v1";
     private static final String DEFAULT_SERVER_URL =
@@ -67,9 +83,16 @@ public class MainActivity extends Activity {
 
     private void saveApiToken(String token) throws Exception {
         if (token == null || token.isEmpty()) {
+            transientSessionToken = "";
             prefs.edit().remove("api_token").remove("api_token_enc").remove("api_token_iv").apply();
             return;
         }
+        if (!rememberSession) {
+            transientSessionToken = token;
+            prefs.edit().remove("api_token").remove("api_token_enc").remove("api_token_iv").apply();
+            return;
+        }
+        transientSessionToken = "";
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateSecretKey());
         byte[] encrypted = cipher.doFinal(token.getBytes(StandardCharsets.UTF_8));
@@ -81,6 +104,7 @@ public class MainActivity extends Activity {
     }
 
     private String readApiToken() {
+        if (transientSessionToken != null && !transientSessionToken.isEmpty()) return transientSessionToken;
         try {
             String encrypted = prefs.getString("api_token_enc", "");
             String iv = prefs.getString("api_token_iv", "");
@@ -103,7 +127,8 @@ public class MainActivity extends Activity {
         prefs = getSharedPreferences("jassim", MODE_PRIVATE);
         ensureConversationId();
         buildUi();
-        // Discover the current Colab tunnel from the stable GitHub Pages registry.
+        initTextToSpeech();
+        // Discover the configured production endpoint from the stable GitHub Pages registry.
         status.setText("● جارٍ اكتشاف عنوان الخادم...");
         status.setTextColor(0xFFFFC36B);
         autoConnect();
@@ -120,6 +145,8 @@ public class MainActivity extends Activity {
             HttpURLConnection discovery = null;
             try {
                 discovery = (HttpURLConnection) new URL(DISCOVERY_URL + "?t=" + System.currentTimeMillis()).openConnection();
+                // Never follow a registry redirect: discovery is a fixed, public origin.
+                discovery.setInstanceFollowRedirects(false);
                 discovery.setRequestMethod("GET");
                 discovery.setConnectTimeout(12000);
                 discovery.setReadTimeout(12000);
@@ -136,8 +163,8 @@ public class MainActivity extends Activity {
                     JSONObject registry = new JSONObject(body.toString());
                     String candidate = registry.optString("url", "").trim();
                     if ("online".equals(registry.optString("status", "")) &&
-                            candidate.startsWith("https://") &&
-                            candidate.length() <= 300) {
+                            candidate.length() <= 300 &&
+                            TrustedEndpointPolicy.isTrusted(candidate)) {
                         discovered = candidate;
                     }
                 }
@@ -147,27 +174,34 @@ public class MainActivity extends Activity {
                 if (discovery != null) discovery.disconnect();
             }
 
+            if (prefs.getBoolean("endpoint_user_configured", false)) {
+                discovered = "";
+            }
             final String endpoint = discovered;
             if (!endpoint.isEmpty()) {
-                prefs.edit().putString("endpoint", endpoint).apply();
+                prefs.edit().putString("endpoint", endpoint)
+                    .putBoolean("endpoint_user_configured", false).apply();
             }
             runOnUiThread(() -> {
                 if (baseUrl().isEmpty()) {
-                    addMessage("JASSIM AI", "الخادم الخاص غير متصل الآن. يمكنك متابعة المحادثة عبر خدمة ذكاء اصطناعي عامة مجانية؛ قد تتغير سرعتها وحدودها.");
-                    status.setText("● الخادم الخاص غير متصل — الخدمة الاحتياطية متاحة");
+                    addMessage("JASSIM AI", "الخادم الخاص غير متصل الآن. لن نرسل رسائلك إلى أي خدمة خارجية. أعد المحاولة عند عودة الخادم.");
+                    status.setText("● الخادم الخاص غير متصل — الإرسال متوقف حفاظاً على الخصوصية");
                     status.setTextColor(0xFFFFC36B);
                 } else {
                     status.setText(endpoint.isEmpty()
                         ? "● تعذر تحديث الرابط — نجرب آخر عنوان محفوظ"
                         : "● تم اكتشاف الخادم تلقائياً — جارٍ الاتصال...");
                     checkHealth();
-                    if (readApiToken().isEmpty()) {
-                        status.setText("● أنشئ حساباً أو سجّل الدخول للبدء");
-                        status.setTextColor(0xFFFFC36B);
-                        accountDialog();
-                    } else {
+                    if (!readApiToken().isEmpty()) {
                         loadHistory();
                     }
+                }
+                // Always show account access on first launch, even when the private
+                // backend is offline; login UI must not depend on server discovery.
+                if (readApiToken().isEmpty()) {
+                    status.setText("● أنشئ حساباً أو سجّل الدخول للبدء");
+                    status.setTextColor(0xFFFFC36B);
+                    accountDialog();
                 }
             });
         });
@@ -227,10 +261,15 @@ public class MainActivity extends Activity {
         root.setPadding(dp(14), dp(14), dp(14), dp(12));
         root.setBackgroundColor(0xFF0B1020);
 
+        // Use two compact rows so the header remains usable on narrow phones.
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setOrientation(LinearLayout.VERTICAL);
         header.setPadding(0, 0, 0, dp(12));
+
+        LinearLayout brandRow = new LinearLayout(this);
+        brandRow.setGravity(Gravity.CENTER_VERTICAL);
+        brandRow.setOrientation(LinearLayout.HORIZONTAL);
 
         TextView logo = new TextView(this);
         logo.setText("J");
@@ -244,7 +283,7 @@ public class MainActivity extends Activity {
                 new int[] { 0xFF248BFF, 0xFF7548E8 });
         logoBg.setCornerRadius(dp(16));
         logo.setBackground(logoBg);
-        header.addView(logo, new LinearLayout.LayoutParams(dp(46), dp(46)));
+        brandRow.addView(logo, new LinearLayout.LayoutParams(dp(46), dp(46)));
 
         LinearLayout brand = new LinearLayout(this);
         brand.setOrientation(LinearLayout.VERTICAL);
@@ -255,29 +294,44 @@ public class MainActivity extends Activity {
         title.setTextSize(19);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         TextView tagline = new TextView(this);
-        tagline.setText("مساعدك الذكي");
+        tagline.setText(uiText("ذكاء اصطناعي ... بإبداع تونسي", "Artificial intelligence ... Tunisian creativity", "Intelligence artificielle ... créativité tunisienne"));
         tagline.setTextColor(muted);
         tagline.setTextSize(11);
         brand.addView(title);
         brand.addView(tagline);
-        header.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
+        brandRow.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
+        header.addView(brandRow, new LinearLayout.LayoutParams(-1, dp(46)));
+
+        LinearLayout actionsRow = new LinearLayout(this);
+        actionsRow.setGravity(Gravity.CENTER_VERTICAL);
+        actionsRow.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams actionsLp = new LinearLayout.LayoutParams(-1, dp(38));
+        actionsLp.setMargins(0, dp(8), 0, 0);
 
         Button accountButton = actionButton("حساب", "تسجيل الدخول أو إنشاء حساب", () -> accountDialog());
-        header.addView(accountButton, new LinearLayout.LayoutParams(-2, dp(38)));
+        LinearLayout.LayoutParams accountLp = new LinearLayout.LayoutParams(0, dp(38), 1);
+        accountLp.setMargins(0, 0, dp(4), 0);
+        actionsRow.addView(accountButton, accountLp);
+
         Button historyButton = actionButton("السجل", "سجل المحادثات", () -> showConversations());
-        header.addView(historyButton, new LinearLayout.LayoutParams(-2, dp(38)));
+        LinearLayout.LayoutParams historyLp = new LinearLayout.LayoutParams(0, dp(38), 1);
+        historyLp.setMargins(0, 0, dp(4), 0);
+        actionsRow.addView(historyButton, historyLp);
+
         Button newChat = actionButton("+", "محادثة جديدة", () -> newConversation());
         LinearLayout.LayoutParams newLp = new LinearLayout.LayoutParams(dp(40), dp(38));
-        newLp.setMargins(dp(5), 0, 0, 0);
-        header.addView(newChat, newLp);
-        Button improve = actionButton("⚡", "اختبار وتحسين الخادم", () -> runProviderEvaluation());
+        newLp.setMargins(0, 0, dp(4), 0);
+        actionsRow.addView(newChat, newLp);
+
+        improveButton = actionButton("⚡", "اختبار وتحسين الخادم (للمسؤول فقط)", () -> runProviderEvaluation());
+        improveButton.setVisibility(View.GONE);
         LinearLayout.LayoutParams improveLp = new LinearLayout.LayoutParams(dp(40), dp(38));
-        improveLp.setMargins(dp(5), 0, 0, 0);
-        header.addView(improve, improveLp);
+        improveLp.setMargins(0, 0, dp(4), 0);
+        actionsRow.addView(improveButton, improveLp);
+
         Button settings = actionButton("⚙", "إعدادات الاتصال", () -> endpointDialog());
-        LinearLayout.LayoutParams settingsLp = new LinearLayout.LayoutParams(dp(40), dp(38));
-        settingsLp.setMargins(dp(5), 0, 0, 0);
-        header.addView(settings, settingsLp);
+        actionsRow.addView(settings, new LinearLayout.LayoutParams(dp(40), dp(38)));
+        header.addView(actionsRow, actionsLp);
         root.addView(header);
 
         status = new TextView(this);
@@ -329,6 +383,22 @@ public class MainActivity extends Activity {
             return false;
         });
         composerShell.addView(input, new LinearLayout.LayoutParams(0, -2, 1));
+        Button voiceInputButton = new Button(this);
+        voiceInputButton.setText("🎙");
+        voiceInputButton.setTextSize(17);
+        voiceInputButton.setTextColor(0xFFE5E9FF);
+        voiceInputButton.setAllCaps(false);
+        voiceInputButton.setMinWidth(0);
+        voiceInputButton.setMinimumWidth(0);
+        voiceInputButton.setMinHeight(dp(40));
+        voiceInputButton.setMinimumHeight(dp(40));
+        voiceInputButton.setPadding(dp(7), 0, dp(7), 0);
+        voiceInputButton.setBackground(rounded(0xFF263B61, 13));
+        voiceInputButton.setContentDescription("التحدث لإملاء رسالة صوتية");
+        voiceInputButton.setOnClickListener(v -> startVoiceInput());
+        LinearLayout.LayoutParams voiceLp = new LinearLayout.LayoutParams(dp(44), dp(40));
+        voiceLp.setMargins(dp(4), 0, 0, 0);
+        composerShell.addView(voiceInputButton, voiceLp);
 
         stopButton = new Button(this);
         stopButton.setText("إيقاف");
@@ -367,6 +437,11 @@ public class MainActivity extends Activity {
         sendLp.setMargins(dp(5), 0, 0, 0);
         composerShell.addView(sendButton, sendLp);
         root.addView(composerShell, shellLp);
+        speakButton = actionButton("🔊 استمع", "قراءة آخر إجابة بصوت عربي", () -> speakLatestAnswer());
+        speakButton.setEnabled(false);
+        LinearLayout.LayoutParams speakLp = new LinearLayout.LayoutParams(-2, dp(34));
+        speakLp.setMargins(0, dp(5), 0, 0);
+        root.addView(speakButton, speakLp);
 
         TextView footer = new TextView(this);
         footer.setText("JASSIM AI  •  محادثاتك تبدأ من هنا");
@@ -378,10 +453,128 @@ public class MainActivity extends Activity {
         setContentView(root);
     }
 
+    private void initTextToSpeech() {
+        textToSpeech = new TextToSpeech(this, result -> {
+            if (result == TextToSpeech.SUCCESS && textToSpeech != null) {
+                int languageResult = textToSpeech.setLanguage(new Locale("ar"));
+                textToSpeechReady = languageResult != TextToSpeech.LANG_MISSING_DATA &&
+                        languageResult != TextToSpeech.LANG_NOT_SUPPORTED;
+                textToSpeech.setSpeechRate(0.96f);
+                textToSpeech.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                    @Override public void onStart(String utteranceId) { }
+                    @Override public void onDone(String utteranceId) {
+                        if (utteranceId != null && utteranceId.startsWith("jassim-") &&
+                                utteranceId.endsWith("-last")) {
+                            runOnUiThread(() -> {
+                                if (speakButton != null) speakButton.setText("🔊 استمع");
+                            });
+                        }
+                    }
+                    @Override public void onError(String utteranceId) {
+                        runOnUiThread(() -> {
+                            if (speakButton != null) speakButton.setText("🔊 استمع");
+                        });
+                    }
+                });
+                if (languageResult == TextToSpeech.LANG_MISSING_DATA ||
+                        languageResult == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    runOnUiThread(() -> {
+                        textToSpeechReady = false;
+                        if (speakButton != null) speakButton.setEnabled(false);
+                    });
+                } else {
+                    runOnUiThread(() -> {
+                        if (speakButton != null) speakButton.setEnabled(textToSpeechReady && !latestAssistantText.isEmpty());
+                    });
+                }
+            }
+        });
+    }
+
+    private void startVoiceInput() {
+        status.setText("● جارٍ فتح الميكروفون — تحدث بوضوح");
+        status.setTextColor(0xFF80B8FF);
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ar");
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ar-TN");
+        intent.putExtra(RecognizerIntent.EXTRA_PROMPT, "تحدث الآن — JASSIM AI يستمع إليك");
+        intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+        intent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true);
+        try {
+            startActivityForResult(intent, REQUEST_SPEECH_INPUT);
+        } catch (android.content.ActivityNotFoundException e) {
+            Toast.makeText(this, "ميزة التعرف على الصوت غير مثبتة. تحقق من محرك الصوت على جهازك.", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private java.util.ArrayList<String> splitSpeechText(String text) {
+        java.util.ArrayList<String> chunks = new java.util.ArrayList<>();
+        String remaining = text == null ? "" : text.trim();
+        final int maxChunk = 3200;
+        while (remaining.length() > maxChunk) {
+            int cut = remaining.lastIndexOf(' ', maxChunk);
+            if (cut < 1000) cut = maxChunk;
+            chunks.add(remaining.substring(0, cut).trim());
+            remaining = remaining.substring(cut).trim();
+        }
+        if (!remaining.isEmpty()) chunks.add(remaining);
+        return chunks;
+    }
+
+    private void speakLatestAnswer() {
+        if (textToSpeech == null || !textToSpeechReady || latestAssistantText.trim().isEmpty()) {
+            Toast.makeText(this, "لا توجد إجابة لقراءتها بعد", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (textToSpeech.isSpeaking()) {
+            textToSpeech.stop();
+            speakButton.setText("🔊 استمع");
+            return;
+        }
+        textToSpeech.setLanguage(new Locale("ar"));
+        java.util.ArrayList<String> chunks = splitSpeechText(latestAssistantText);
+        for (int i = 0; i < chunks.size(); i++) {
+            boolean last = i == chunks.size() - 1;
+            textToSpeech.speak(chunks.get(i),
+                    i == 0 ? TextToSpeech.QUEUE_FLUSH : TextToSpeech.QUEUE_ADD,
+                    null, "jassim-" + i + (last ? "-last" : ""));
+        }
+        speakButton.setText("■ إيقاف الصوت");
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_SPEECH_INPUT) return;
+        if (resultCode == RESULT_OK && data != null) {
+            java.util.ArrayList<String> results =
+                    data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+            if (results != null && !results.isEmpty() && results.get(0) != null) {
+                String recognized = results.get(0).trim();
+                if (!recognized.isEmpty()) {
+                    String current = input.getText().toString().trim();
+                    input.setText(current.isEmpty() ? recognized : current + " " + recognized);
+                    input.setSelection(input.getText().length());
+                    input.requestFocus();
+                    status.setText("● تم تحويل صوتك إلى نص — راجعه ثم اضغط إرسال");
+                    status.setTextColor(0xFF62DCA8);
+                }
+            }
+        } else {
+            status.setText("● لم يتم التقاط كلام واضح؛ حاول مجدداً");
+            status.setTextColor(0xFFFFC36B);
+        }
+    }
+
     private TextView addMessage(String who, String text) {
         boolean isUser = "أنت".equals(who);
+        if (!isUser && text != null && !text.trim().isEmpty()) {
+            latestAssistantText = text;
+            if (speakButton != null) speakButton.setEnabled(textToSpeechReady);
+        }
         TextView bubble = new TextView(this);
-        bubble.setText(who + "\\n" + text);
+        bubble.setText(who + "\n" + text);
         bubble.setTextColor(0xFFF1F4FF);
         bubble.setTextSize(14);
         bubble.setTextDirection(View.TEXT_DIRECTION_RTL);
@@ -409,8 +602,13 @@ public class MainActivity extends Activity {
 
     private String baseUrl() {
         String endpoint = prefs.getString("endpoint", "").trim();
-        if (endpoint.isEmpty()) endpoint = DEFAULT_SERVER_URL;
-        while (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
+        // Revalidate persisted values too: older app versions may have saved
+        // an endpoint before strict discovery validation was introduced.
+        if (!TrustedEndpointPolicy.isUserConfigured(endpoint)) {
+            endpoint = DEFAULT_SERVER_URL;
+            prefs.edit().remove("endpoint")
+                .putBoolean("endpoint_user_configured", false).apply();
+        }
         return endpoint;
     }
 
@@ -420,6 +618,8 @@ public class MainActivity extends Activity {
             throw new IOException("الاتصال الآمن HTTPS فقط مسموح به");
         }
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        // A redirect could move authenticated requests or chat prompts to another host.
+        connection.setInstanceFollowRedirects(false);
         connection.setRequestMethod(method);
         connection.setConnectTimeout(20000);
         connection.setReadTimeout(180000);
@@ -450,6 +650,10 @@ public class MainActivity extends Activity {
 
     private void checkHealth() {
         if (baseUrl().isEmpty()) {
+            healthChecked = true;
+            localModelReady = false;
+            externalChatEnabled = false;
+            setAdminCapability(false);
             status.setText("● غير متصل بالخادم");
             status.setTextColor(0xFFFFC36B);
             return;
@@ -460,19 +664,31 @@ public class MainActivity extends Activity {
             try {
                 connection = openConnection("/health", "GET");
                 JSONObject result = readJsonResponse(connection);
-                boolean ok = result.optBoolean("ok", false);
-                boolean modelReady = result.optBoolean("model_ready", false);
-                boolean adaptiveReady = result.optBoolean("external_provider_ready", false);
-                boolean ready = modelReady || adaptiveReady;
+                String provider = result.optString("provider", "");
+                String providerMode = result.optString("providerMode", "");
+                String engineId = result.optString("engine", "");
+                boolean ok = ServerHealthPolicy.isHealthy(
+                    result.optBoolean("ok", false), result.optString("status", ""));
+                // Missing or unknown engine identity is NOT proof of private inference.
+                boolean externalEnabled = !ServerHealthPolicy.isPrivateLocalEngine(engineId)
+                    || ServerHealthPolicy.isExternalRoute(
+                        result.optBoolean("external_provider_ready", false), providerMode, provider);
+                boolean modelReady = result.optBoolean("model_ready", false) && !externalEnabled;
+                localModelReady = ok && modelReady && !externalEnabled;
+                externalChatEnabled = externalEnabled;
+                healthChecked = true;
                 String engine = result.optString("model", result.optString("engine", "غير معروف"));
                 runOnUiThread(() -> {
-                    status.setText(!ok ? "● الخادم غير جاهز"
-                        : modelReady ? "● الخادم متصل — النموذج المحلي جاهز"
-                        : adaptiveReady ? "● الخادم متصل — التوجيه الذكي جاهز"
-                        : "● الخادم متصل — النموذج غير جاهز (" + engine + ")");
-                    status.setTextColor(!ok ? 0xFFFF7777 : ready ? 0xFF62DCA8 : 0xFFFFC36B);
+                    status.setText(!ok ? uiText("● الخادم غير جاهز", "● Server unavailable", "● Serveur indisponible")
+                        : externalEnabled ? uiText("⚠ تم إيقاف المحادثة: مسار خارجي متاح على الخادم", "⚠ Chat blocked: an external provider route is enabled", "⚠ Discussion bloquée : un fournisseur externe est activé")
+                        : modelReady ? uiText("● النموذج المحلي جاهز", "● Local model ready", "● Modèle local prêt")
+                        : uiText("● الخادم متصل لكن النموذج المحلي غير جاهز (" + engine + ")", "● Server connected but local model is not ready (" + engine + ")", "● Serveur connecté mais le modèle local n'est pas prêt (" + engine + ")"));
+                    status.setTextColor(!ok ? 0xFFFF7777 : (externalEnabled || !modelReady) ? 0xFFFFC36B : 0xFF62DCA8);
                 });
             } catch (Exception e) {
+                healthChecked = true;
+                localModelReady = false;
+                externalChatEnabled = false;
                 String error = e.getMessage() == null ? "تعذر فحص الخادم" : e.getMessage();
                 runOnUiThread(() -> {
                     status.setText("● فشل الاتصال: " + error);
@@ -481,6 +697,36 @@ public class MainActivity extends Activity {
             } finally {
                 if (connection != null) connection.disconnect();
             }
+            refreshAdminCapability();
+        });
+    }
+
+    private void setAdminCapability(boolean enabled) {
+        adminSession = enabled;
+        runOnUiThread(() -> {
+            if (improveButton != null) improveButton.setVisibility(enabled ? View.VISIBLE : View.GONE);
+        });
+    }
+
+    private void refreshAdminCapability() {
+        if (baseUrl().isEmpty() || readApiToken().trim().isEmpty()) {
+            setAdminCapability(false);
+            return;
+        }
+        executor.execute(() -> {
+            HttpURLConnection connection = null;
+            boolean isAdmin = false;
+            try {
+                connection = openConnection("/api/auth/me", "GET");
+                JSONObject result = readJsonResponse(connection);
+                JSONObject user = result.optJSONObject("user");
+                isAdmin = user != null && "admin".equalsIgnoreCase(user.optString("role", "user"));
+            } catch (Exception ignored) {
+                isAdmin = false;
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+            setAdminCapability(isAdmin);
         });
     }
 
@@ -513,8 +759,12 @@ public class MainActivity extends Activity {
                         if (content.isEmpty()) continue;
                         addMessage("assistant".equals(role) ? "JASSIM AI" : "أنت", content);
                     }
-                    status.setText("● تم تحميل سجل المحادثة");
-                    status.setTextColor(0xFF62DCA8);
+                    status.setText(externalChatEnabled
+                        ? uiText("⚠ مسار خارجي متاح؛ إرسال الرسائل متوقف", "⚠ External route available; message sending is blocked", "⚠ Route externe disponible ; envoi bloqué")
+                        : !localModelReady
+                            ? uiText("⚠ النموذج المحلي غير جاهز؛ الإرسال متوقف", "⚠ Local model not ready; sending is blocked", "⚠ Modèle local non prêt ; envoi bloqué")
+                            : uiText("● تم تحميل سجل المحادثة", "● Conversation history loaded", "● Historique chargé"));
+                    status.setTextColor(externalChatEnabled || !localModelReady ? 0xFFFFC36B : 0xFF62DCA8);
                 });
             } catch (Exception e) {
                 final String error = e.getMessage() == null ? "تعذر تحميل السجل" : e.getMessage();
@@ -641,52 +891,30 @@ public class MainActivity extends Activity {
         status.setTextColor(0xFFFFC36B);
     }
 
-    // Build a short in-memory transcript for public fallback providers.
-    // The pending assistant bubble is excluded; the current user message is included.
-    private JSONArray buildFallbackHistory(TextView pendingBubble) {
-        JSONArray history = new JSONArray();
-        java.util.ArrayList<JSONObject> recent = new java.util.ArrayList<>();
-        for (int i = 0; i < messages.getChildCount(); i++) {
-            View child = messages.getChildAt(i);
-            if (!(child instanceof TextView) || child == pendingBubble) continue;
-            String value = ((TextView) child).getText().toString();
-            int newline = value.indexOf('\n');
-            if (newline < 0) continue;
-            String header = value.substring(0, newline).trim();
-            String content = value.substring(newline + 1).trim();
-            if (content.isEmpty()) continue;
-            String role;
-            if ("أنت".equals(header)) role = "user";
-            else if ("JASSIM AI".equals(header)) role = "assistant";
-            else continue;
-            try {
-                JSONObject item = new JSONObject();
-                item.put("role", role);
-                item.put("content", content);
-                recent.add(item);
-            } catch (Exception ignored) { }
-        }
-        int start = Math.max(0, recent.size() - 16);
-        for (int i = start; i < recent.size(); i++) history.put(recent.get(i));
-        return history;
-    }
-
     private void sendMessage() {
         String message = input.getText().toString().trim();
         if (message.isEmpty()) return;
         input.setText("");
         ((InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE))
             .hideSoftInputFromWindow(input.getWindowToken(), 0);
-        if (baseUrl().isEmpty()) {
-            addMessage("أنت", message);
-            final TextView fallbackBubble = addMessage("JASSIM AI", "جارٍ الاتصال بالخدمة الاحتياطية...");
-            final JSONArray fallbackHistory = buildFallbackHistory(fallbackBubble);
-            cancelRequested = false;
-            if (sendButton != null) sendButton.setEnabled(false);
-            if (stopButton != null) stopButton.setEnabled(false);
-            status.setText("● نتصل بخدمة الذكاء الاصطناعي الاحتياطية...");
+        if (!ChatPrivacyPolicy.canSend(healthChecked, localModelReady, externalChatEnabled)) {
+            input.setText(message);
+            input.setSelection(input.length());
+            String reason = !healthChecked
+                ? "انتظر حتى يكتمل فحص الخادم الخاص."
+                : externalChatEnabled
+                    ? "الإرسال متوقف لأن الخادم يتيح مساراً خارجياً. لن نرسل رسائلك إلى مزوّد عام."
+                    : "النموذج المحلي غير جاهز. لم يتم إرسال رسالتك.";
+            status.setText("● " + reason);
             status.setTextColor(0xFFFFC36B);
-            executor.execute(() -> sendAnonymousFallback(fallbackHistory, fallbackBubble, message));
+            Toast.makeText(this, reason, Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (baseUrl().isEmpty()) {
+            input.setText(message);
+            input.setSelection(input.length());
+            status.setText("● الخادم الخاص غير متصل — لم يتم إرسال الرسالة");
+            status.setTextColor(0xFFFF7777);
             return;
         }
 
@@ -755,8 +983,16 @@ public class MainActivity extends Activity {
                 final String finalEngine = engine;
                 runOnUiThread(() -> {
                     responseBubble.setText("JASSIM AI\n" + result);
-                    status.setText("● متصل بالخادم — " + finalEngine);
-                    status.setTextColor(0xFF62DCA8);
+                    boolean externalEngine = !("ollama".equalsIgnoreCase(finalEngine)
+                        || "memory".equalsIgnoreCase(finalEngine));
+                    status.setText(externalEngine
+                        ? uiText("⚠ تمت الإجابة عبر مزوّد خارجي: " + finalEngine,
+                            "⚠ Answer generated by external provider: " + finalEngine,
+                            "⚠ Réponse générée par un fournisseur externe : " + finalEngine)
+                        : uiText("● متصل بالخادم — " + finalEngine,
+                            "● Connected to server — " + finalEngine,
+                            "● Connecté au serveur — " + finalEngine));
+                    status.setTextColor(externalEngine ? 0xFFFFC36B : 0xFF62DCA8);
                 });
             } catch (Exception e) {
                 if (cancelRequested) {
@@ -791,164 +1027,9 @@ public class MainActivity extends Activity {
         });
     }
 
-    // Public, keyless fallback. The user's private JASSIM token is never sent here.
-    // Requests go to a third-party gateway; users should not submit sensitive information.
-    private String requestAnonymousProvider(String endpoint, String model, JSONArray history,
-                                            TextView responseBubble) throws Exception {
-        HttpURLConnection connection = null;
-        StringBuilder answer = new StringBuilder();
-        try {
-            URL url = new URL(endpoint);
-            connection = (HttpURLConnection) url.openConnection();
-            activeChatConnection = connection;
-            connection.setRequestMethod("POST");
-            connection.setConnectTimeout(25000);
-            connection.setReadTimeout(180000);
-            connection.setDoOutput(true);
-            connection.setRequestProperty("Accept", "text/event-stream");
-            connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-
-            JSONArray chatMessages = new JSONArray();
-            JSONObject system = new JSONObject();
-            system.put("role", "system");
-            system.put("content", "أنت JASSIM AI، مساعد عربي مفيد ودقيق. أجب بالعربية الواضحة، وافهم اللهجة التونسية. لا تختلق معلومات، واذكر حدود معرفتك.");
-            chatMessages.put(system);
-            if (history != null) {
-                for (int i = 0; i < history.length(); i++) {
-                    JSONObject item = history.optJSONObject(i);
-                    if (item == null) continue;
-                    String role = item.optString("role", "");
-                    String content = item.optString("content", "");
-                    if (("user".equals(role) || "assistant".equals(role)) && !content.isEmpty()) {
-                        chatMessages.put(item);
-                    }
-                }
-            }
-
-            JSONObject body = new JSONObject();
-            body.put("model", model);
-            body.put("messages", chatMessages);
-            body.put("stream", true);
-            body.put("max_tokens", 1200);
-            try (OutputStream out = connection.getOutputStream()) {
-                out.write(body.toString().getBytes(StandardCharsets.UTF_8));
-            }
-
-            int code = connection.getResponseCode();
-            if (code < 200 || code >= 300) {
-                InputStream err = connection.getErrorStream();
-                StringBuilder detail = new StringBuilder();
-                if (err != null) {
-                    try (BufferedReader reader = new BufferedReader(
-                            new InputStreamReader(err, StandardCharsets.UTF_8))) {
-                        String line;
-                        while ((line = reader.readLine()) != null) detail.append(line);
-                    }
-                }
-                throw new IOException("HTTP " + code + ": " + detail);
-            }
-
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    if (cancelRequested) break;
-                    if (!line.startsWith("data:")) continue;
-                    String data = line.substring(5).trim();
-                    if (data.isEmpty()) continue;
-                    if ("[DONE]".equals(data)) break;
-                    JSONObject event = new JSONObject(data);
-                    JSONArray choices = event.optJSONArray("choices");
-                    if (choices == null || choices.length() == 0) continue;
-                    JSONObject choice = choices.optJSONObject(0);
-                    if (choice == null) continue;
-                    JSONObject delta = choice.optJSONObject("delta");
-                    if (delta == null) continue;
-                    String token = delta.optString("content", "");
-                    if (!token.isEmpty()) {
-                        answer.append(token);
-                        final String partial = answer.toString();
-                        runOnUiThread(() -> responseBubble.setText("JASSIM AI\n" + partial));
-                    }
-                }
-            }
-            if (cancelRequested) return "";
-            if (answer.length() == 0) throw new IOException("لم تُرجع الخدمة أي نص");
-            return answer.toString();
-        } finally {
-            if (connection != null) connection.disconnect();
-            if (activeChatConnection == connection) activeChatConnection = null;
-        }
-    }
-
-    private void sendAnonymousFallback(JSONArray history, TextView responseBubble, String userMessage) {
-        try {
-            runOnUiThread(() -> {
-                if (stopButton != null) stopButton.setEnabled(true);
-                status.setText("● نجرب مزود الذكاء الاصطناعي الأول...");
-                status.setTextColor(0xFFFFC36B);
-            });
-            String result;
-            String provider;
-            try {
-                result = requestAnonymousProvider(
-                    "https://api.jarvisclaw.ai/v1/chat/completions",
-                    "auto/free", history, responseBubble);
-                provider = "JarvisClaw";
-            } catch (Exception firstError) {
-                if (cancelRequested) return;
-                runOnUiThread(() -> {
-                    responseBubble.setText("JASSIM AI\nتعذر الوصول إلى المزود الأول؛ نجرب خادماً احتياطياً آخر...");
-                    status.setText("● نجرب OVHcloud كخيار ثانٍ...");
-                });
-                try {
-                    result = requestAnonymousProvider(
-                        "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions",
-                        "Meta-Llama-3_3-70B-Instruct", history, responseBubble);
-                    provider = "OVHcloud";
-                } catch (Exception secondError) {
-                    throw new IOException("لم يستجب أي من المزودين المجانيين. الأول: "
-                        + firstError.getMessage() + " | الثاني: " + secondError.getMessage());
-                }
-            }
-            if (cancelRequested) {
-                runOnUiThread(() -> status.setText("● تم إيقاف الإجابة"));
-                return;
-            }
-            final String answer = result;
-            final String usedProvider = provider;
-            runOnUiThread(() -> {
-                responseBubble.setText("JASSIM AI\n" + answer);
-                status.setText("● متصل عبر " + usedProvider + " — الخدمة العامة المجانية");
-                status.setTextColor(0xFFFFC36B);
-            });
-        } catch (Exception e) {
-            if (!cancelRequested) {
-                String error = e.getMessage() == null ? "تعذر الاتصال بالخدمات الاحتياطية" : e.getMessage();
-                runOnUiThread(() -> {
-                    responseBubble.setText("JASSIM AI\nتعذر الاتصال بالخدمات الاحتياطية: " + error
-                        + "\nاحتفظت برسالتك؛ يمكنك إعادة المحاولة لاحقاً.");
-                    status.setText("● تعذر الاتصال بالخدمات الاحتياطية");
-                    status.setTextColor(0xFFFF7777);
-                    if (input.getText().toString().trim().isEmpty()) {
-                        input.setText(userMessage);
-                        input.setSelection(input.length());
-                    }
-                });
-            }
-        } finally {
-            activeChatConnection = null;
-            runOnUiThread(() -> {
-                if (sendButton != null) sendButton.setEnabled(true);
-                if (stopButton != null) stopButton.setEnabled(false);
-            });
-        }
-    }
-
     private void runProviderEvaluation() {
-        if (readApiToken().trim().isEmpty()) {
-            Toast.makeText(this, "أدخل رمز الخادم أولاً من الإعدادات", Toast.LENGTH_LONG).show();
-            endpointDialog();
+        if (!adminSession) {
+            Toast.makeText(this, "هذه الميزة متاحة لمسؤول الخادم فقط", Toast.LENGTH_LONG).show();
             return;
         }
         status.setText("● يختبر الخادم مزودي الذكاء الاصطناعي...");
@@ -991,60 +1072,329 @@ public class MainActivity extends Activity {
         });
     }
 
+    private String transientSessionToken = "";
+    private boolean rememberSession = true;
+
+    private String uiText(String arabic, String english, String french) {
+        String language = prefs.getString("ui_language", "ar");
+        if ("en".equals(language)) return english;
+        if ("fr".equals(language)) return french;
+        return arabic;
+    }
+
+    private String uiLanguageLabel() {
+        return uiText("العربية", "English", "Français");
+    }
+
+    private void chooseUiLanguage(Dialog currentDialog) {
+        String[] languages = {"العربية", "English", "Français"};
+        new AlertDialog.Builder(this)
+            .setTitle(uiText("اختر لغة شاشة الحساب", "Choose account screen language", "Choisir la langue de connexion"))
+            .setItems(languages, (picker, which) -> {
+                String selected = which == 1 ? "en" : which == 2 ? "fr" : "ar";
+                prefs.edit().putString("ui_language", selected).apply();
+                currentDialog.dismiss();
+                accountDialog();
+            })
+            .setNegativeButton(uiText("إلغاء", "Cancel", "Annuler"), null)
+            .show();
+    }
+
     private void accountDialog() {
-        LinearLayout fields = new LinearLayout(this);
-        fields.setOrientation(LinearLayout.VERTICAL);
-        int pad = dp(18);
-        fields.setPadding(pad, pad / 2, pad, 0);
+        Dialog dialog = new Dialog(this);
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.setFillViewport(true);
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setPadding(0, dp(8), 0, dp(12));
+        android.graphics.drawable.GradientDrawable pageBg =
+            new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                new int[] { 0xFF050B25, 0xFF101A48, 0xFF090D29 });
+        page.setBackground(pageBg);
+
+        FrameLayout hero = new FrameLayout(this);
+        ImageView mascot = new ImageView(this);
+        mascot.setImageResource(R.drawable.mahdia_hero_v2);
+        mascot.setScaleType(ImageView.ScaleType.FIT_XY);
+        mascot.setContentDescription(uiText("روبوت JASSIM AI وقلعة المهدية", "JASSIM AI robot and Mahdia fortress", "Robot JASSIM AI et fort de Mahdia"));
+        hero.addView(mascot, new FrameLayout.LayoutParams(-1, -1));
+
+        Button language = actionButton(uiLanguageLabel() + "  ▾", uiText("تغيير لغة شاشة الحساب", "Change account screen language", "Changer la langue de connexion"), () ->
+            chooseUiLanguage(dialog));
+        language.setBackground(loginOutline());
+        language.setTextSize(12);
+        FrameLayout.LayoutParams languageLp = new FrameLayout.LayoutParams(dp(82), dp(30), Gravity.TOP | Gravity.LEFT);
+        languageLp.setMargins(dp(10), dp(8), 0, 0);
+        hero.addView(language, languageLp);
+
+        Button settings = actionButton("⚙", uiText("إعدادات الاتصال", "Connection settings", "Paramètres de connexion"), () -> {
+            dialog.dismiss();
+            endpointDialog();
+        });
+        settings.setBackground(loginOutline());
+        settings.setTextSize(17);
+        FrameLayout.LayoutParams settingsLp = new FrameLayout.LayoutParams(dp(32), dp(30), Gravity.TOP | Gravity.RIGHT);
+        settingsLp.setMargins(0, dp(8), dp(10), 0);
+        hero.addView(settings, settingsLp);
+        page.addView(hero, new LinearLayout.LayoutParams(-1, dp(120)));
+
+        TextView brand = new TextView(this);
+        brand.setText("JASSIM AI");
+        brand.setTextColor(Color.WHITE);
+        brand.setTextSize(32);
+        brand.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        brand.setGravity(Gravity.CENTER);
+        page.addView(brand);
+
+        TextView tagline = new TextView(this);
+        tagline.setText(uiText("ذكاء اصطناعي ... بإبداع تونسي", "Artificial intelligence ... Tunisian creativity", "Intelligence artificielle ... créativité tunisienne"));
+        tagline.setTextColor(0xFFE1E8FF);
+        tagline.setTextSize(15);
+        tagline.setGravity(Gravity.CENTER);
+        tagline.setPadding(0, 0, 0, dp(12));
+        page.addView(tagline);
+
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(18), dp(20), dp(18), dp(18));
+        android.graphics.drawable.GradientDrawable cardBg =
+            new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                new int[] { 0xEE111A43, 0xF20A1538 });
+        cardBg.setCornerRadius(dp(26));
+        cardBg.setStroke(dp(2), 0xFF7654F5);
+        card.setBackground(cardBg);
+
+        TextView heading = new TextView(this);
+        heading.setText(uiText("مرحباً بك في JASSIM AI", "Welcome to JASSIM AI", "Bienvenue sur JASSIM AI"));
+        heading.setTextColor(Color.WHITE);
+        heading.setTextSize(24);
+        heading.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        heading.setGravity(Gravity.CENTER);
+        card.addView(heading);
+
+        TextView subheading = new TextView(this);
+        subheading.setText(uiText("سجّل الدخول إلى حسابك للمتابعة", "Sign in to your account to continue", "Connectez-vous pour continuer"));
+        subheading.setTextColor(0xFFD2D9F4);
+        subheading.setTextSize(15);
+        subheading.setGravity(Gravity.CENTER);
+        subheading.setPadding(0, dp(6), 0, dp(16));
+        card.addView(subheading);
 
         EditText emailField = new EditText(this);
         emailField.setSingleLine(true);
-        emailField.setHint("البريد الإلكتروني");
+        emailField.setHint(uiText("البريد الإلكتروني", "Email address", "Adresse e-mail"));
+        emailField.setHintTextColor(0xFFB6C2E5);
+        emailField.setTextColor(Color.WHITE);
+        emailField.setTextSize(16);
         emailField.setInputType(android.text.InputType.TYPE_CLASS_TEXT
             | android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
-        fields.addView(emailField);
+        emailField.setPadding(dp(15), dp(12), dp(15), dp(12));
+        emailField.setBackground(loginFieldBackground());
+        LinearLayout.LayoutParams fieldLp = new LinearLayout.LayoutParams(-1, dp(58));
+        fieldLp.setMargins(0, dp(10), 0, 0);
+        card.addView(emailField, fieldLp);
 
+        LinearLayout passwordRow = new LinearLayout(this);
+        passwordRow.setGravity(Gravity.CENTER_VERTICAL);
+        passwordRow.setBackground(loginFieldBackground());
         EditText passwordField = new EditText(this);
         passwordField.setSingleLine(true);
-        passwordField.setHint("كلمة المرور (10 أحرف على الأقل)");
+        passwordField.setHint(uiText("كلمة المرور", "Password", "Mot de passe"));
+        passwordField.setHintTextColor(0xFFB6C2E5);
+        passwordField.setTextColor(Color.WHITE);
+        passwordField.setTextSize(16);
         passwordField.setInputType(android.text.InputType.TYPE_CLASS_TEXT
             | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        fields.addView(passwordField);
-
-        AlertDialog dialog = new AlertDialog.Builder(this)
-            .setTitle("حساب JASSIM AI")
-            .setMessage("أنشئ حساباً خاصاً بك أو سجّل الدخول. لا تحتاج إلى رمز الخادم.")
-            .setView(fields)
-            .setNegativeButton("إغلاق", null)
-            .setPositiveButton("دخول", null)
-            .setNeutralButton("إنشاء حساب", null)
-            .create();
-        dialog.setOnShowListener(ignored -> {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v ->
-                authenticateAccount(emailField.getText().toString(),
-                    passwordField.getText().toString(), false, dialog));
-            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v ->
-                authenticateAccount(emailField.getText().toString(),
-                    passwordField.getText().toString(), true, dialog));
+        passwordField.setBackgroundColor(Color.TRANSPARENT);
+        passwordField.setPadding(dp(15), dp(10), dp(8), dp(10));
+        passwordRow.addView(passwordField, new LinearLayout.LayoutParams(0, -1, 1));
+        final Button[] revealHolder = new Button[1];
+        Button reveal = actionButton("◉", uiText("إظهار أو إخفاء كلمة المرور", "Show or hide password", "Afficher ou masquer le mot de passe"), () -> {
+            boolean visible = (passwordField.getInputType() & 0xFFF)
+                == (android.text.InputType.TYPE_CLASS_TEXT
+                    | android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
+            int cursor = passwordField.getSelectionStart();
+            passwordField.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | (visible ? android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+                           : android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD));
+            passwordField.setSelection(Math.max(0, Math.min(cursor, passwordField.length())));
+            revealHolder[0].setText(visible ? "◉" : "⊘");
         });
-        dialog.show();
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v ->
+        revealHolder[0] = reveal;
+        reveal.setBackgroundColor(Color.TRANSPARENT);
+        reveal.setTextSize(18);
+        passwordRow.addView(reveal, new LinearLayout.LayoutParams(dp(48), -1));
+        LinearLayout.LayoutParams passwordLp = new LinearLayout.LayoutParams(-1, dp(58));
+        passwordLp.setMargins(0, dp(12), 0, 0);
+        card.addView(passwordRow, passwordLp);
+
+        LinearLayout options = new LinearLayout(this);
+        options.setGravity(Gravity.CENTER_VERTICAL);
+        CheckBox remember = new CheckBox(this);
+        remember.setText(uiText("تذكّرني", "Remember me", "Se souvenir de moi"));
+        remember.setTextColor(Color.WHITE);
+        remember.setButtonTintList(android.content.res.ColorStateList.valueOf(0xFF9B5CFF));
+        remember.setChecked(prefs.getBoolean("remember_session", true));
+        rememberSession = remember.isChecked();
+        options.addView(remember, new LinearLayout.LayoutParams(0, dp(48), 1));
+        remember.setOnCheckedChangeListener((button, checked) -> {
+            String currentToken = readApiToken();
+            rememberSession = checked;
+            if (checked) {
+                // If the user re-enables "Remember me" during an active
+                // temporary session, migrate that token into Android Keystore
+                // encrypted preferences instead of losing it on process restart.
+                if (!transientSessionToken.isEmpty() && currentToken.startsWith("jss_")) {
+                    try {
+                        saveApiToken(currentToken);
+                    } catch (Exception error) {
+                        rememberSession = false;
+                        prefs.edit().putBoolean("remember_session", false).apply();
+                        button.setChecked(false);
+                        Toast.makeText(this,
+                            "تعذر حفظ الجلسة بأمان؛ ستبقى مؤقتة على هذا الجهاز",
+                            Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                }
+            } else if (currentToken.startsWith("jss_")) {
+                // Keep the current login only in memory when the user opts out.
+                transientSessionToken = currentToken;
+                prefs.edit().remove("api_token_enc").remove("api_token_iv").remove("api_token").apply();
+            }
+            prefs.edit().putBoolean("remember_session", checked).apply();
+        });
+        Button forgot = actionButton(uiText("نسيت كلمة المرور؟", "Forgot password?", "Mot de passe oublié ?"), uiText("استعادة كلمة المرور", "Password recovery", "Récupération du mot de passe"), () ->
+            new AlertDialog.Builder(this)
+                .setTitle(uiText("استعادة كلمة المرور", "Password recovery", "Récupération du mot de passe"))
+                .setMessage(uiText("استعادة كلمة المرور عبر البريد الإلكتروني غير مفعّلة على الخادم حالياً. لن نرسل رابطاً وهمياً.", "Email password recovery is not configured on the server yet. No fake link will be sent.", "La récupération par e-mail n'est pas encore configurée sur le serveur. Aucun faux lien ne sera envoyé."))
+                .setPositiveButton(uiText("حسناً", "OK", "OK"), null).show());
+        forgot.setBackgroundColor(Color.TRANSPARENT);
+        forgot.setTextColor(0xFF18BDF2);
+        forgot.setTextSize(13);
+        options.addView(forgot);
+        card.addView(options);
+
+        Button login = actionButton(uiText("دخول   ➜", "Sign in   ➜", "Connexion   ➜"), uiText("تسجيل الدخول", "Sign in", "Connexion"), () ->
             authenticateAccount(emailField.getText().toString(),
                 passwordField.getText().toString(), false, dialog));
-        dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v ->
+        login.setTextSize(18);
+        login.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        login.setBackground(loginGradient());
+        LinearLayout.LayoutParams loginLp = new LinearLayout.LayoutParams(-1, dp(58));
+        loginLp.setMargins(0, dp(8), 0, dp(12));
+        card.addView(login, loginLp);
+
+        TextView or = new TextView(this);
+        or.setText(uiText("أو", "OR", "OU"));
+        or.setTextColor(Color.WHITE);
+        or.setTextSize(15);
+        or.setGravity(Gravity.CENTER);
+        card.addView(or);
+
+        Button google = actionButton("G   " + uiText("الدخول عبر Google", "Continue with Google", "Continuer avec Google"), uiText("تسجيل الدخول عبر Google", "Sign in with Google", "Connexion avec Google"), () ->
+            new AlertDialog.Builder(this)
+                .setTitle("Google")
+                .setMessage(uiText("تسجيل Google غير مهيأ بعد: يتطلب إعداد OAuth موثوقاً في الخادم. لم نضع زرّاً وهمياً.", "Google sign-in is not configured yet; secure server-side OAuth setup is required.", "La connexion Google n'est pas encore configurée ; une configuration OAuth sécurisée côté serveur est nécessaire."))
+                .setPositiveButton(uiText("حسناً", "OK", "OK"), null).show());
+        google.setTextSize(16);
+        google.setBackground(loginOutline());
+        LinearLayout.LayoutParams googleLp = new LinearLayout.LayoutParams(-1, dp(54));
+        googleLp.setMargins(0, dp(10), 0, dp(12));
+        card.addView(google, googleLp);
+
+        Button register = actionButton(uiText("إنشاء حساب جديد", "Create new account", "Créer un compte"), uiText("إنشاء حساب", "Create account", "Créer un compte"), () ->
             authenticateAccount(emailField.getText().toString(),
                 passwordField.getText().toString(), true, dialog));
+        register.setTextColor(0xFFD58BFF);
+        register.setBackgroundColor(Color.TRANSPARENT);
+        register.setTextSize(14);
+        card.addView(register);
+
+        TextView secure = new TextView(this);
+        secure.setText(uiText("◈ تسجيل آمن وخصوصي", "◈ Secure and private sign-in", "◈ Connexion sécurisée et privée"));
+        secure.setTextColor(0xFFD7E2FF);
+        secure.setGravity(Gravity.CENTER);
+        secure.setPadding(0, dp(14), 0, 0);
+        card.addView(secure);
 
         if (readApiToken().startsWith("jss_")) {
-            Button logout = new Button(this);
-            logout.setText("تسجيل الخروج");
-            logout.setAllCaps(false);
-            fields.addView(logout);
-            logout.setOnClickListener(v -> logoutAccount(dialog));
+            Button logout = actionButton(uiText("تسجيل الخروج", "Sign out", "Se déconnecter"), uiText("تسجيل الخروج من الحساب", "Sign out of account", "Se déconnecter du compte"), () ->
+                logoutAccount(new AlertDialog.Builder(this).create()));
+            card.addView(logout);
+        }
+
+        LinearLayout.LayoutParams cardPageLp = new LinearLayout.LayoutParams(-1, -2);
+        cardPageLp.setMargins(dp(18), dp(4), dp(18), 0);
+        page.addView(card, cardPageLp);
+        TextView footer = new TextView(this);
+        footer.setText(uiText("JASSIM AI  •  شريكك الذكي في عالم المعرفة  ♥", "JASSIM AI  •  Your smart knowledge partner  ♥", "JASSIM AI  •  Votre partenaire intelligent du savoir  ♥"));
+        footer.setTextColor(0xFFC49AFF);
+        footer.setTextSize(13);
+        footer.setGravity(Gravity.CENTER);
+        footer.setPadding(0, dp(12), 0, dp(8));
+        LinearLayout.LayoutParams footerLp = new LinearLayout.LayoutParams(-1, -2);
+        footerLp.setMargins(dp(12), 0, dp(12), 0);
+        page.addView(footer, footerLp);
+
+        scrollView.addView(page);
+        dialog.setContentView(scrollView);
+        android.view.Window window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawableResource(android.R.color.transparent);
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS
+                | android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            window.setDimAmount(0.88f);
+            window.setStatusBarColor(0xFF050B25);
+            window.setNavigationBarColor(0xFF050B25);
+            window.getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+            window.setLayout(-1, -1);
+        }
+        View activityDecor = getWindow().getDecorView();
+        dialog.setOnDismissListener(ignored -> activityDecor.setVisibility(View.VISIBLE));
+        activityDecor.setVisibility(View.INVISIBLE);
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setLayout(-1, -1);
+            dialog.getWindow().setDimAmount(0.88f);
+            dialog.getWindow().setStatusBarColor(0xFF050B25);
+            dialog.getWindow().setNavigationBarColor(0xFF050B25);
+            dialog.getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
         }
     }
 
-    private void authenticateAccount(String email, String password, boolean register, AlertDialog dialog) {
+    private android.graphics.drawable.Drawable loginFieldBackground() {
+        android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable();
+        shape.setColor(0xFF101A3A);
+        shape.setCornerRadius(dp(17));
+        shape.setStroke(dp(1), 0xFF635AC0);
+        return shape;
+    }
+
+    private android.graphics.drawable.Drawable loginGradient() {
+        android.graphics.drawable.GradientDrawable shape =
+            new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[] { 0xFF8D22F7, 0xFF4E55FF, 0xFF00C9EF });
+        shape.setCornerRadius(dp(30));
+        return shape;
+    }
+
+    private android.graphics.drawable.Drawable loginOutline() {
+        android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable();
+        shape.setColor(0x00101838);
+        shape.setCornerRadius(dp(28));
+        shape.setStroke(dp(2), 0xFF9878FF);
+        return shape;
+    }
+
+    private void authenticateAccount(String email, String password, boolean register, Dialog dialog) {
         final String cleanEmail = email == null ? "" : email.trim();
         if (cleanEmail.isEmpty() || password == null || password.length() < 10) {
             Toast.makeText(this, "أدخل بريداً صحيحاً وكلمة مرور من 10 أحرف على الأقل", Toast.LENGTH_LONG).show();
@@ -1055,6 +1405,8 @@ public class MainActivity extends Activity {
             try {
                 URL url = new URL(baseUrl() + (register ? "/api/auth/register" : "/api/auth/login"));
                 connection = (HttpURLConnection) url.openConnection();
+                // Login and registration bodies must never be replayed to a redirect target.
+                connection.setInstanceFollowRedirects(false);
                 connection.setRequestMethod("POST");
                 connection.setConnectTimeout(15000);
                 connection.setReadTimeout(20000);
@@ -1083,6 +1435,7 @@ public class MainActivity extends Activity {
                 String token = result.optString("token", "");
                 if (!token.startsWith("jss_")) throw new IOException("لم يُرجع الخادم رمز جلسة صالحاً");
                 saveApiToken(token);
+                refreshAdminCapability();
                 runOnUiThread(() -> {
                     dialog.dismiss();
                     newConversation();
@@ -1100,7 +1453,7 @@ public class MainActivity extends Activity {
         });
     }
 
-    private void logoutAccount(AlertDialog dialog) {
+    private void logoutAccount(Dialog dialog) {
         executor.execute(() -> {
             HttpURLConnection connection = null;
             try {
@@ -1112,6 +1465,7 @@ public class MainActivity extends Activity {
                 }
                 readJsonResponse(connection);
                 saveApiToken("");
+                refreshAdminCapability();
                 runOnUiThread(() -> {
                     dialog.dismiss();
                     newConversation();
@@ -1129,6 +1483,26 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void saveConfiguredEndpoint(String value, String token) {
+        try {
+            if (!value.equalsIgnoreCase(baseUrl())) {
+                saveApiToken("");
+            } else if (!token.isEmpty()) {
+                saveApiToken(token);
+            }
+            prefs.edit().putString("endpoint", value)
+                .putBoolean("endpoint_user_configured", true).apply();
+            healthChecked = false;
+            localModelReady = false;
+            externalChatEnabled = false;
+            checkHealth();
+            if (!readApiToken().isEmpty()) loadHistory();
+            else status.setText("● تم حفظ الخادم — سجّل الدخول للمتابعة");
+        } catch (Exception error) {
+            Toast.makeText(this, "تعذر حفظ إعدادات الخادم: " + error.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
     private void endpointDialog() {
         LinearLayout fields = new LinearLayout(this);
         fields.setOrientation(LinearLayout.VERTICAL);
@@ -1137,7 +1511,7 @@ public class MainActivity extends Activity {
 
         EditText field = new EditText(this);
         field.setSingleLine(true);
-        field.setHint("https://your-server.trycloudflare.com");
+        field.setHint(DEFAULT_SERVER_URL);
         field.setText(prefs.getString("endpoint", DEFAULT_SERVER_URL));
         fields.addView(field);
 
@@ -1149,7 +1523,7 @@ public class MainActivity extends Activity {
         tokenField.setText(readApiToken());
         fields.addView(tokenField);
 
-        new AlertDialog.Builder(this)
+        AlertDialog connectionDialog = new AlertDialog.Builder(this)
             .setTitle("اتصال خادم JASSIM AI")
             .setMessage("المستخدم العادي لا يحتاج رمز API؛ استخدم زر حساب لتسجيل الدخول. هذا الحقل اختياري للمطور فقط.")
             .setView(fields)
@@ -1157,8 +1531,19 @@ public class MainActivity extends Activity {
             .setPositiveButton("حفظ وفحص", (d, w) -> {
                 String value = field.getText().toString().trim();
                 String token = tokenField.getText().toString().trim();
-                if (!value.isEmpty() && !value.startsWith("https://")) {
-                    Toast.makeText(this, "الحماية مفعّلة: يجب استخدام رابط HTTPS فقط", Toast.LENGTH_LONG).show();
+                if (!TrustedEndpointPolicy.isUserConfigured(value)) {
+                    Toast.makeText(this,
+                        "أدخل عنوان HTTPS صحيحاً لنطاق تملكه أو تثق به، دون مسار أو منفذ مخصص",
+                        Toast.LENGTH_LONG).show();
+                    return;
+                }
+                if (!value.equalsIgnoreCase(DEFAULT_SERVER_URL)) {
+                    new AlertDialog.Builder(this)
+                        .setTitle("تأكيد خادم مخصص")
+                        .setMessage("سيتم إرسال رمز الجلسة ورسائلك إلى هذا الخادم عند تسجيل الدخول واستخدام التطبيق. لا تتابع إلا إذا كنت تملك هذا الخادم أو تثق بمديره. تأكد من تفعيل HTTPS وحماية الخادم.")
+                        .setNegativeButton("إلغاء", null)
+                        .setPositiveButton("أثق بهذا الخادم", (confirm, which) -> saveConfiguredEndpoint(value, token))
+                        .show();
                     return;
                 }
                 if (value.isEmpty()) {
@@ -1166,18 +1551,37 @@ public class MainActivity extends Activity {
                     return;
                 }
                 try {
-                    if (!token.isEmpty()) saveApiToken(token);
-                    prefs.edit().putString("endpoint", value).apply();
+                    if (!value.equalsIgnoreCase(baseUrl())) {
+                        saveApiToken("");
+                    } else if (!token.isEmpty()) {
+                        saveApiToken(token);
+                    }
+                    prefs.edit().putString("endpoint", value)
+                        .putBoolean("endpoint_user_configured", false).apply();
                     checkHealth();
-                    loadHistory();
+                    if (!readApiToken().isEmpty()) {
+                        loadHistory();
+                    } else {
+                        status.setText("● الخادم جاهز — سجّل الدخول للمتابعة");
+                        status.setTextColor(0xFFFFC36B);
+                    }
                 } catch (Exception e) {
                     Toast.makeText(this, "تعذر حفظ الرمز بأمان على هذا الجهاز", Toast.LENGTH_LONG).show();
                 }
-            }).show();
+            }).create();
+        connectionDialog.setOnDismissListener(d -> {
+            if (readApiToken().isEmpty() && !isFinishing()) accountDialog();
+        });
+        connectionDialog.show();
     }
 
     @Override protected void onDestroy() {
         super.onDestroy();
         executor.shutdown();
+        if (textToSpeech != null) {
+            textToSpeech.stop();
+            textToSpeech.shutdown();
+            textToSpeech = null;
+        }
     }
 }

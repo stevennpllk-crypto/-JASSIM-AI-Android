@@ -17,7 +17,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
-import adaptive
+from readiness import local_model_ready
+import private_image
+
+# Perform the same PBKDF2 work for unknown accounts as for known accounts.
+# This reduces username/email timing leaks during password authentication.
+DUMMY_PASSWORD_HASH = (
+    "pbkdf2_sha256$310000$8f3a2c1d6b904e77a15f3d2c9b6e4a10$"
+    "fded824e5d216e16b97201bab9c80ac186ce9e1a952dcb1fafae653598a8ad71"
+)
 
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = Path(os.environ.get("JASSIM_DATA_DIR", str(ROOT / "data"))).expanduser()
@@ -203,6 +211,28 @@ def save_message(conversation_id, role, content, user_id="legacy-owner"):
             db.close()
 
 
+def save_turn(conversation_id, user_message, assistant_message, user_id="legacy-owner"):
+    """Persist a complete user/assistant turn atomically."""
+    with DB_LOCK:
+        db = connect_db()
+        try:
+            now = _ensure_conversation_owner(db, conversation_id, user_id)
+            db.execute(
+                "INSERT INTO messages(conversation_id, role, content, created_at) VALUES(?,?,?,?)",
+                (conversation_id, "user", user_message, now)
+            )
+            db.execute(
+                "INSERT INTO messages(conversation_id, role, content, created_at) VALUES(?,?,?,?)",
+                (conversation_id, "assistant", assistant_message, now)
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
+
 def get_memory(conversation_id, user_id="legacy-owner"):
     with DB_LOCK:
         db = connect_db()
@@ -284,7 +314,64 @@ def fit_history_to_budget(messages):
     return kept
 
 
+def ollama_endpoint_is_private():
+    """Prevent user prompts from being sent to arbitrary public model hosts.
+
+    Docker Desktop's host gateway is accepted only when the operator explicitly
+    enables it. This supports the documented Compose topology without silently
+    widening the production hostname allowlist.
+    """
+    parsed = urlparse(OLLAMA_URL)
+    host = (parsed.hostname or "").lower()
+    allow_docker_gateway = os.environ.get("JASSIM_ALLOW_DOCKER_HOST_GATEWAY", "").strip().lower() == "true"
+    private_host = (
+        host in ("localhost", "127.0.0.1", "::1")
+        or host.endswith(".railway.internal")
+        or (allow_docker_gateway and host == "host.docker.internal")
+    )
+    if parsed.scheme != "http" or not private_host or parsed.username or parsed.password:
+        return False
+    if parsed.query or parsed.fragment or parsed.path not in ("", "/"):
+        return False
+    try:
+        return parsed.port is None or 1 <= parsed.port <= 65535
+    except ValueError:
+        return False
+
+
+class _NoOllamaRedirects(urllib.request.HTTPRedirectHandler):
+    """Never follow redirects from the private inference endpoint."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_OLLAMA_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoOllamaRedirects())
+
+
+def open_ollama(request, timeout):
+    """Open only an approved API path on the configured private Ollama origin."""
+    if not ollama_endpoint_is_private():
+        raise RuntimeError("ollama_endpoint_must_be_private")
+    configured = urlparse(OLLAMA_URL)
+    requested = urlparse(request.full_url)
+    configured_origin = (configured.scheme, configured.hostname, configured.port)
+    requested_origin = (requested.scheme, requested.hostname, requested.port)
+    if (
+        requested_origin != configured_origin
+        or requested.username
+        or requested.password
+        or requested.query
+        or requested.fragment
+        or requested.path not in ("/api/chat", "/api/tags", "/api/ps")
+    ):
+        raise RuntimeError("ollama_request_target_mismatch")
+    return _OLLAMA_OPENER.open(request, timeout=timeout)
+
+
 def ask_ollama(messages):
+    if not ollama_endpoint_is_private():
+        raise RuntimeError("ollama_endpoint_must_be_private")
     payload = json.dumps({
         "model": OLLAMA_MODEL,
         "messages": [{"role": "system", "content": SYSTEM_PROMPT}] + messages,
@@ -308,7 +395,7 @@ def ask_ollama(messages):
     last_error = None
     for attempt in range(2):
         try:
-            with urllib.request.urlopen(request, timeout=OLLAMA_TIMEOUT) as response:
+            with open_ollama(request, timeout=OLLAMA_TIMEOUT) as response:
                 result = json.loads(response.read().decode("utf-8"))
             answer = (result.get("message") or {}).get("content", "").strip()
             if not answer:
@@ -322,15 +409,17 @@ def ask_ollama(messages):
 
 def ollama_status():
     """Check model availability and whether Ollama currently keeps it loaded."""
+    if not ollama_endpoint_is_private():
+        return {"reachable": False, "model_ready": False, "model_loaded": False}
     base = OLLAMA_URL.rstrip("/")
     try:
-        with urllib.request.urlopen(urllib.request.Request(base + "/api/tags"), timeout=1.0) as response:
+        with open_ollama(urllib.request.Request(base + "/api/tags"), timeout=1.0) as response:
             tags = json.loads(response.read().decode("utf-8"))
         names = [item.get("name", "") for item in tags.get("models", []) if isinstance(item, dict)]
         available = any(name == OLLAMA_MODEL or name.startswith(OLLAMA_MODEL + ":") for name in names)
         loaded = False
         try:
-            with urllib.request.urlopen(urllib.request.Request(base + "/api/ps"), timeout=1.0) as response:
+            with open_ollama(urllib.request.Request(base + "/api/ps"), timeout=1.0) as response:
                 running = json.loads(response.read().decode("utf-8"))
             loaded = any(
                 item.get("name") == OLLAMA_MODEL or str(item.get("name", "")).startswith(OLLAMA_MODEL + ":")
@@ -343,7 +432,22 @@ def ollama_status():
         return {"reachable": False, "model_ready": False, "model_loaded": False}
 
 
+def local_model_unavailable_response(messages):
+    """Return a local-only unavailable response; never call public inference."""
+    return (
+        "النموذج المحلي غير متاح حالياً. لم يتم إرسال رسالتك إلى أي مزوّد خارجي.",
+        "fallback"
+    )
+
+
 def generate_answer(messages):
+    # Probe local readiness first. If private inference is unavailable, fail
+    # closed. Public inference providers are never a fallback, regardless of
+    # environment variables or retired routing configuration.
+    model_state = ollama_status()
+    if not model_state["reachable"] or not model_state["model_ready"]:
+        return local_model_unavailable_response(messages)
+
     if not INFERENCE_SEMAPHORE.acquire(timeout=OLLAMA_QUEUE_TIMEOUT):
         return (
             "محرك الذكاء الاصطناعي مشغول بطلب آخر. انتظر قليلاً ثم أعد المحاولة؛ "
@@ -353,45 +457,21 @@ def generate_answer(messages):
         try:
             return ask_ollama(messages), "ollama"
         except (urllib.error.URLError, TimeoutError, ValueError, RuntimeError, OSError):
-            try:
-                answer, provider = adaptive.answer_with_provider(
-                    [{"role": "system", "content": SYSTEM_PROMPT}] + messages
-                )
-                return answer, provider
-            except RuntimeError:
-                return (
-                    "محرك الذكاء الاصطناعي غير متاح حالياً. "
-                    "لم يتمكن الخادم من الوصول إلى Ollama أو إلى مزود احتياطي مفعّل."
-                ), "fallback"
+            return local_model_unavailable_response(messages)
     finally:
         INFERENCE_SEMAPHORE.release()
 
-def generate_image_hf(prompt, width=1024, height=1024):
-    """Generate an image through Hugging Face Inference Providers; secrets stay server-side."""
-    token = os.environ.get("JASSIM_HF_TOKEN", "").strip()
-    if not token:
-        raise RuntimeError("image_provider_not_configured")
-    model = os.environ.get("JASSIM_IMAGE_MODEL", "black-forest-labs/FLUX.1-schnell").strip()
-    payload = json.dumps({"inputs": prompt, "parameters": {"width": width, "height": height}}).encode("utf-8")
-    request = urllib.request.Request(
-        "https://router.huggingface.co/hf-inference/models/" + model, data=payload,
-        headers={"Authorization": "Bearer " + token, "Content-Type": "application/json", "Accept": "image/png"},
-        method="POST"
-    )
-    timeout = max(30, min(int(os.environ.get("JASSIM_IMAGE_TIMEOUT", "180")), 300))
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        image_bytes = response.read(12 * 1024 * 1024 + 1)
-        content_type = response.headers.get("Content-Type", "image/png").split(";")[0].strip()
-    if len(image_bytes) > 12 * 1024 * 1024:
-        raise RuntimeError("generated_image_too_large")
-    if not content_type.startswith("image/"):
-        try:
-            detail = json.loads(image_bytes.decode("utf-8")).get("error", "provider_error")
-        except Exception:
-            detail = "provider_returned_non_image"
-        raise RuntimeError(str(detail)[:240])
-    import base64
-    return base64.b64encode(image_bytes).decode("ascii"), content_type, model
+def generate_image(prompt, width=1024, height=1024):
+    """Generate images only through the authenticated private JASSIM worker."""
+    return private_image.generate(prompt, width, height)
+
+def image_generation_status():
+    """Expose private image worker readiness without advertising external providers."""
+    status = private_image.worker_status()
+    return {
+        "image_generation_ready": bool(status["reachable"] and status["model_ready"]),
+        "image_model": status["model"]
+    }
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "JASSIM-AI/0.6.0"
@@ -427,7 +507,23 @@ class Handler(BaseHTTPRequestHandler):
         self.send_sse_event({"type": "token", "token": answer})
         self.send_sse_event({"type": "done", "conversation_id": conversation_id, "engine": engine})
 
+    def reject_external_provider_stream(self, conversation_id, message, context, user_id):
+        """Reject the retired external-provider streaming path unconditionally."""
+        self.send_json(503, {
+            "error": "model_unavailable",
+            "message": "النموذج المحلي غير متاح. لم يتم إرسال رسالتك إلى أي مزوّد خارجي.",
+            "retry_after_seconds": 30,
+            "conversation_id": conversation_id
+        })
+
     def stream_chat_response(self, conversation_id, message, context, user_id):
+        # Avoid waiting for a long Ollama timeout when the local model is absent.
+        # The legacy external-provider path now always returns a local-only 503.
+        model_state = ollama_status()
+        if not model_state["reachable"] or not model_state["model_ready"]:
+            self.reject_external_provider_stream(conversation_id, message, context, user_id)
+            return
+
         if not INFERENCE_SEMAPHORE.acquire(timeout=OLLAMA_QUEUE_TIMEOUT):
             self.send_json(503, {
                 "error": "model_busy",
@@ -460,22 +556,9 @@ class Handler(BaseHTTPRequestHandler):
                 method="POST"
             )
             try:
-                response = urllib.request.urlopen(request, timeout=OLLAMA_TIMEOUT)
+                response = open_ollama(request, timeout=OLLAMA_TIMEOUT)
             except (urllib.error.URLError, TimeoutError, ValueError, OSError):
-                try:
-                    answer, provider = adaptive.answer_with_provider(
-                        [{"role": "system", "content": SYSTEM_PROMPT}] + context
-                    )
-                    save_message(conversation_id, "user", message, user_id)
-                    save_message(conversation_id, "assistant", answer, user_id)
-                    self.send_sse_static(answer, conversation_id, provider)
-                except RuntimeError:
-                    self.send_json(503, {
-                        "error": "model_unavailable",
-                        "message": "محرك الذكاء الاصطناعي غير متاح. لم يُفعّل مزود خارجي أو تعذر الوصول إليه.",
-                        "retry_after_seconds": 30,
-                        "conversation_id": conversation_id
-                    })
+                self.reject_external_provider_stream(conversation_id, message, context, user_id)
                 return
 
             self.send_sse_headers()
@@ -504,8 +587,7 @@ class Handler(BaseHTTPRequestHandler):
                 answer = "".join(answer_parts).strip()
                 if not completed or not answer:
                     raise RuntimeError("ollama_stream_incomplete")
-                save_message(conversation_id, "user", message, user_id)
-                save_message(conversation_id, "assistant", answer, user_id)
+                save_turn(conversation_id, message, answer, user_id)
                 self.send_sse_event({
                     "type": "done",
                     "conversation_id": conversation_id,
@@ -598,10 +680,10 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path in ("/health", "/ready"):
             model_state = ollama_status()
-            external_ready = adaptive.external_chat_enabled()
-            ready = bool(
-                (model_state["reachable"] and model_state["model_ready"]) or external_ready
-            )
+            external_ready = False  # Public inference is retired; never advertise it as ready.
+            # Private-model readiness must never be satisfied by an external route.
+            # /ready is used by deployment health checks and must prove local Ollama.
+            ready = local_model_ready(model_state)
             if parsed.path == "/ready":
                 self.send_json(200 if ready else 503, {
                     "ready": ready,
@@ -615,7 +697,7 @@ class Handler(BaseHTTPRequestHandler):
                 "ok": True,
                 "service": "JASSIM AI",
                 "version": "0.6.0",
-                "engine": "adaptive-router",
+                "engine": "jassim-private-local-only",
                 "external_provider_ready": external_ready,
                 "model": OLLAMA_MODEL,
                 "model_ready": model_state["model_ready"],
@@ -624,8 +706,7 @@ class Handler(BaseHTTPRequestHandler):
                 "uptime_seconds": int(time.monotonic() - STARTED_AT),
                 "storage": storage.backend_name(),
                 "authentication": "account-sessions",
-                "image_generation_ready": bool(os.environ.get("JASSIM_HF_TOKEN", "").strip()),
-                "image_model": os.environ.get("JASSIM_IMAGE_MODEL", "black-forest-labs/FLUX.1-schnell")
+                **image_generation_status()
             })
             return
         if parsed.path == "/api/auth/me":
@@ -645,8 +726,8 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if parsed.path == "/api/providers":
                 self.send_json(200, {
-                    "external_chat_enabled": adaptive.external_chat_enabled(),
-                    "providers": adaptive.provider_stats()
+                    "external_chat_enabled": False,
+                    "providers": []
                 })
                 return
             if parsed.path == "/api/admin/storage":
@@ -664,14 +745,14 @@ class Handler(BaseHTTPRequestHandler):
                     db.close()
                 self.send_json(200, {
                     "backend": storage.backend_name(),
-                    "migration": "sqlite_to_postgres_v1",
+                    "migration": "sqlite_to_postgres_v2_accounts",
                     "counts": counts
                 })
                 return
             if parsed.path == "/api/models":
                 request = urllib.request.Request(OLLAMA_URL.rstrip("/") + "/api/tags", method="GET")
                 try:
-                    with urllib.request.urlopen(request, timeout=5) as response:
+                    with open_ollama(request, timeout=5) as response:
                         payload = json.loads(response.read().decode("utf-8"))
                     models = [
                         {"name": item.get("name", ""), "size": item.get("size", 0)}
@@ -751,7 +832,14 @@ class Handler(BaseHTTPRequestHandler):
                         user = auth.create_user(db, email, password)
                     else:
                         row = auth.find_user_by_email(db, email)
-                        if not row or not auth.verify_password(password, row[2]):
+                        if row:
+                            password_ok = auth.verify_password(password, row[2])
+                        else:
+                            # Do not make unknown accounts return substantially faster
+                            # than existing accounts with an incorrect password.
+                            auth.verify_password(password, DUMMY_PASSWORD_HASH)
+                            password_ok = False
+                        if not password_ok:
                             self.send_json(401, {"error": "invalid_credentials"})
                             return
                         user = {"id": row[0], "email": row[1], "role": row[3]}
@@ -806,17 +894,21 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(413, {"error": "prompt_too_long", "limit": 1800})
                     return
                 try:
-                    image_b64, mime, model = generate_image_hf(prompt)
+                    image_b64, mime, model = generate_image(prompt)
                 except RuntimeError as exc:
-                    reason = str(exc)
-                    status = 503 if reason == "image_provider_not_configured" else 502
-                    self.send_json(status, {
-                        "error": "image_provider_not_configured" if status == 503 else "image_generation_failed",
-                        "detail": reason
+                    not_configured = str(exc) == "local_image_model_not_configured"
+                    self.send_json(503, {
+                        "error": "local_image_model_not_configured" if not_configured else "private_image_worker_unavailable",
+                        "message": (
+                            "توليد الصور المحلي غير مهيأ بعد. لم يُرسل وصف الصورة إلى أي خدمة خارجية."
+                            if not_configured else
+                            "خادم توليد الصور الخاص غير متاح حالياً. لم يُرسل وصف الصورة إلى أي خدمة خارجية."
+                        ),
+                        "detail": str(exc)
                     })
                     return
                 self.send_json(200, {
-                    "ok": True, "provider": "huggingface-inference",
+                    "ok": True, "provider": "jassim-private",
                     "model": model, "mime_type": mime, "image_base64": image_b64
                 })
             except (UnicodeDecodeError, json.JSONDecodeError, AttributeError, TypeError, ValueError) as exc:
@@ -825,8 +917,12 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(502, {"error": "image_generation_failed", "detail": type(exc).__name__})
             return
         if request_path == "/api/admin/evaluate":
-            result = adaptive.evaluate_providers()
-            self.send_json(200, result)
+            # Public-provider evaluation is intentionally disabled. Even
+            # synthetic probes must not revive the retired external route.
+            self.send_json(410, {
+                "error": "external_provider_evaluation_disabled",
+                "message": "تقييم المزوّدات الخارجية معطّل؛ الخادم يعمل محلياً فقط."
+            })
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -858,8 +954,7 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 set_memory(conversation_id, memory_text, identity["user_id"])
                 answer = "حفظت هذه المعلومة في ذاكرة هذه المحادثة. يمكنك عرضها بقول «ماذا تتذكر عني؟» أو مسحها بقول «انسَ ذاكرتي»."
-                save_message(conversation_id, "user", message, identity["user_id"])
-                save_message(conversation_id, "assistant", answer, identity["user_id"])
+                save_turn(conversation_id, message, answer, identity["user_id"])
                 if streaming:
                     self.send_sse_static(answer, conversation_id, "memory")
                 else:
@@ -868,8 +963,7 @@ class Handler(BaseHTTPRequestHandler):
             if command == "show":
                 saved_memory = get_memory(conversation_id, identity["user_id"])
                 answer = ("المحفوظ في ذاكرة هذه المحادثة: " + saved_memory) if saved_memory else "لا توجد معلومات محفوظة في ذاكرة هذه المحادثة."
-                save_message(conversation_id, "user", message, identity["user_id"])
-                save_message(conversation_id, "assistant", answer, identity["user_id"])
+                save_turn(conversation_id, message, answer, identity["user_id"])
                 if streaming:
                     self.send_sse_static(answer, conversation_id, "memory")
                 else:
@@ -878,8 +972,7 @@ class Handler(BaseHTTPRequestHandler):
             if command == "clear":
                 clear_memory(conversation_id, identity["user_id"])
                 answer = "تم مسح ذاكرة هذه المحادثة."
-                save_message(conversation_id, "user", message, identity["user_id"])
-                save_message(conversation_id, "assistant", answer, identity["user_id"])
+                save_turn(conversation_id, message, answer, identity["user_id"])
                 if streaming:
                     self.send_sse_static(answer, conversation_id, "memory")
                 else:
@@ -888,7 +981,7 @@ class Handler(BaseHTTPRequestHandler):
             previous = history(conversation_id, max(1, HISTORY_MESSAGES - 1), identity["user_id"])
             saved_memory = get_memory(conversation_id, identity["user_id"])
             if saved_memory:
-                previous.insert(0, {"role": "system", "content": "معلومات اختار المستخدم حفظها صراحةً في ذاكرة حسابه الخاصة، استخدمها فقط عندما تكون ذات صلة ولا تفترض أنها حقائق خارج هذا السياق: " + saved_memory})
+                previous.insert(0, {"role": "system", "content": "معلومات اختار المستخدم حفظها صراحةً في ذاكرة هذه المحادثة فقط، استخدمها عندما تكون ذات صلة ولا توحِ بأنها ذاكرة دائمة على مستوى الحساب: " + saved_memory})
             context = fit_history_to_budget(previous + [{"role": "user", "content": message}])
             if streaming:
                 self.stream_chat_response(conversation_id, message, context, identity["user_id"])
@@ -904,8 +997,7 @@ class Handler(BaseHTTPRequestHandler):
                     "conversation_id": conversation_id
                 })
                 return
-            save_message(conversation_id, "user", message, identity["user_id"])
-            save_message(conversation_id, "assistant", answer, identity["user_id"])
+            save_turn(conversation_id, message, answer, identity["user_id"])
             self.send_json(200, {
                 "answer": answer, "reply": answer,
                 "conversation_id": conversation_id, "engine": engine

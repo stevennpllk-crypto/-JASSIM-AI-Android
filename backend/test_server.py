@@ -67,6 +67,93 @@ class FakeOllamaHandler(BaseHTTPRequestHandler):
 
 
 class ServerSmokeTest(unittest.TestCase):
+    def test_ollama_endpoint_rejects_public_hosts(self):
+        import importlib.util
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_private_endpoint_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+        original = module.OLLAMA_URL
+        try:
+            for url in ("https://api.example.com", "http://example.com:11434",
+                        "http://user:pass@ollama.railway.internal:11434",
+                        "http://ollama.railway.internal/path",
+                        "http://host.docker.internal:11434"):
+                module.OLLAMA_URL = url
+                self.assertFalse(module.ollama_endpoint_is_private(), url)
+                self.assertFalse(module.ollama_status()["reachable"], url)
+            for url in ("http://127.0.0.1:11434", "http://ollama.railway.internal:11434"):
+                module.OLLAMA_URL = url
+                self.assertTrue(module.ollama_endpoint_is_private(), url)
+
+            # Docker Desktop gateway is accepted only by explicit local opt-in.
+            previous_gateway_opt_in = os.environ.get("JASSIM_ALLOW_DOCKER_HOST_GATEWAY")
+            try:
+                os.environ["JASSIM_ALLOW_DOCKER_HOST_GATEWAY"] = "true"
+                module.OLLAMA_URL = "http://host.docker.internal:11434"
+                self.assertTrue(module.ollama_endpoint_is_private())
+            finally:
+                if previous_gateway_opt_in is None:
+                    os.environ.pop("JASSIM_ALLOW_DOCKER_HOST_GATEWAY", None)
+                else:
+                    os.environ["JASSIM_ALLOW_DOCKER_HOST_GATEWAY"] = previous_gateway_opt_in
+        finally:
+            module.OLLAMA_URL = original
+
+    def test_ollama_requests_reject_public_hosts_and_never_follow_redirects(self):
+        import importlib.util
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_ollama_redirect_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+
+        original = module.OLLAMA_URL
+        try:
+            module.OLLAMA_URL = "http://127.0.0.1:11434"
+            with patch.object(module._OLLAMA_OPENER, "open") as opener:
+                with self.assertRaisesRegex(RuntimeError, "ollama_request_target_mismatch"):
+                    module.open_ollama(Request("http://example.com:11434/api/chat"), timeout=1)
+                opener.assert_not_called()
+
+            module.OLLAMA_URL = "http://example.com:11434"
+            with patch.object(module._OLLAMA_OPENER, "open") as opener:
+                with self.assertRaisesRegex(RuntimeError, "ollama_endpoint_must_be_private"):
+                    module.open_ollama(Request("http://example.com:11434/api/chat"), timeout=1)
+                opener.assert_not_called()
+        finally:
+            module.OLLAMA_URL = original
+
+        proxy_handlers = [
+            item for item in module._OLLAMA_OPENER.handlers
+            if isinstance(item, module.urllib.request.ProxyHandler)
+        ]
+        # An empty ProxyHandler can be omitted from opener.handlers by urllib.
+        self.assertFalse(any(item.proxies for item in proxy_handlers))
+
+        handler = module._NoOllamaRedirects()
+        self.assertIsNone(handler.redirect_request(
+            None, None, 307, "Temporary Redirect", {}, "https://example.com/collect"
+        ))
+
     def test_colab_notebook_code_cells_compile(self):
         notebook_path = Path(__file__).resolve().parents[1] / "notebooks" / "JASSIM_AI_Colab_GPU.ipynb"
         notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
@@ -77,6 +164,230 @@ class ServerSmokeTest(unittest.TestCase):
             source = "".join(cell.get("source", []))
             self.assertTrue(source.strip(), f"Notebook code cell {index} is empty")
             compile(source, f"JASSIM_AI_Colab_GPU.ipynb:cell-{index}", "exec")
+
+    def test_generate_answer_fails_closed_after_local_ollama_failure(self):
+        import importlib.util
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_local_only_failure_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+
+        messages = [{"role": "user", "content": "synthetic private test"}]
+        with patch.object(module, "ollama_status", return_value={
+            "reachable": True, "model_ready": True, "model_loaded": True
+        }):
+            with patch.object(module, "ask_ollama", side_effect=RuntimeError("offline")):
+                answer, engine = module.generate_answer(messages)
+        self.assertEqual(engine, "fallback")
+        self.assertIn("لم يتم إرسال رسالتك", answer)
+
+        with patch.object(module, "ollama_status", return_value={
+            "reachable": True, "model_ready": True, "model_loaded": True
+        }):
+            with patch.object(module, "ask_ollama", return_value="LOCAL ANSWER"):
+                answer, engine = module.generate_answer(messages)
+        self.assertEqual((answer, engine), ("LOCAL ANSWER", "ollama"))
+
+    def test_local_model_unavailable_response_is_explicitly_private(self):
+        import importlib.util
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_private_mode_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+        answer, engine = module.local_model_unavailable_response([])
+        self.assertEqual(engine, "fallback")
+        self.assertIn("لم يتم إرسال رسالتك", answer)
+
+        class StubHandler:
+            def __init__(self):
+                self.error = None
+            def send_json(self, status, payload):
+                self.error = (status, payload)
+
+        stub = StubHandler()
+        module.Handler.reject_external_provider_stream(
+            stub, "conversation-test", "question", [], "user-test")
+        self.assertEqual(stub.error[0], 503)
+        self.assertIn("لم يتم إرسال رسالتك", stub.error[1]["message"])
+
+    def test_generate_answer_never_uses_public_provider_when_local_model_is_missing(self):
+        import importlib.util
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_local_only_missing_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+
+        with patch.object(module, "ollama_status", return_value={
+            "reachable": False, "model_ready": False, "model_loaded": False
+        }):
+            answer, engine = module.generate_answer([{"role": "user", "content": "private"}])
+        self.assertEqual(engine, "fallback")
+        self.assertIn("لم يتم إرسال رسالتك", answer)
+
+    def test_stream_chat_fails_closed_when_local_model_is_unavailable(self):
+        import importlib.util
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_stream_local_only_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+
+        class StubHandler:
+            def __init__(self):
+                self.errors = []
+            def send_json(self, status, payload):
+                self.errors.append((status, payload))
+            def reject_external_provider_stream(self, *args):
+                return module.Handler.reject_external_provider_stream(self, *args)
+
+        stub = StubHandler()
+        with patch.object(module, "ollama_status", return_value={
+            "reachable": False, "model_ready": False, "model_loaded": False
+        }):
+            module.Handler.stream_chat_response(
+                stub, "conversation-test", "question",
+                [{"role": "user", "content": "question"}], "user-test")
+        self.assertEqual(stub.errors[0][0], 503)
+        self.assertIn("لم يتم إرسال رسالتك", stub.errors[0][1]["message"])
+
+    def test_external_provider_stream_is_hard_disabled(self):
+        import importlib.util
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_provider_disabled_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+
+        class StubHandler:
+            def __init__(self):
+                self.errors = []
+            def send_json(self, status, payload):
+                self.errors.append((status, payload))
+
+        stub = StubHandler()
+        module.Handler.reject_external_provider_stream(
+            stub, "conversation-test", "question", [], "user-test")
+        self.assertEqual(stub.errors[0][0], 503)
+        self.assertIn("لم يتم إرسال رسالتك", stub.errors[0][1]["message"])
+
+    def test_disabled_external_stream_never_persists_a_turn(self):
+        import importlib.util
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_no_external_persist_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+
+        class StubHandler:
+            def __init__(self):
+                self.errors = []
+            def send_json(self, status, payload):
+                self.errors.append((status, payload))
+
+        stub = StubHandler()
+        with patch.object(module, "save_turn") as save:
+            module.Handler.reject_external_provider_stream(
+                stub, "conversation-test", "question", [], "user-test")
+        save.assert_not_called()
+        self.assertEqual(stub.errors[0][0], 503)
+
+    def test_save_turn_rolls_back_user_message_when_assistant_insert_fails(self):
+        import importlib.util
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_atomic_turn_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                db = module.connect_db()
+                try:
+                    db.execute("""
+                        CREATE TRIGGER reject_assistant_message
+                        BEFORE INSERT ON messages
+                        WHEN NEW.role = 'assistant'
+                        BEGIN
+                            SELECT RAISE(ABORT, 'simulated assistant persistence failure');
+                        END
+                    """)
+                    db.commit()
+                finally:
+                    db.close()
+
+                with self.assertRaises(Exception):
+                    module.save_turn("atomic-test", "user prompt", "assistant reply", "user-test")
+
+                db = module.connect_db()
+                try:
+                    self.assertEqual(
+                        db.execute("SELECT COUNT(*) FROM messages WHERE conversation_id=?",
+                                   ("atomic-test",)).fetchone()[0], 0)
+                    self.assertEqual(
+                        db.execute("SELECT COUNT(*) FROM conversations WHERE conversation_id=?",
+                                   ("atomic-test",)).fetchone()[0], 0)
+                finally:
+                    db.close()
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
 
     def test_history_budget_preserves_recent_messages(self):
         import importlib.util
@@ -151,10 +462,14 @@ class ServerSmokeTest(unittest.TestCase):
         spec = importlib.util.spec_from_file_location("jassim_queue_test", Path(__file__).with_name("server.py"))
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        from unittest.mock import patch
         module.INFERENCE_SEMAPHORE.acquire()
         module.OLLAMA_QUEUE_TIMEOUT = 0.01
         try:
-            answer, engine = module.generate_answer([])
+            with patch.object(module, "ollama_status", return_value={
+                "reachable": True, "model_ready": True, "model_loaded": True
+            }):
+                answer, engine = module.generate_answer([])
             self.assertEqual(engine, "busy")
             self.assertIn("مشغول", answer)
         finally:
@@ -419,6 +734,20 @@ class ServerSmokeTest(unittest.TestCase):
                 fake_ollama.shutdown()
                 fake_ollama.server_close()
                 fake_thread.join(timeout=2)
+
+
+    def test_server_has_no_public_provider_invocation_paths(self):
+        source = Path(__file__).with_name("server.py").read_text(encoding="utf-8")
+        for forbidden in (
+            "adaptive.answer_with_provider(",
+            "adaptive.stream_answer_with_provider(",
+            "adaptive.evaluate_providers(",
+        ):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, source)
+        self.assertIn('"external_chat_enabled": False', source)
+        self.assertIn('"error": "external_provider_evaluation_disabled"', source)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -50,7 +50,7 @@ The Colab notebook automatically selects Qwen3.5 9B when it detects an NVIDIA GP
    docker compose --env-file .env -f docker-compose.always-on.yml logs -f ollama jassim-api
    ```
 
-7. Configure Android with the public HTTPS URL and the private token from `.env`. Never commit the token or place it in the APK.
+7. Configure Android with the public HTTPS API URL. Ordinary users should create an account in the app and sign in with their own email and password; they do not need the legacy server token. Keep `JASSIM_API_TOKEN` only for owner/admin maintenance and legacy integrations. Never commit the token or place it in the APK.
 
 ## Persistence and recovery
 
@@ -63,5 +63,5 @@ The Colab notebook automatically selects Qwen3.5 9B when it detects an NVIDIA GP
 
 - This provides restartability only on a host that remains powered and connected. It cannot prevent a provider from suspending a free instance.
 - A stable public address requires a domain/reverse proxy or a configured named tunnel. Cloudflare Quick Tunnel URLs are temporary.
-- The shared Bearer token is still one shared identity, not individual accounts.
-- `/health` is liveness/diagnostics. `/ready` returns HTTP 503 unless the API token is configured and Ollama is reachable with the configured model installed.
+- Regular users have individual email/password accounts and revocable sessions. Google OAuth, email password recovery, session refresh, and self-service account deletion are not yet available. The legacy `JASSIM_API_TOKEN` is an optional owner/admin credential, not the normal end-user login.
+- `/health` is liveness/diagnostics. `/ready` returns HTTP 200 only when local Ollama is reachable and the configured model is installed. External-provider configuration never satisfies private-model readiness. Keep `JASSIM_ALLOW_EXTERNAL_CHAT=false` and `JASSIM_ENABLE_PUBLIC_PROVIDERS=false`; private conversations must not be routed to public AI providers.
