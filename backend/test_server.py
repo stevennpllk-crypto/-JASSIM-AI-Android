@@ -203,7 +203,7 @@ class ServerSmokeTest(unittest.TestCase):
         with patch.object(module.adaptive, "external_chat_enabled", return_value=False):
             with patch.object(module.adaptive, "answer_with_provider",
                               side_effect=AssertionError("external inference must not be called")) as external:
-                answer, engine = module.answer_with_external_fallback(messages)
+                answer, engine = module.local_model_unavailable_response(messages)
         self.assertEqual(engine, "fallback")
         self.assertIn("لم يتم إرسال رسالتك", answer)
         external.assert_not_called()
@@ -218,7 +218,7 @@ class ServerSmokeTest(unittest.TestCase):
         with patch.object(module.adaptive, "external_chat_enabled", return_value=False):
             with patch.object(module.adaptive, "stream_answer_with_provider",
                               side_effect=AssertionError("external stream must not be called")) as stream:
-                module.Handler.stream_external_provider_response(
+                module.Handler.reject_external_provider_stream(
                     stub, "conversation-test", "question", [], "user-test")
         self.assertEqual(stub.error[0], 503)
         self.assertIn("لم يتم إرسال رسالتك", stub.error[1]["message"])
