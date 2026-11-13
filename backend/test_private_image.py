@@ -9,6 +9,35 @@ import private_image
 
 
 class PrivateImageWorkerTests(unittest.TestCase):
+    def test_worker_transport_disables_proxies_and_redirects(self):
+        handlers = private_image._WORKER_OPENER.handlers
+        self.assertTrue(any(isinstance(h, __import__("urllib.request").request.ProxyHandler)
+                            and h.proxies == {} for h in handlers))
+        redirect = next(h for h in handlers if isinstance(
+            h, private_image._NoWorkerRedirects))
+        self.assertIsNone(redirect.redirect_request(
+            None, None, 302, "Found", {}, "https://public.example/steal"))
+
+    def test_worker_rejects_mismatched_origin_and_unapproved_paths(self):
+        with patch.object(private_image, "WORKER_URL",
+                          "http://image-worker.railway.internal:8188"), \
+             patch.object(private_image, "WORKER_TOKEN", "worker-secret"), \
+             patch.object(private_image._WORKER_OPENER, "open") as opener:
+            for url in (
+                "http://public.example:8188/ready",
+                "http://image-worker.railway.internal:8188/v1/images/generate?target=public",
+                "http://image-worker.railway.internal:8188/admin",
+                "http://user@image-worker.railway.internal:8188/ready",
+            ):
+                with self.subTest(url=url):
+                    request = private_image.urllib.request.Request(url)
+                    with self.assertRaisesRegex(
+                        RuntimeError, "private_image_worker_request_target_mismatch"
+                    ):
+                        private_image.open_worker(request, timeout=1)
+            opener.assert_not_called()
+
+
     def setUp(self):
         private_image._STATUS_CACHE = None
         private_image._STATUS_CACHE_AT = 0.0
@@ -42,7 +71,7 @@ class PrivateImageWorkerTests(unittest.TestCase):
         ready = {"ready": True, "model_ready": True, "model": "jassim-image-local"}
         with patch.object(private_image, "WORKER_URL", "http://image-worker.railway.internal:8188"), \
              patch.object(private_image, "WORKER_TOKEN", "worker-secret"), \
-             patch("private_image.urllib.request.urlopen", side_effect=[
+             patch("private_image._WORKER_OPENER.open", side_effect=[
                  self._response(ready), self._response(payload)
              ]) as request:
             result = private_image.generate("منظر فضائي")
@@ -56,7 +85,7 @@ class PrivateImageWorkerTests(unittest.TestCase):
         payload = {"ready": True, "model_ready": False, "model": "not-loaded"}
         with patch.object(private_image, "WORKER_URL", "http://image-worker.railway.internal:8188"), \
              patch.object(private_image, "WORKER_TOKEN", "worker-secret"), \
-             patch("private_image.urllib.request.urlopen", return_value=self._response(payload)):
+             patch("private_image._WORKER_OPENER.open", return_value=self._response(payload)):
             status = private_image.worker_status(force_refresh=True)
         self.assertFalse(status["model_ready"])
 
@@ -69,7 +98,7 @@ class PrivateImageWorkerTests(unittest.TestCase):
         ready = {"ready": True, "model_ready": True, "model": "jassim-image-local"}
         with patch.object(private_image, "WORKER_URL", "http://image-worker.railway.internal:8188"), \
              patch.object(private_image, "WORKER_TOKEN", "worker-secret"), \
-             patch("private_image.urllib.request.urlopen", side_effect=[
+             patch("private_image._WORKER_OPENER.open", side_effect=[
                  self._response(ready), self._response(payload)
              ]):
             with self.assertRaisesRegex(RuntimeError, "private_image_worker_mime_mismatch"):
