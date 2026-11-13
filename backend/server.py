@@ -436,7 +436,7 @@ def generate_answer(messages):
     # environment variables or retired routing configuration.
     model_state = ollama_status()
     if not model_state["reachable"] or not model_state["model_ready"]:
-        return answer_with_external_fallback(messages)
+        return local_model_unavailable_response(messages)
 
     if not INFERENCE_SEMAPHORE.acquire(timeout=OLLAMA_QUEUE_TIMEOUT):
         return (
@@ -447,7 +447,7 @@ def generate_answer(messages):
         try:
             return ask_ollama(messages), "ollama"
         except (urllib.error.URLError, TimeoutError, ValueError, RuntimeError, OSError):
-            return answer_with_external_fallback(messages)
+            return local_model_unavailable_response(messages)
     finally:
         INFERENCE_SEMAPHORE.release()
 
@@ -511,7 +511,7 @@ class Handler(BaseHTTPRequestHandler):
         # The legacy external-provider path now always returns a local-only 503.
         model_state = ollama_status()
         if not model_state["reachable"] or not model_state["model_ready"]:
-            self.stream_external_provider_response(conversation_id, message, context, user_id)
+            self.reject_external_provider_stream(conversation_id, message, context, user_id)
             return
 
         if not INFERENCE_SEMAPHORE.acquire(timeout=OLLAMA_QUEUE_TIMEOUT):
@@ -548,7 +548,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 response = open_ollama(request, timeout=OLLAMA_TIMEOUT)
             except (urllib.error.URLError, TimeoutError, ValueError, OSError):
-                self.stream_external_provider_response(conversation_id, message, context, user_id)
+                self.reject_external_provider_stream(conversation_id, message, context, user_id)
                 return
 
             self.send_sse_headers()
