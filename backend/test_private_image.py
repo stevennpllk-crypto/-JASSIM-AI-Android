@@ -3,6 +3,7 @@ import base64
 import json
 import os
 import unittest
+import urllib.request
 from unittest.mock import Mock, patch
 
 import private_image
@@ -11,7 +12,7 @@ import private_image
 class PrivateImageWorkerTests(unittest.TestCase):
     def test_worker_transport_disables_proxies_and_redirects(self):
         handlers = private_image._WORKER_OPENER.handlers
-        self.assertTrue(any(isinstance(h, __import__("urllib.request").request.ProxyHandler)
+        self.assertTrue(any(isinstance(h, urllib.request.ProxyHandler)
                             and h.proxies == {} for h in handlers))
         redirect = next(h for h in handlers if isinstance(
             h, private_image._NoWorkerRedirects))
@@ -58,7 +59,7 @@ class PrivateImageWorkerTests(unittest.TestCase):
             # through a temporary module-level configuration.
             with patch.object(private_image, "WORKER_URL", "https://images.example.com"), \
                  patch.object(private_image, "WORKER_TOKEN", "secret"), \
-                 patch("urllib.request.urlopen", side_effect=AssertionError("public network forbidden")):
+                 patch("private_image._WORKER_OPENER.open", side_effect=AssertionError("public network forbidden")):
                 self.assertIsNone(private_image._private_worker_url())
                 self.assertEqual(private_image.worker_status(force_refresh=True)["model_ready"], False)
                 with self.assertRaisesRegex(RuntimeError, "local_image_model_not_configured"):
