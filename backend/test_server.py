@@ -115,6 +115,12 @@ class ServerSmokeTest(unittest.TestCase):
 
         original = module.OLLAMA_URL
         try:
+            module.OLLAMA_URL = "http://127.0.0.1:11434"
+            with patch.object(module._OLLAMA_OPENER, "open") as opener:
+                with self.assertRaisesRegex(RuntimeError, "ollama_request_target_mismatch"):
+                    module.open_ollama(Request("http://example.com:11434/api/chat"), timeout=1)
+                opener.assert_not_called()
+
             module.OLLAMA_URL = "http://example.com:11434"
             with patch.object(module._OLLAMA_OPENER, "open") as opener:
                 with self.assertRaisesRegex(RuntimeError, "ollama_endpoint_must_be_private"):
