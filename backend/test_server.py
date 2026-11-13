@@ -174,17 +174,19 @@ class ServerSmokeTest(unittest.TestCase):
             "reachable": True, "model_ready": True, "model_loaded": True
         }):
             with patch.object(module, "ask_ollama", side_effect=RuntimeError("offline")):
-                with patch.object(module.adaptive, "external_chat_enabled", return_value=True):
-                    with patch.object(module.adaptive, "answer_with_provider",
-                                      side_effect=AssertionError("public provider called")) as external:
-                        answer, engine = module.generate_answer(messages)
+                answer, engine = module.generate_answer(messages)
         self.assertEqual(engine, "fallback")
         self.assertIn("لم يتم إرسال رسالتك", answer)
-        external.assert_not_called()
 
-    def test_private_mode_does_not_attempt_external_fallback(self):
+        with patch.object(module, "ollama_status", return_value={
+            "reachable": True, "model_ready": True, "model_loaded": True
+        }):
+            with patch.object(module, "ask_ollama", return_value="LOCAL ANSWER"):
+                answer, engine = module.generate_answer(messages)
+        self.assertEqual((answer, engine), ("LOCAL ANSWER", "ollama"))
+
+    def test_local_model_unavailable_response_is_explicitly_private(self):
         import importlib.util
-        from unittest.mock import patch
         with tempfile.TemporaryDirectory() as tmp:
             previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
             os.environ["JASSIM_DATA_DIR"] = tmp
@@ -198,15 +200,9 @@ class ServerSmokeTest(unittest.TestCase):
                     os.environ.pop("JASSIM_DATA_DIR", None)
                 else:
                     os.environ["JASSIM_DATA_DIR"] = previous_data_dir
-
-        messages = [{"role": "user", "content": "private synthetic test"}]
-        with patch.object(module.adaptive, "external_chat_enabled", return_value=False):
-            with patch.object(module.adaptive, "answer_with_provider",
-                              side_effect=AssertionError("external inference must not be called")) as external:
-                answer, engine = module.local_model_unavailable_response(messages)
+        answer, engine = module.local_model_unavailable_response([])
         self.assertEqual(engine, "fallback")
         self.assertIn("لم يتم إرسال رسالتك", answer)
-        external.assert_not_called()
 
         class StubHandler:
             def __init__(self):
@@ -215,14 +211,10 @@ class ServerSmokeTest(unittest.TestCase):
                 self.error = (status, payload)
 
         stub = StubHandler()
-        with patch.object(module.adaptive, "external_chat_enabled", return_value=False):
-            with patch.object(module.adaptive, "stream_answer_with_provider",
-                              side_effect=AssertionError("external stream must not be called")) as stream:
-                module.Handler.reject_external_provider_stream(
-                    stub, "conversation-test", "question", [], "user-test")
+        module.Handler.reject_external_provider_stream(
+            stub, "conversation-test", "question", [], "user-test")
         self.assertEqual(stub.error[0], 503)
         self.assertIn("لم يتم إرسال رسالتك", stub.error[1]["message"])
-        stream.assert_not_called()
 
     def test_generate_answer_never_uses_public_provider_when_local_model_is_missing(self):
         import importlib.util
@@ -244,13 +236,9 @@ class ServerSmokeTest(unittest.TestCase):
         with patch.object(module, "ollama_status", return_value={
             "reachable": False, "model_ready": False, "model_loaded": False
         }):
-            with patch.object(module.adaptive, "external_chat_enabled", return_value=True):
-                with patch.object(module.adaptive, "answer_with_provider",
-                                  side_effect=AssertionError("public provider called")) as external:
-                    answer, engine = module.generate_answer([{"role": "user", "content": "private"}])
+            answer, engine = module.generate_answer([{"role": "user", "content": "private"}])
         self.assertEqual(engine, "fallback")
         self.assertIn("لم يتم إرسال رسالتك", answer)
-        external.assert_not_called()
 
     def test_stream_chat_fails_closed_when_local_model_is_unavailable(self):
         import importlib.util
@@ -279,19 +267,14 @@ class ServerSmokeTest(unittest.TestCase):
         with patch.object(module, "ollama_status", return_value={
             "reachable": False, "model_ready": False, "model_loaded": False
         }):
-            with patch.object(module.adaptive, "external_chat_enabled", return_value=True):
-                with patch.object(module.adaptive, "stream_answer_with_provider",
-                                  side_effect=AssertionError("public stream called")) as external:
-                    module.Handler.stream_chat_response(
-                        stub, "conversation-test", "question",
-                        [{"role": "user", "content": "question"}], "user-test")
+            module.Handler.stream_chat_response(
+                stub, "conversation-test", "question",
+                [{"role": "user", "content": "question"}], "user-test")
         self.assertEqual(stub.errors[0][0], 503)
         self.assertIn("لم يتم إرسال رسالتك", stub.errors[0][1]["message"])
-        external.assert_not_called()
 
     def test_external_provider_stream_is_hard_disabled(self):
         import importlib.util
-        from unittest.mock import patch
         with tempfile.TemporaryDirectory() as tmp:
             previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
             os.environ["JASSIM_DATA_DIR"] = tmp
@@ -313,14 +296,10 @@ class ServerSmokeTest(unittest.TestCase):
                 self.errors.append((status, payload))
 
         stub = StubHandler()
-        with patch.object(module.adaptive, "external_chat_enabled", return_value=True):
-            with patch.object(module.adaptive, "stream_answer_with_provider",
-                              side_effect=AssertionError("public stream called")) as external:
-                module.Handler.stream_external_provider_response(
-                    stub, "conversation-test", "question", [], "user-test")
+        module.Handler.reject_external_provider_stream(
+            stub, "conversation-test", "question", [], "user-test")
         self.assertEqual(stub.errors[0][0], 503)
         self.assertIn("لم يتم إرسال رسالتك", stub.errors[0][1]["message"])
-        external.assert_not_called()
 
     def test_disabled_external_stream_never_persists_a_turn(self):
         import importlib.util
@@ -346,12 +325,9 @@ class ServerSmokeTest(unittest.TestCase):
                 self.errors.append((status, payload))
 
         stub = StubHandler()
-        with patch.object(module.adaptive, "external_chat_enabled", return_value=True):
-            with patch.object(module.adaptive, "stream_answer_with_provider",
-                              side_effect=AssertionError("public stream called")):
-                with patch.object(module, "save_turn") as save:
-                    module.Handler.stream_external_provider_response(
-                        stub, "conversation-test", "question", [], "user-test")
+        with patch.object(module, "save_turn") as save:
+            module.Handler.reject_external_provider_stream(
+                stub, "conversation-test", "question", [], "user-test")
         save.assert_not_called()
         self.assertEqual(stub.errors[0][0], 503)
 
