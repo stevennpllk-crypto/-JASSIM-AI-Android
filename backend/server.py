@@ -671,7 +671,7 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path in ("/health", "/ready"):
             model_state = ollama_status()
-            external_ready = adaptive.external_chat_enabled()
+            external_ready = False  # Public inference is retired; never advertise it as ready.
             # Private-model readiness must never be satisfied by an external route.
             # /ready is used by deployment health checks and must prove local Ollama.
             ready = local_model_ready(model_state)
@@ -688,7 +688,7 @@ class Handler(BaseHTTPRequestHandler):
                 "ok": True,
                 "service": "JASSIM AI",
                 "version": "0.6.0",
-                "engine": "adaptive-router",
+                "engine": "jassim-private-local-only",
                 "external_provider_ready": external_ready,
                 "model": OLLAMA_MODEL,
                 "model_ready": model_state["model_ready"],
@@ -717,8 +717,8 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if parsed.path == "/api/providers":
                 self.send_json(200, {
-                    "external_chat_enabled": adaptive.external_chat_enabled(),
-                    "providers": adaptive.provider_stats()
+                    "external_chat_enabled": False,
+                    "providers": []
                 })
                 return
             if parsed.path == "/api/admin/storage":
@@ -908,8 +908,12 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(502, {"error": "image_generation_failed", "detail": type(exc).__name__})
             return
         if request_path == "/api/admin/evaluate":
-            result = adaptive.evaluate_providers()
-            self.send_json(200, result)
+            # Public-provider evaluation is intentionally disabled. Even
+            # synthetic probes must not revive the retired external route.
+            self.send_json(410, {
+                "error": "external_provider_evaluation_disabled",
+                "message": "تقييم المزوّدات الخارجية معطّل؛ الخادم يعمل محلياً فقط."
+            })
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
