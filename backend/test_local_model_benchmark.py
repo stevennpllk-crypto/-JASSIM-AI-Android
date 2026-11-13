@@ -37,6 +37,17 @@ class LocalModelBenchmarkPolicyTests(unittest.TestCase):
         handler = _NoRedirectHandler()
         self.assertIsNone(handler.redirect_request(None, None, 302, "Found", {}, "https://example.com"))
 
+    def test_private_opener_disables_environment_proxies(self):
+        import urllib.request
+        from local_model_benchmark import _PRIVATE_OPENER
+
+        handlers = [
+            item for item in _PRIVATE_OPENER.handlers
+            if isinstance(item, urllib.request.ProxyHandler)
+        ]
+        self.assertEqual(len(handlers), 1)
+        self.assertEqual(handlers[0].proxies, {})
+
     def test_percentile_handles_empty_and_nonempty_samples(self):
         self.assertIsNone(percentile([], 0.95))
         self.assertEqual(percentile([1, 2, 3, 4, 5], 0.95), 5)
