@@ -56,6 +56,40 @@ def _private_worker_url():
     return WORKER_URL
 
 
+class _NoWorkerRedirects(urllib.request.HTTPRedirectHandler):
+    """Never forward the worker bearer token through an HTTP redirect."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_WORKER_OPENER = urllib.request.build_opener(
+    urllib.request.ProxyHandler({}),
+    _NoWorkerRedirects(),
+)
+
+
+def open_worker(request, timeout):
+    """Open only the configured private worker origin and approved API paths."""
+    base = _private_worker_url()
+    if not base:
+        raise RuntimeError("private_image_worker_url_not_allowed")
+    configured = urlparse(base)
+    requested = urlparse(request.full_url)
+    configured_origin = (configured.scheme, configured.hostname, configured.port)
+    requested_origin = (requested.scheme, requested.hostname, requested.port)
+    if (
+        requested_origin != configured_origin
+        or requested.username
+        or requested.password
+        or requested.query
+        or requested.fragment
+        or requested.path not in ("/ready", "/v1/images/generate")
+    ):
+        raise RuntimeError("private_image_worker_request_target_mismatch")
+    return _WORKER_OPENER.open(request, timeout=timeout)
+
+
 def worker_status(force_refresh=False):
     """Return cached readiness briefly to keep API liveness checks responsive."""
     global _STATUS_CACHE, _STATUS_CACHE_AT
@@ -84,7 +118,7 @@ def _fetch_worker_status():
         method="GET",
     )
     try:
-        with urllib.request.urlopen(request, timeout=STATUS_TIMEOUT) as response:
+        with open_worker(request, timeout=STATUS_TIMEOUT) as response:
             payload = json.loads(response.read(65536).decode("utf-8"))
         ready = bool(
             isinstance(payload, dict)
@@ -126,7 +160,7 @@ def generate(prompt, width=1024, height=1024):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=GENERATION_TIMEOUT) as response:
+        with open_worker(request, timeout=GENERATION_TIMEOUT) as response:
             raw = response.read(MAX_IMAGE_BYTES * 2)
         payload = json.loads(raw.decode("utf-8"))
     except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
