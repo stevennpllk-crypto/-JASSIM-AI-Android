@@ -96,6 +96,38 @@ class ServerSmokeTest(unittest.TestCase):
         finally:
             module.OLLAMA_URL = original
 
+    def test_ollama_requests_reject_public_hosts_and_never_follow_redirects(self):
+        import importlib.util
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_ollama_redirect_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+
+        original = module.OLLAMA_URL
+        try:
+            module.OLLAMA_URL = "http://example.com:11434"
+            with patch.object(module._OLLAMA_OPENER, "open") as opener:
+                with self.assertRaisesRegex(RuntimeError, "ollama_endpoint_must_be_private"):
+                    module.open_ollama(Request("http://example.com:11434/api/chat"), timeout=1)
+                opener.assert_not_called()
+        finally:
+            module.OLLAMA_URL = original
+
+        handler = module._NoOllamaRedirects()
+        self.assertIsNone(handler.redirect_request(
+            None, None, 307, "Temporary Redirect", {}, "https://example.com/collect"
+        ))
+
     def test_colab_notebook_code_cells_compile(self):
         notebook_path = Path(__file__).resolve().parents[1] / "notebooks" / "JASSIM_AI_Colab_GPU.ipynb"
         notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
