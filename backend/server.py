@@ -499,78 +499,17 @@ class Handler(BaseHTTPRequestHandler):
         self.send_sse_event({"type": "done", "conversation_id": conversation_id, "engine": engine})
 
     def stream_external_provider_response(self, conversation_id, message, context, user_id):
-        """Reject the legacy external-provider path unconditionally."""
+        """Reject the retired external-provider streaming path unconditionally."""
         self.send_json(503, {
             "error": "model_unavailable",
             "message": "النموذج المحلي غير متاح. لم يتم إرسال رسالتك إلى أي مزوّد خارجي.",
             "retry_after_seconds": 30,
             "conversation_id": conversation_id
         })
-        return
-        answer_parts = []
-        headers_sent = False
-        try:
-            def emit(token):
-                nonlocal headers_sent
-                if self.client_disconnected():
-                    raise BrokenPipeError("client_disconnected")
-                if not headers_sent:
-                    self.send_sse_headers()
-                    headers_sent = True
-                answer_parts.append(token)
-                self.send_sse_event({"type": "token", "token": token})
-
-            answer, provider = adaptive.stream_answer_with_provider(
-                [{"role": "system", "content": SYSTEM_PROMPT}] + context, emit
-            )
-            if self.client_disconnected():
-                return
-            if not headers_sent:
-                self.send_json(503, {
-                    "error": "model_unavailable",
-                    "message": "لم يصل أي محتوى من مزوّد الذكاء الاصطناعي.",
-                    "retry_after_seconds": 30,
-                    "conversation_id": conversation_id
-                })
-                return
-            save_turn(conversation_id, message, answer, user_id)
-            self.send_sse_event({
-                "type": "done", "conversation_id": conversation_id, "engine": provider
-            })
-        except (BrokenPipeError, ConnectionResetError, OSError):
-            # A disconnected client must not leave a partial assistant message.
-            return
-        except RuntimeError:
-            if headers_sent:
-                try:
-                    self.send_sse_event({"type": "error", "error": "generation_interrupted"})
-                except (BrokenPipeError, ConnectionResetError, OSError):
-                    pass
-            else:
-                self.send_json(503, {
-                    "error": "model_unavailable",
-                    "message": "محرك الذكاء الاصطناعي غير متاح أو تعذر الوصول إلى المزوّدات.",
-                    "retry_after_seconds": 30,
-                    "conversation_id": conversation_id
-                })
-        except Exception:
-            # Persistence and unexpected server errors must be visible to the
-            # streaming client; save_turn rolls back the incomplete turn.
-            if headers_sent:
-                try:
-                    self.send_sse_event({"type": "error", "error": "persistence_failed"})
-                except (BrokenPipeError, ConnectionResetError, OSError):
-                    pass
-            else:
-                self.send_json(500, {
-                    "error": "persistence_failed",
-                    "message": "تعذر حفظ المحادثة. حاول مجدداً.",
-                    "conversation_id": conversation_id
-                })
 
     def stream_chat_response(self, conversation_id, message, context, user_id):
         # Avoid waiting for a long Ollama timeout when the local model is absent.
-        # The guarded fallback either uses an explicitly enabled route or fails closed.
+        # The legacy external-provider path now always returns a local-only 503.
         model_state = ollama_status()
         if not model_state["reachable"] or not model_state["model_ready"]:
             self.stream_external_provider_response(conversation_id, message, context, user_id)
