@@ -337,7 +337,7 @@ class _NoOllamaRedirects(urllib.request.HTTPRedirectHandler):
         return None
 
 
-_OLLAMA_OPENER = urllib.request.build_opener(_NoOllamaRedirects())
+_OLLAMA_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoOllamaRedirects())
 
 
 def open_ollama(request, timeout):
