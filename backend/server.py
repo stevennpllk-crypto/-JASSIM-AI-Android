@@ -330,6 +330,23 @@ def ollama_endpoint_is_private():
         return False
 
 
+class _NoOllamaRedirects(urllib.request.HTTPRedirectHandler):
+    """Never follow redirects from the private inference endpoint."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_OLLAMA_OPENER = urllib.request.build_opener(_NoOllamaRedirects())
+
+
+def open_ollama(request, timeout):
+    """Open only the configured private Ollama endpoint, without redirects."""
+    if not ollama_endpoint_is_private():
+        raise RuntimeError("ollama_endpoint_must_be_private")
+    return _OLLAMA_OPENER.open(request, timeout=timeout)
+
+
 def ask_ollama(messages):
     if not ollama_endpoint_is_private():
         raise RuntimeError("ollama_endpoint_must_be_private")
@@ -356,7 +373,7 @@ def ask_ollama(messages):
     last_error = None
     for attempt in range(2):
         try:
-            with urllib.request.urlopen(request, timeout=OLLAMA_TIMEOUT) as response:
+            with open_ollama(request, timeout=OLLAMA_TIMEOUT) as response:
                 result = json.loads(response.read().decode("utf-8"))
             answer = (result.get("message") or {}).get("content", "").strip()
             if not answer:
@@ -374,13 +391,13 @@ def ollama_status():
         return {"reachable": False, "model_ready": False, "model_loaded": False}
     base = OLLAMA_URL.rstrip("/")
     try:
-        with urllib.request.urlopen(urllib.request.Request(base + "/api/tags"), timeout=1.0) as response:
+        with open_ollama(urllib.request.Request(base + "/api/tags"), timeout=1.0) as response:
             tags = json.loads(response.read().decode("utf-8"))
         names = [item.get("name", "") for item in tags.get("models", []) if isinstance(item, dict)]
         available = any(name == OLLAMA_MODEL or name.startswith(OLLAMA_MODEL + ":") for name in names)
         loaded = False
         try:
-            with urllib.request.urlopen(urllib.request.Request(base + "/api/ps"), timeout=1.0) as response:
+            with open_ollama(urllib.request.Request(base + "/api/ps"), timeout=1.0) as response:
                 running = json.loads(response.read().decode("utf-8"))
             loaded = any(
                 item.get("name") == OLLAMA_MODEL or str(item.get("name", "")).startswith(OLLAMA_MODEL + ":")
@@ -590,7 +607,7 @@ class Handler(BaseHTTPRequestHandler):
                 method="POST"
             )
             try:
-                response = urllib.request.urlopen(request, timeout=OLLAMA_TIMEOUT)
+                response = open_ollama(request, timeout=OLLAMA_TIMEOUT)
             except (urllib.error.URLError, TimeoutError, ValueError, OSError):
                 self.stream_external_provider_response(conversation_id, message, context, user_id)
                 return
@@ -786,7 +803,7 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path == "/api/models":
                 request = urllib.request.Request(OLLAMA_URL.rstrip("/") + "/api/tags", method="GET")
                 try:
-                    with urllib.request.urlopen(request, timeout=5) as response:
+                    with open_ollama(request, timeout=5) as response:
                         payload = json.loads(response.read().decode("utf-8"))
                     models = [
                         {"name": item.get("name", ""), "size": item.get("size", 0)}
