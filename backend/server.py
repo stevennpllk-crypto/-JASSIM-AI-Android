@@ -457,20 +457,12 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 response = urllib.request.urlopen(request, timeout=OLLAMA_TIMEOUT)
             except (urllib.error.URLError, TimeoutError, ValueError, OSError):
-                try:
-                    answer, provider = adaptive.answer_with_provider(
-                        [{"role": "system", "content": SYSTEM_PROMPT}] + context
-                    )
-                    save_message(conversation_id, "user", message, user_id)
-                    save_message(conversation_id, "assistant", answer, user_id)
-                    self.send_sse_static(answer, conversation_id, provider)
-                except RuntimeError:
-                    self.send_json(503, {
-                        "error": "model_unavailable",
-                        "message": "محرك الذكاء الاصطناعي غير متاح. لم يُفعّل مزود خارجي أو تعذر الوصول إليه.",
-                        "retry_after_seconds": 30,
-                        "conversation_id": conversation_id
-                    })
+                self.send_json(503, {
+                    "error": "model_unavailable",
+                    "message": "محرك الذكاء الاصطناعي المحلي غير متاح. لم تُرسل رسالتك إلى أي مزوّد خارجي. حاول مجدداً لاحقاً.",
+                    "retry_after_seconds": 30,
+                    "conversation_id": conversation_id
+                })
                 return
 
             self.send_sse_headers()
