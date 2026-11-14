@@ -344,6 +344,7 @@ def ollama_status():
 
 
 def generate_answer(messages):
+    """Generate user conversations locally only; never fall back to public providers."""
     if not INFERENCE_SEMAPHORE.acquire(timeout=OLLAMA_QUEUE_TIMEOUT):
         return (
             "محرك الذكاء الاصطناعي مشغول بطلب آخر. انتظر قليلاً ثم أعد المحاولة؛ "
@@ -353,16 +354,10 @@ def generate_answer(messages):
         try:
             return ask_ollama(messages), "ollama"
         except (urllib.error.URLError, TimeoutError, ValueError, RuntimeError, OSError):
-            try:
-                answer, provider = adaptive.answer_with_provider(
-                    [{"role": "system", "content": SYSTEM_PROMPT}] + messages
-                )
-                return answer, provider
-            except RuntimeError:
-                return (
-                    "محرك الذكاء الاصطناعي غير متاح حالياً. "
-                    "لم يتمكن الخادم من الوصول إلى Ollama أو إلى مزود احتياطي مفعّل."
-                ), "fallback"
+            return (
+                "محرك الذكاء الاصطناعي المحلي غير متاح حالياً. "
+                "لم تُرسل رسالتك إلى أي مزوّد خارجي. حاول مجدداً عندما يعود الخادم المحلي للعمل."
+            ), "fallback"
     finally:
         INFERENCE_SEMAPHORE.release()
 
