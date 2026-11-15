@@ -110,8 +110,18 @@ jobs:
           profile: pixel_2
           script: |
             set -euo pipefail
-            APK="app/build/outputs/apk/debug/app-debug.apk"
-            test -s "$APK"
+            echo "Emulator script working directory: $(pwd)"
+            echo "GitHub workspace: ${GITHUB_WORKSPACE:-unset}"
+            APK="${GITHUB_WORKSPACE}/app/build/outputs/apk/debug/app-debug.apk"
+            if [ ! -s "$APK" ]; then
+              echo "APK not found at expected workspace path: $APK"
+              echo "Workspace contents:"
+              ls -la "${GITHUB_WORKSPACE}" || true
+              echo "Searching for generated APK:"
+              find "${GITHUB_WORKSPACE}" -type f -name "*.apk" -print || true
+              exit 1
+            fi
+            echo "Using APK: $APK"
             adb install -r "$APK"
             adb shell am force-stop com.jassim.ai
             adb shell am start -W -n com.jassim.ai/.MainActivity
