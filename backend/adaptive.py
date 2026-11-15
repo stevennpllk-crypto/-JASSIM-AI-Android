@@ -163,9 +163,9 @@ def evaluate_providers():
     return {"enabled": True, "tested": len(results), "results": results, "ranking": provider_stats()}
 
 
-def answer_with_provider(messages):
-    """Route real chat only after an explicit server-side privacy opt-in."""
-    if not ALLOW_EXTERNAL_CHAT or not ENABLE_PUBLIC_PROVIDERS:
+def answer_with_provider(messages, allow_external=False):
+    """Route public inference only for globally opted-in chat or explicitly marked game-NPC turns."""
+    if not (ALLOW_EXTERNAL_CHAT or allow_external) or not ENABLE_PUBLIC_PROVIDERS:
         raise RuntimeError("external_chat_disabled")
     ranked = provider_stats()
     by_id = {item["id"]: item for item in _configured_providers()}
@@ -184,3 +184,8 @@ def answer_with_provider(messages):
 
 def external_chat_enabled():
     return ALLOW_EXTERNAL_CHAT and ENABLE_PUBLIC_PROVIDERS
+
+
+def npc_chat_enabled():
+    """NPC dialogue may use configured public providers without enabling external routing for ordinary chats."""
+    return ENABLE_PUBLIC_PROVIDERS and bool(_configured_providers())
