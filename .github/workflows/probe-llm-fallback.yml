@@ -3,6 +3,9 @@ on:
   push:
     paths:
       - ".github/workflows/probe-llm-fallback.yml"
+      - "backend/adaptive.py"
+      - "backend/server.py"
+      - "backend/test_server.py"
   workflow_dispatch:
 permissions:
   contents: read
