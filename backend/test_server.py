@@ -204,6 +204,11 @@ class ServerSmokeTest(unittest.TestCase):
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
                 calls = []
+                previous_provider = module.adaptive.answer_with_provider
+                previous_providers = module.adaptive.PROVIDERS
+                previous_external = module.adaptive.ALLOW_EXTERNAL_CHAT
+                previous_npc_external = module.adaptive.ALLOW_NPC_EXTERNAL_CHAT
+                previous_public_enabled = module.adaptive.ENABLE_PUBLIC_PROVIDERS
 
                 def fake_provider(messages, allow_external=False):
                     calls.append(allow_external)
@@ -213,6 +218,7 @@ class ServerSmokeTest(unittest.TestCase):
 
                 module.ask_ollama = lambda messages: (_ for _ in ()).throw(
                     RuntimeError("ollama_unavailable"))
+                module.adaptive.answer_with_provider = fake_provider
                 module.adaptive.ENABLE_PUBLIC_PROVIDERS = True
                 module.adaptive.ALLOW_EXTERNAL_CHAT = False
                 module.adaptive.ALLOW_NPC_EXTERNAL_CHAT = False
@@ -241,6 +247,12 @@ class ServerSmokeTest(unittest.TestCase):
                 self.assertIn("رد مجاني", answer)
                 self.assertEqual(calls, [False, True])
             finally:
+                if "module" in locals():
+                    module.adaptive.answer_with_provider = previous_provider
+                    module.adaptive.PROVIDERS = previous_providers
+                    module.adaptive.ALLOW_EXTERNAL_CHAT = previous_external
+                    module.adaptive.ALLOW_NPC_EXTERNAL_CHAT = previous_npc_external
+                    module.adaptive.ENABLE_PUBLIC_PROVIDERS = previous_public_enabled
                 if previous_data_dir is None:
                     os.environ.pop("JASSIM_DATA_DIR", None)
                 else:
