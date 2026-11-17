@@ -127,9 +127,10 @@ model is `openai/gpt-oss-20b`; model availability and free-tier quotas can chang
   does not send users' conversations to Groq.
 - `JASSIM_ENABLE_PUBLIC_PROVIDERS=true` allows synthetic benchmark probes only;
   the evaluator uses fixed test prompts, not users' chat history.
-- Real chat is sent to a public provider only after the operator explicitly sets
-  `JASSIM_ALLOW_EXTERNAL_CHAT=true`. This is a global server-side switch, not
-  a per-account preference in the current version.
+- Ordinary real chat is sent to a public provider only after the operator explicitly sets
+  `JASSIM_ALLOW_EXTERNAL_CHAT=true`. Game NPC routing has a separate server-side switch,
+  `JASSIM_ALLOW_NPC_EXTERNAL_CHAT=false` by default. A client-supplied `context=game_npc`
+  label cannot enable it by itself. Neither setting is a per-account preference yet.
 - Groq's Free tier is rate-limited, not an unlimited production guarantee.
   Check current quotas and billing settings; do not upgrade to a paid tier without
   explicit authorization.
