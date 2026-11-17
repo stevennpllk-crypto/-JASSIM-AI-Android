@@ -367,6 +367,10 @@ def generate_answer(messages, allow_external=False):
     finally:
         INFERENCE_SEMAPHORE.release()
 
+def npc_external_routing_allowed(context):
+    """Treat the client context as a hint only; the server operator grants the opt-in."""
+    return context == "game_npc" and adaptive.npc_chat_enabled()
+
 def generate_image_hf(prompt, width=1024, height=1024):
     """Generate an image through Hugging Face Inference Providers; secrets stay server-side."""
     token = os.environ.get("JASSIM_HF_TOKEN", "").strip()
@@ -841,9 +845,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(400, {"error": "json_object_required"})
                 return
             message = str(body.get("message", "")).strip()
-            # Only the dedicated game NPC client opts its own dialogue into public inference.
-            # Ordinary JASSIM chats remain local-only unless the operator globally opts in.
-            allow_npc_provider = body.get("context") == "game_npc"
+            # A client context label is not permission: NPC routing also requires a server-side opt-in.
+            allow_npc_provider = npc_external_routing_allowed(body.get("context"))
             conversation_id = str(body.get("conversation_id", "default")).strip()[:100] or "default"
             if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", conversation_id):
                 self.send_json(400, {"error": "invalid_conversation_id"})
