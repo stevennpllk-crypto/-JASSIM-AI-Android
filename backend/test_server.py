@@ -193,15 +193,11 @@ class ServerSmokeTest(unittest.TestCase):
                 proc.terminate()
                 proc.wait(timeout=5)
 
-    def test_npc_turn_can_use_free_provider_without_global_chat_opt_in(self):
+    def test_npc_external_routing_requires_server_side_opt_in(self):
         import importlib.util
         with tempfile.TemporaryDirectory() as tmp:
             previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
-            previous_allow = os.environ.get("JASSIM_ALLOW_EXTERNAL_CHAT")
-            previous_enabled = os.environ.get("JASSIM_ENABLE_PUBLIC_PROVIDERS")
             os.environ["JASSIM_DATA_DIR"] = tmp
-            os.environ["JASSIM_ALLOW_EXTERNAL_CHAT"] = "false"
-            os.environ["JASSIM_ENABLE_PUBLIC_PROVIDERS"] = "true"
             try:
                 spec = importlib.util.spec_from_file_location(
                     "jassim_npc_provider_test", Path(__file__).with_name("server.py"))
@@ -217,30 +213,38 @@ class ServerSmokeTest(unittest.TestCase):
 
                 module.ask_ollama = lambda messages: (_ for _ in ()).throw(
                     RuntimeError("ollama_unavailable"))
-                module.adaptive.answer_with_provider = fake_provider
+                module.adaptive.ENABLE_PUBLIC_PROVIDERS = True
+                module.adaptive.ALLOW_EXTERNAL_CHAT = False
+                module.adaptive.ALLOW_NPC_EXTERNAL_CHAT = False
+                module.adaptive.PROVIDERS = [
+                    {"id": "jarvisclaw", "name": "JarvisClaw",
+                     "url": "https://example.invalid/chat", "model": "test"}
+                ]
+
+                # A caller cannot turn on external routing just by sending context=game_npc.
+                self.assertFalse(module.npc_external_routing_allowed("game_npc"))
+                self.assertFalse(module.npc_external_routing_allowed("ordinary_chat"))
                 answer, engine = module.generate_answer(
-                    [{"role": "user", "content": "مرحبا"}], allow_external=True)
+                    [{"role": "user", "content": "محادثة خاصة"}],
+                    allow_external=module.npc_external_routing_allowed("game_npc"))
+                self.assertEqual(engine, "fallback")
+                self.assertEqual(calls, [False])
+
+                # The same NPC hint is accepted only after an operator-side opt-in.
+                module.adaptive.ALLOW_NPC_EXTERNAL_CHAT = True
+                self.assertTrue(module.npc_external_routing_allowed("game_npc"))
+                self.assertFalse(module.npc_external_routing_allowed("ordinary_chat"))
+                answer, engine = module.generate_answer(
+                    [{"role": "user", "content": "حوار شخصية لعبة"}],
+                    allow_external=module.npc_external_routing_allowed("game_npc"))
                 self.assertEqual(engine, "jarvisclaw")
                 self.assertIn("رد مجاني", answer)
-                self.assertEqual(calls, [True])
-
-                answer, engine = module.generate_answer(
-                    [{"role": "user", "content": "محادثة خاصة"}], allow_external=False)
-                self.assertEqual(engine, "fallback")
-                self.assertEqual(calls, [True, False])
+                self.assertEqual(calls, [False, True])
             finally:
                 if previous_data_dir is None:
                     os.environ.pop("JASSIM_DATA_DIR", None)
                 else:
                     os.environ["JASSIM_DATA_DIR"] = previous_data_dir
-                if previous_allow is None:
-                    os.environ.pop("JASSIM_ALLOW_EXTERNAL_CHAT", None)
-                else:
-                    os.environ["JASSIM_ALLOW_EXTERNAL_CHAT"] = previous_allow
-                if previous_enabled is None:
-                    os.environ.pop("JASSIM_ENABLE_PUBLIC_PROVIDERS", None)
-                else:
-                    os.environ["JASSIM_ENABLE_PUBLIC_PROVIDERS"] = previous_enabled
 
     def test_server_health_and_chat(self):
         with tempfile.TemporaryDirectory() as tmp:
