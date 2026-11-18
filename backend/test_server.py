@@ -270,7 +270,8 @@ class ServerSmokeTest(unittest.TestCase):
                 answer, engine = module.generate_answer(
                     [{"role": "user", "content": "محادثة خاصة"}], allow_external=False)
                 self.assertEqual(engine, "fallback")
-                self.assertEqual(calls, [True, False])
+                self.assertEqual(calls, [True])
+                self.assertIn("لم تُرسل رسالتك إلى أي مزوّد خارجي", answer)
             finally:
                 if previous_data_dir is None:
                     os.environ.pop("JASSIM_DATA_DIR", None)
