@@ -242,9 +242,11 @@ class ServerSmokeTest(unittest.TestCase):
             previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
             previous_allow = os.environ.get("JASSIM_ALLOW_EXTERNAL_CHAT")
             previous_enabled = os.environ.get("JASSIM_ENABLE_PUBLIC_PROVIDERS")
+            previous_npc = os.environ.get("JASSIM_ALLOW_NPC_EXTERNAL_CHAT")
             os.environ["JASSIM_DATA_DIR"] = tmp
             os.environ["JASSIM_ALLOW_EXTERNAL_CHAT"] = "false"
             os.environ["JASSIM_ENABLE_PUBLIC_PROVIDERS"] = "true"
+            os.environ["JASSIM_ALLOW_NPC_EXTERNAL_CHAT"] = "true"
             try:
                 spec = importlib.util.spec_from_file_location(
                     "jassim_npc_provider_test", Path(__file__).with_name("server.py"))
@@ -285,6 +287,10 @@ class ServerSmokeTest(unittest.TestCase):
                     os.environ.pop("JASSIM_ENABLE_PUBLIC_PROVIDERS", None)
                 else:
                     os.environ["JASSIM_ENABLE_PUBLIC_PROVIDERS"] = previous_enabled
+                if previous_npc is None:
+                    os.environ.pop("JASSIM_ALLOW_NPC_EXTERNAL_CHAT", None)
+                else:
+                    os.environ["JASSIM_ALLOW_NPC_EXTERNAL_CHAT"] = previous_npc
 
     def test_server_health_and_chat(self):
         with tempfile.TemporaryDirectory() as tmp:
