@@ -89,53 +89,16 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: |
-            set -Eeuo pipefail
-            APK="$GITHUB_WORKSPACE/app/build/outputs/apk/debug/app-debug.apk"
-            SERIAL="emulator-5554"
-
-            dump_diagnostics() {
-              echo "::group::Android emulator diagnostics"
-              adb devices -l || true
-              adb -s "$SERIAL" logcat -d -t 400 || true
-              adb -s "$SERIAL" shell dumpsys activity activities | tail -n 100 || true
-              echo "::endgroup::"
-            }
-            trap 'status=$?; if [ "$status" -ne 0 ]; then dump_diagnostics; fi; exit "$status"' EXIT
-
-            test -s "$APK"
-            adb start-server
-
-            # Wait for ADB to report an online device and for Android boot to finish.
-            # The emulator can briefly appear as "offline" while its system image starts.
-            for attempt in $(seq 1 180); do
-              state="$(adb -s "$SERIAL" get-state 2>/dev/null || true)"
-              if [ "$state" = "device" ]; then
-                boot="$(adb -s "$SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
-                if [ "$boot" = "1" ]; then
-                  break
-                fi
-              elif [ "$attempt" -gt 1 ] && [ $((attempt % 5)) -eq 0 ]; then
-                adb reconnect offline || true
-              fi
-              sleep 2
-            done
-
-            test "$(adb -s "$SERIAL" get-state 2>/dev/null)" = "device"
-            test "$(adb -s "$SERIAL" shell getprop sys.boot_completed | tr -d '\r')" = "1"
-
-            adb install -r "$APK"
-            adb shell am force-stop com.jassim.ai
-            adb shell am start -W -n com.jassim.ai/.MainActivity
+            adb devices -l
+            adb -s emulator-5554 get-state
+            adb -s emulator-5554 shell getprop sys.boot_completed | grep -q '^1$'
+            adb -s emulator-5554 install -r "$GITHUB_WORKSPACE/app/build/outputs/apk/debug/app-debug.apk"
+            adb -s emulator-5554 shell am force-stop com.jassim.ai
+            adb -s emulator-5554 shell am start -W -n com.jassim.ai/.MainActivity
             sleep 5
-            adb shell pidof com.jassim.ai >/dev/null
-
-            # Avoid uiautomator dump: it was the expensive/unstable part of the
-            # previous smoke test on this headless emulator (ColorBuffer / exit 137).
-            resumed="$(adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' | tail -n 1 || true)"
-            echo "Resumed activity: $resumed"
-            echo "$resumed" | grep -q 'com.jassim.ai/.MainActivity'
+            adb -s emulator-5554 shell pidof com.jassim.ai
+            adb -s emulator-5554 shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' | tail -n 1 | grep -q 'com.jassim.ai/.MainActivity'
             echo "ANDROID_EMULATOR_SMOKE_OK: APK installed, MainActivity foregrounded, and process alive"
-
       - name: Verify APK package
         run: |
           python - <<'PY'
