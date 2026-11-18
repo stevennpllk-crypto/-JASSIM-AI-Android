@@ -139,3 +139,8 @@ model is `openai/gpt-oss-20b`; model availability and free-tier quotas can chang
 
 Set `GROQ_API_KEY` as a secret in Railway service variables. Never put it in
 GitHub source, the APK, dashboard JavaScript, or a chat message.
+
+
+### Optional game NPC provider routing
+
+`JASSIM_ALLOW_NPC_EXTERNAL_CHAT=true` is a separate, server-side operator opt-in for game-NPC public inference; it defaults to disabled. A client-supplied `context=game_npc` value alone never authorizes external routing.
