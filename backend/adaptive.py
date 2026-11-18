@@ -166,8 +166,9 @@ def evaluate_providers():
 
 
 def answer_with_provider(messages, allow_external=False):
-    """Route public inference only after an explicit server-side opt-in."""
-    if not (ALLOW_EXTERNAL_CHAT or allow_external) or not ENABLE_PUBLIC_PROVIDERS:
+    """Route public inference only when the caller explicitly authorizes this turn (NPC-only)."""
+    # A global chat switch must never override the per-request privacy boundary.
+    if not allow_external or not ENABLE_PUBLIC_PROVIDERS:
         raise RuntimeError("external_chat_disabled")
     ranked = provider_stats()
     by_id = {item["id"]: item for item in _configured_providers()}
