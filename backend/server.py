@@ -855,9 +855,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(400, {"error": "json_object_required"})
                 return
             message = str(body.get("message", "")).strip()
-            # Only the dedicated game NPC client opts its own dialogue into public inference.
-            # Ordinary JASSIM chats remain local-only unless the operator globally opts in.
-            allow_npc_provider = body.get("context") == "game_npc"
+            # A client context flag is not authorization: the server operator must explicitly enable NPC egress.
+            allow_npc_provider = body.get("context") == "game_npc" and adaptive.npc_chat_enabled()
             conversation_id = str(body.get("conversation_id", "default")).strip()[:100] or "default"
             if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", conversation_id):
                 self.send_json(400, {"error": "invalid_conversation_id"})
