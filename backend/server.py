@@ -346,6 +346,11 @@ def ollama_status():
         return {"reachable": False, "model_ready": False, "model_loaded": False}
 
 
+def external_provider_allowed(context):
+    """Only a server-side opt-in may authorize public inference for game NPC turns."""
+    return context == "game_npc" and ALLOW_NPC_EXTERNAL_CHAT
+
+
 def generate_answer(messages, allow_external=False):
     if not INFERENCE_SEMAPHORE.acquire(timeout=OLLAMA_QUEUE_TIMEOUT):
         return (
@@ -846,7 +851,7 @@ class Handler(BaseHTTPRequestHandler):
             message = str(body.get("message", "")).strip()
             # Only the dedicated game NPC client opts its own dialogue into public inference.
             # Ordinary JASSIM chats remain local-only unless the operator globally opts in.
-            allow_npc_provider = (body.get("context") == "game_npc" and ALLOW_NPC_EXTERNAL_CHAT)
+            allow_npc_provider = external_provider_allowed(body.get("context"))
             conversation_id = str(body.get("conversation_id", "default")).strip()[:100] or "default"
             if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", conversation_id):
                 self.send_json(400, {"error": "invalid_conversation_id"})
