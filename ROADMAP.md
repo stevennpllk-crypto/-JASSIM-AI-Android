@@ -38,8 +38,8 @@ Build an independent, Arabic-first AI assistant with a polished Android app and 
 - [ ] Markdown rendering, code blocks, copy buttons, and syntax highlighting.
 - [x] Stop the active Android response stream.
 - [ ] Regenerate response, edit-and-resend, and retry.
-- [ ] Per-user accounts and short-lived revocable sessions; remove the shared-token-only limitation.
-- [ ] Server-side conversation ownership and authorization checks.
+- [x] Per-user email/password accounts and revocable bearer sessions; the Android client stores session tokens with Android Keystore. Sessions expire after 30 days and logout revokes the active session. Email verification, password reset/account recovery, and session-management UI remain planned.
+- [x] Server-side conversation ownership and authorization checks, including cross-account read/delete isolation tests.
 
 ### Phase 2 — Personal memory and knowledge
 - [ ] User-controlled saved facts with inspect, edit, disable, export, and delete.

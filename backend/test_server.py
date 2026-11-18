@@ -193,14 +193,16 @@ class ServerSmokeTest(unittest.TestCase):
                 proc.terminate()
                 proc.wait(timeout=5)
 
-    def test_npc_turn_can_use_free_provider_without_global_chat_opt_in(self):
+    def test_npc_external_provider_requires_server_operator_opt_in(self):
         import importlib.util
         with tempfile.TemporaryDirectory() as tmp:
             previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
             previous_allow = os.environ.get("JASSIM_ALLOW_EXTERNAL_CHAT")
+            previous_npc = os.environ.get("JASSIM_ALLOW_NPC_EXTERNAL_CHAT")
             previous_enabled = os.environ.get("JASSIM_ENABLE_PUBLIC_PROVIDERS")
             os.environ["JASSIM_DATA_DIR"] = tmp
             os.environ["JASSIM_ALLOW_EXTERNAL_CHAT"] = "false"
+            os.environ["JASSIM_ALLOW_NPC_EXTERNAL_CHAT"] = "false"
             os.environ["JASSIM_ENABLE_PUBLIC_PROVIDERS"] = "true"
             try:
                 spec = importlib.util.spec_from_file_location(
@@ -218,16 +220,27 @@ class ServerSmokeTest(unittest.TestCase):
                 module.ask_ollama = lambda messages: (_ for _ in ()).throw(
                     RuntimeError("ollama_unavailable"))
                 module.adaptive.answer_with_provider = fake_provider
-                answer, engine = module.generate_answer(
-                    [{"role": "user", "content": "مرحبا"}], allow_external=True)
-                self.assertEqual(engine, "jarvisclaw")
-                self.assertIn("رد مجاني", answer)
-                self.assertEqual(calls, [True])
 
+                # A client-supplied NPC label is not sufficient authorization.
+                self.assertFalse(module.ALLOW_NPC_EXTERNAL_CHAT)
+                self.assertFalse(module.external_provider_allowed("game_npc"))
+                self.assertFalse(module.external_provider_allowed("ordinary_chat"))
                 answer, engine = module.generate_answer(
                     [{"role": "user", "content": "محادثة خاصة"}], allow_external=False)
                 self.assertEqual(engine, "fallback")
-                self.assertEqual(calls, [True, False])
+                self.assertEqual(calls, [False])
+
+                # Only a separate server-side operator opt-in enables NPC routing.
+                os.environ["JASSIM_ALLOW_NPC_EXTERNAL_CHAT"] = "true"
+                module.ALLOW_NPC_EXTERNAL_CHAT = True
+                self.assertTrue(module.external_provider_allowed("game_npc"))
+                self.assertFalse(module.external_provider_allowed("ordinary_chat"))
+                answer, engine = module.generate_answer(
+                    [{"role": "user", "content": "حوار NPC تجريبي"}],
+                    allow_external=module.ALLOW_NPC_EXTERNAL_CHAT)
+                self.assertEqual(engine, "jarvisclaw")
+                self.assertIn("رد مجاني", answer)
+                self.assertEqual(calls, [False, True])
             finally:
                 if previous_data_dir is None:
                     os.environ.pop("JASSIM_DATA_DIR", None)
@@ -237,6 +250,10 @@ class ServerSmokeTest(unittest.TestCase):
                     os.environ.pop("JASSIM_ALLOW_EXTERNAL_CHAT", None)
                 else:
                     os.environ["JASSIM_ALLOW_EXTERNAL_CHAT"] = previous_allow
+                if previous_npc is None:
+                    os.environ.pop("JASSIM_ALLOW_NPC_EXTERNAL_CHAT", None)
+                else:
+                    os.environ["JASSIM_ALLOW_NPC_EXTERNAL_CHAT"] = previous_npc
                 if previous_enabled is None:
                     os.environ.pop("JASSIM_ENABLE_PUBLIC_PROVIDERS", None)
                 else:
@@ -470,6 +487,48 @@ class ServerSmokeTest(unittest.TestCase):
                 fake_ollama.shutdown()
                 fake_ollama.server_close()
                 fake_thread.join(timeout=2)
+
+
+    def test_streaming_npc_fallback_respects_server_opt_in(self):
+        import importlib.util
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_stream_npc_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                handler = object.__new__(module.Handler)
+                observed = {}
+
+                def fake_provider(messages, allow_external=False):
+                    observed["allow_external"] = allow_external
+                    return "رد اختبار", "test-provider"
+
+                handler.send_sse_static = lambda answer, conversation_id, provider: observed.update(
+                    answer=answer, conversation_id=conversation_id, provider=provider)
+                module.OLLAMA_URL = "http://127.0.0.1:1"
+                from contextlib import ExitStack
+                with ExitStack() as stack:
+                    stack.enter_context(patch.object(
+                        module.urllib.request, "urlopen",
+                        side_effect=module.urllib.error.URLError("offline")))
+                    stack.enter_context(patch.object(
+                        module.adaptive, "answer_with_provider", side_effect=fake_provider))
+                    stack.enter_context(patch.object(module, "save_message", return_value=None))
+                    handler.stream_chat_response(
+                        "npc-stream", "سؤال اختبار", [{"role": "user", "content": "سؤال اختبار"}],
+                        "user-1", allow_external=True)
+                self.assertTrue(observed["allow_external"])
+                self.assertEqual(observed["provider"], "test-provider")
+                self.assertEqual(observed["conversation_id"], "npc-stream")
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
 
 if __name__ == "__main__":
     unittest.main()
