@@ -193,14 +193,16 @@ class ServerSmokeTest(unittest.TestCase):
                 proc.terminate()
                 proc.wait(timeout=5)
 
-    def test_npc_turn_can_use_free_provider_without_global_chat_opt_in(self):
+    def test_npc_external_provider_requires_server_operator_opt_in(self):
         import importlib.util
         with tempfile.TemporaryDirectory() as tmp:
             previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
             previous_allow = os.environ.get("JASSIM_ALLOW_EXTERNAL_CHAT")
+            previous_npc = os.environ.get("JASSIM_ALLOW_NPC_EXTERNAL_CHAT")
             previous_enabled = os.environ.get("JASSIM_ENABLE_PUBLIC_PROVIDERS")
             os.environ["JASSIM_DATA_DIR"] = tmp
             os.environ["JASSIM_ALLOW_EXTERNAL_CHAT"] = "false"
+            os.environ["JASSIM_ALLOW_NPC_EXTERNAL_CHAT"] = "false"
             os.environ["JASSIM_ENABLE_PUBLIC_PROVIDERS"] = "true"
             try:
                 spec = importlib.util.spec_from_file_location(
@@ -218,16 +220,23 @@ class ServerSmokeTest(unittest.TestCase):
                 module.ask_ollama = lambda messages: (_ for _ in ()).throw(
                     RuntimeError("ollama_unavailable"))
                 module.adaptive.answer_with_provider = fake_provider
-                answer, engine = module.generate_answer(
-                    [{"role": "user", "content": "مرحبا"}], allow_external=True)
-                self.assertEqual(engine, "jarvisclaw")
-                self.assertIn("رد مجاني", answer)
-                self.assertEqual(calls, [True])
 
+                # A client-supplied NPC label is not sufficient authorization.
+                self.assertFalse(module.ALLOW_NPC_EXTERNAL_CHAT)
                 answer, engine = module.generate_answer(
                     [{"role": "user", "content": "محادثة خاصة"}], allow_external=False)
                 self.assertEqual(engine, "fallback")
-                self.assertEqual(calls, [True, False])
+                self.assertEqual(calls, [False])
+
+                # Only a separate server-side operator opt-in enables NPC routing.
+                os.environ["JASSIM_ALLOW_NPC_EXTERNAL_CHAT"] = "true"
+                module.ALLOW_NPC_EXTERNAL_CHAT = True
+                answer, engine = module.generate_answer(
+                    [{"role": "user", "content": "حوار NPC تجريبي"}],
+                    allow_external=module.ALLOW_NPC_EXTERNAL_CHAT)
+                self.assertEqual(engine, "jarvisclaw")
+                self.assertIn("رد مجاني", answer)
+                self.assertEqual(calls, [False, True])
             finally:
                 if previous_data_dir is None:
                     os.environ.pop("JASSIM_DATA_DIR", None)
@@ -237,6 +246,10 @@ class ServerSmokeTest(unittest.TestCase):
                     os.environ.pop("JASSIM_ALLOW_EXTERNAL_CHAT", None)
                 else:
                     os.environ["JASSIM_ALLOW_EXTERNAL_CHAT"] = previous_allow
+                if previous_npc is None:
+                    os.environ.pop("JASSIM_ALLOW_NPC_EXTERNAL_CHAT", None)
+                else:
+                    os.environ["JASSIM_ALLOW_NPC_EXTERNAL_CHAT"] = previous_npc
                 if previous_enabled is None:
                     os.environ.pop("JASSIM_ENABLE_PUBLIC_PROVIDERS", None)
                 else:
