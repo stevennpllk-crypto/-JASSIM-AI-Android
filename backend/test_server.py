@@ -414,6 +414,76 @@ class ServerSmokeTest(unittest.TestCase):
                 self.assertEqual(conversations[0]["conversation_id"], "smoke")
                 self.assertEqual(conversations[0]["title"], "hello")
                 self.assertEqual(conversations[0]["message_count"], 2)
+
+                # Verify that separate registered accounts cannot read, append to,
+                # or delete another account's conversation.
+                def register_test_user(email):
+                    registration = json.dumps({
+                        "email": email,
+                        "password": "correct-horse-battery"
+                    }).encode()
+                    registration_req = Request(
+                        api_base + "/api/auth/register",
+                        data=registration,
+                        headers={"Content-Type": "application/json"}
+                    )
+                    with urlopen(registration_req, timeout=10) as response:
+                        return json.loads(response.read())["token"]
+
+                owner_token = register_test_user("owner@example.test")
+                other_token = register_test_user("other@example.test")
+                owner_headers = {"Authorization": "Bearer " + owner_token}
+                other_headers = {"Authorization": "Bearer " + other_token}
+                private_memory_payload = json.dumps({
+                    "message": "تذكر أن كلمة السر التجريبية سرية",
+                    "conversation_id": "tenant-private"
+                }).encode()
+                private_memory_req = Request(
+                    api_base + "/api/chat",
+                    data=private_memory_payload,
+                    headers={"Content-Type": "application/json", **owner_headers}
+                )
+                with urlopen(private_memory_req, timeout=10) as response:
+                    self.assertEqual(json.loads(response.read())["engine"], "memory")
+
+                other_history_req = Request(
+                    api_base + "/api/history?conversation_id=tenant-private",
+                    headers=other_headers
+                )
+                with urlopen(other_history_req, timeout=5) as response:
+                    self.assertEqual(json.loads(response.read())["messages"], [])
+
+                cross_account_chat = json.dumps({
+                    "message": "محاولة الوصول إلى محادثة مستخدم آخر",
+                    "conversation_id": "tenant-private"
+                }).encode()
+                cross_account_req = Request(
+                    api_base + "/api/chat",
+                    data=cross_account_chat,
+                    headers={"Content-Type": "application/json", **other_headers}
+                )
+                with self.assertRaises(Exception) as cross_account_error:
+                    urlopen(cross_account_req, timeout=5)
+                self.assertEqual(getattr(cross_account_error.exception, "code", None), 404)
+
+                cross_account_delete = Request(
+                    api_base + "/api/conversations?conversation_id=tenant-private",
+                    headers=other_headers,
+                    method="DELETE"
+                )
+                with self.assertRaises(Exception) as cross_delete_error:
+                    urlopen(cross_account_delete, timeout=5)
+                self.assertEqual(getattr(cross_delete_error.exception, "code", None), 404)
+
+                owner_history_req = Request(
+                    api_base + "/api/history?conversation_id=tenant-private",
+                    headers=owner_headers
+                )
+                with urlopen(owner_history_req, timeout=5) as response:
+                    owner_history = json.loads(response.read())["messages"]
+                self.assertEqual(len(owner_history), 2)
+                self.assertIn("كلمة السر التجريبية سرية", owner_history[0]["content"])
+
                 FakeOllamaHandler.offline = True
                 with self.assertRaises(Exception):
                     urlopen(api_base + "/ready", timeout=5)
