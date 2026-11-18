@@ -227,8 +227,9 @@ class ServerSmokeTest(unittest.TestCase):
                         time.sleep(0.1)
                 else:
                     self.fail("server did not start")
-                self.assertTrue(health["ok"])
+                self.assertTrue(health["ok"])  # Liveness: the API process is responding.
                 self.assertFalse(health["ollama_reachable"])
+                self.assertFalse(health["private_chat_ready"])
                 with self.assertRaises(Exception) as raised:
                     urlopen("http://127.0.0.1:18788/ready", timeout=3)
                 self.assertEqual(getattr(raised.exception, "code", None), 503)
@@ -329,6 +330,7 @@ class ServerSmokeTest(unittest.TestCase):
                 self.assertIn("model_ready", health)
                 self.assertIsInstance(health["model_ready"], bool)
                 self.assertTrue(health["model_ready"])
+                self.assertTrue(health["private_chat_ready"])
                 self.assertTrue(health["model_loaded"])
                 self.assertTrue(health["ollama_reachable"])
                 self.assertGreaterEqual(health["uptime_seconds"], 0)
