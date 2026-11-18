@@ -510,11 +510,14 @@ class ServerSmokeTest(unittest.TestCase):
                 handler.send_sse_static = lambda answer, conversation_id, provider: observed.update(
                     answer=answer, conversation_id=conversation_id, provider=provider)
                 module.OLLAMA_URL = "http://127.0.0.1:1"
-                with patch.object(module.urllib.request, "urlopen",
-                                  side_effect=module.urllib.error.URLError("offline")), \\
-                     patch.object(module.adaptive, "answer_with_provider",
-                                  side_effect=fake_provider), \\
-                     patch.object(module, "save_message", return_value=None):
+                from contextlib import ExitStack
+                with ExitStack() as stack:
+                    stack.enter_context(patch.object(
+                        module.urllib.request, "urlopen",
+                        side_effect=module.urllib.error.URLError("offline")))
+                    stack.enter_context(patch.object(
+                        module.adaptive, "answer_with_provider", side_effect=fake_provider))
+                    stack.enter_context(patch.object(module, "save_message", return_value=None))
                     handler.stream_chat_response(
                         "npc-stream", "سؤال اختبار", [{"role": "user", "content": "سؤال اختبار"}],
                         "user-1", allow_external=True)
