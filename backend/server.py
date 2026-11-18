@@ -615,9 +615,9 @@ class Handler(BaseHTTPRequestHandler):
             model_state = ollama_status()
             external_ready = adaptive.external_chat_enabled()
             npc_provider_ready = adaptive.npc_chat_enabled()
-            ready = bool(
-                (model_state["reachable"] and model_state["model_ready"]) or external_ready or npc_provider_ready
-            )
+            # Readiness represents the private chat path only. Optional external/NPC
+            # providers must never make the core JASSIM service appear ready.
+            ready = bool(model_state["reachable"] and model_state["model_ready"])
             if parsed.path == "/ready":
                 self.send_json(200 if ready else 503, {
                     "ready": ready,
@@ -636,6 +636,7 @@ class Handler(BaseHTTPRequestHandler):
                 "external_provider_ready": external_ready,
                 "model": OLLAMA_MODEL,
                 "model_ready": model_state["model_ready"],
+                "private_chat_ready": bool(model_state["reachable"] and model_state["model_ready"]),
                 "model_loaded": model_state["model_loaded"],
                 "ollama_reachable": model_state["reachable"],
                 "uptime_seconds": int(time.monotonic() - STARTED_AT),
