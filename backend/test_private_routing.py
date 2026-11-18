@@ -6,6 +6,20 @@ import server
 
 
 class PrivateOnlyRoutingTests(unittest.TestCase):
+    def test_npc_provider_requires_explicit_server_operator_opt_in(self):
+        previous_enabled = server.adaptive.ENABLE_PUBLIC_PROVIDERS
+        previous_npc = server.adaptive.ALLOW_NPC_EXTERNAL_CHAT
+        try:
+            server.adaptive.ENABLE_PUBLIC_PROVIDERS = True
+            server.adaptive.ALLOW_NPC_EXTERNAL_CHAT = False
+            with patch.object(server.adaptive, "_configured_providers", return_value=[{"id": "jarvisclaw"}]):
+                self.assertFalse(server.adaptive.npc_chat_enabled())
+                server.adaptive.ALLOW_NPC_EXTERNAL_CHAT = True
+                self.assertTrue(server.adaptive.npc_chat_enabled())
+        finally:
+            server.adaptive.ENABLE_PUBLIC_PROVIDERS = previous_enabled
+            server.adaptive.ALLOW_NPC_EXTERNAL_CHAT = previous_npc
+
     def test_ollama_failure_never_sends_user_chat_to_external_provider(self):
         previous = server.adaptive.ALLOW_EXTERNAL_CHAT
         server.adaptive.ALLOW_EXTERNAL_CHAT = True
