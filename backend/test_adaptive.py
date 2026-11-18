@@ -32,12 +32,17 @@ class AdaptiveRouterTests(unittest.TestCase):
             adaptive.ALLOW_EXTERNAL_CHAT = old
 
     def test_provider_score_persists_and_ranks(self):
-        adaptive._record("jarvisclaw", 500, 0.9)
-        adaptive._record("ovh", 2000, 0.4)
-        scores = {item["id"]: item for item in adaptive.provider_stats()}
-        self.assertEqual(scores["jarvisclaw"]["attempts"], 1)
-        self.assertGreater(scores["jarvisclaw"]["routing_score"],
-                           scores["ovh"]["routing_score"])
+        old_enabled = adaptive.ENABLE_PUBLIC_PROVIDERS
+        adaptive.ENABLE_PUBLIC_PROVIDERS = True
+        try:
+            adaptive._record("jarvisclaw", 500, 0.9)
+            adaptive._record("ovh", 2000, 0.4)
+            scores = {item["id"]: item for item in adaptive.provider_stats()}
+            self.assertEqual(scores["jarvisclaw"]["attempts"], 1)
+            self.assertGreater(scores["jarvisclaw"]["routing_score"],
+                               scores["ovh"]["routing_score"])
+        finally:
+            adaptive.ENABLE_PUBLIC_PROVIDERS = old_enabled
 
     def test_groq_is_hidden_without_api_key(self):
         with patch.dict(os.environ, {"GROQ_API_KEY": ""}):
