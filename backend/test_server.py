@@ -488,5 +488,44 @@ class ServerSmokeTest(unittest.TestCase):
                 fake_ollama.server_close()
                 fake_thread.join(timeout=2)
 
+
+    def test_streaming_npc_fallback_respects_server_opt_in(self):
+        import importlib.util
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_stream_npc_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                handler = object.__new__(module.Handler)
+                observed = {}
+
+                def fake_provider(messages, allow_external=False):
+                    observed["allow_external"] = allow_external
+                    return "رد اختبار", "test-provider"
+
+                handler.send_sse_static = lambda answer, conversation_id, provider: observed.update(
+                    answer=answer, conversation_id=conversation_id, provider=provider)
+                module.OLLAMA_URL = "http://127.0.0.1:1"
+                with patch.object(module.urllib.request, "urlopen",
+                                  side_effect=module.urllib.error.URLError("offline")), \\
+                     patch.object(module.adaptive, "answer_with_provider",
+                                  side_effect=fake_provider), \\
+                     patch.object(module, "save_message", return_value=None):
+                    handler.stream_chat_response(
+                        "npc-stream", "سؤال اختبار", [{"role": "user", "content": "سؤال اختبار"}],
+                        "user-1", allow_external=True)
+                self.assertTrue(observed["allow_external"])
+                self.assertEqual(observed["provider"], "test-provider")
+                self.assertEqual(observed["conversation_id"], "npc-stream")
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+
 if __name__ == "__main__":
     unittest.main()
