@@ -236,6 +236,14 @@ class ServerSmokeTest(unittest.TestCase):
                 self.assertEqual(engine, "fallback")
                 self.assertEqual(calls, [False])
 
+                # Even a legacy/global external-chat switch must not send ordinary user chats out.
+                module.adaptive.ALLOW_EXTERNAL_CHAT = True
+                answer, engine = module.generate_answer(
+                    [{"role": "user", "content": "رسالة خاصة ثانية"}],
+                    allow_external=module.npc_external_routing_allowed("ordinary_chat"))
+                self.assertEqual(engine, "fallback")
+                self.assertEqual(calls, [False, False])
+
                 # The same NPC hint is accepted only after an operator-side opt-in.
                 module.adaptive.ALLOW_NPC_EXTERNAL_CHAT = True
                 self.assertTrue(module.npc_external_routing_allowed("game_npc"))
