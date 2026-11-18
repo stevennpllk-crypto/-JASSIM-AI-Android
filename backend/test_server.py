@@ -223,6 +223,8 @@ class ServerSmokeTest(unittest.TestCase):
 
                 # A client-supplied NPC label is not sufficient authorization.
                 self.assertFalse(module.ALLOW_NPC_EXTERNAL_CHAT)
+                self.assertFalse(module.external_provider_allowed("game_npc"))
+                self.assertFalse(module.external_provider_allowed("ordinary_chat"))
                 answer, engine = module.generate_answer(
                     [{"role": "user", "content": "محادثة خاصة"}], allow_external=False)
                 self.assertEqual(engine, "fallback")
@@ -231,6 +233,8 @@ class ServerSmokeTest(unittest.TestCase):
                 # Only a separate server-side operator opt-in enables NPC routing.
                 os.environ["JASSIM_ALLOW_NPC_EXTERNAL_CHAT"] = "true"
                 module.ALLOW_NPC_EXTERNAL_CHAT = True
+                self.assertTrue(module.external_provider_allowed("game_npc"))
+                self.assertFalse(module.external_provider_allowed("ordinary_chat"))
                 answer, engine = module.generate_answer(
                     [{"role": "user", "content": "حوار NPC تجريبي"}],
                     allow_external=module.ALLOW_NPC_EXTERNAL_CHAT)
