@@ -160,6 +160,35 @@ class ServerSmokeTest(unittest.TestCase):
         finally:
             module.INFERENCE_SEMAPHORE.release()
 
+    def test_ollama_failure_never_calls_public_provider(self):
+        import importlib.util
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_private_fallback_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                provider_calls = []
+                original_provider = module.adaptive.answer_with_provider
+                original_ollama = module.ask_ollama
+                module.adaptive.answer_with_provider = lambda *args, **kwargs: provider_calls.append(args)
+                module.ask_ollama = lambda messages: (_ for _ in ()).throw(
+                    RuntimeError("ollama_unavailable"))
+                answer, engine = module.generate_answer([{"role": "user", "content": "private message"}])
+                self.assertEqual(engine, "fallback")
+                self.assertIn("لم تُرسل رسالتك إلى أي مزوّد خارجي", answer)
+                self.assertEqual(provider_calls, [])
+            finally:
+                if "module" in locals():
+                    module.adaptive.answer_with_provider = original_provider
+                    module.ask_ollama = original_ollama
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+
     def test_liveness_and_readiness_are_distinct(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = os.environ.copy()
