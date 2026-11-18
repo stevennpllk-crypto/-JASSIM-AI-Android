@@ -27,6 +27,9 @@ HOST = os.environ.get("JASSIM_HOST", "127.0.0.1")
 PORT = int(os.environ.get("JASSIM_PORT", "8787"))
 CORS_ORIGIN = os.environ.get("JASSIM_CORS_ORIGIN", "null")
 API_TOKEN = os.environ.get("JASSIM_API_TOKEN", "").strip()
+# Public inference for game NPCs is a separate, explicit operator opt-in.
+# A client-supplied context label alone must never authorize external data transfer.
+ALLOW_NPC_EXTERNAL_CHAT = os.environ.get("JASSIM_ALLOW_NPC_EXTERNAL_CHAT", "false").lower() in ("1", "true", "yes")
 OLLAMA_URL = os.environ.get("JASSIM_OLLAMA_URL", "http://127.0.0.1:11434")
 OLLAMA_MODEL = os.environ.get("JASSIM_OLLAMA_MODEL", "qwen3.5:4b")
 OLLAMA_KEEP_ALIVE = os.environ.get("JASSIM_OLLAMA_KEEP_ALIVE", "-1")
@@ -843,7 +846,7 @@ class Handler(BaseHTTPRequestHandler):
             message = str(body.get("message", "")).strip()
             # Only the dedicated game NPC client opts its own dialogue into public inference.
             # Ordinary JASSIM chats remain local-only unless the operator globally opts in.
-            allow_npc_provider = body.get("context") == "game_npc"
+            allow_npc_provider = (body.get("context") == "game_npc" and ALLOW_NPC_EXTERNAL_CHAT)
             conversation_id = str(body.get("conversation_id", "default")).strip()[:100] or "default"
             if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", conversation_id):
                 self.send_json(400, {"error": "invalid_conversation_id"})
