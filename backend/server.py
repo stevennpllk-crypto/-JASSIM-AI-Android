@@ -353,17 +353,21 @@ def generate_answer(messages, allow_external=False):
         try:
             return ask_ollama(messages), "ollama"
         except (urllib.error.URLError, TimeoutError, ValueError, RuntimeError, OSError):
-            try:
-                answer, provider = adaptive.answer_with_provider(
-                    [{"role": "system", "content": SYSTEM_PROMPT}] + messages,
-                    allow_external=allow_external
-                )
-                return answer, provider
-            except RuntimeError:
-                return (
-                    "محرك الذكاء الاصطناعي غير متاح حالياً. "
-                    "لم يتمكن الخادم من الوصول إلى Ollama أو إلى مزود احتياطي مفعّل."
-                ), "fallback"
+            if allow_external:
+                try:
+                    answer, provider = adaptive.answer_with_provider(
+                        [{"role": "system", "content": SYSTEM_PROMPT}] + messages,
+                        allow_external=True
+                    )
+                    return answer, provider
+                except RuntimeError:
+                    return (
+                        "تعذر توليد رد لشخصية اللعبة من النموذج المحلي أو مزودها المحدد حالياً."
+                    ), "fallback"
+            return (
+                "محرك الذكاء الاصطناعي المحلي غير متاح حالياً. "
+                "لم تُرسل رسالتك إلى أي مزوّد خارجي. حاول مجدداً عندما يعود الخادم المحلي للعمل."
+            ), "fallback"
     finally:
         INFERENCE_SEMAPHORE.release()
 
@@ -428,7 +432,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_sse_event({"type": "token", "token": answer})
         self.send_sse_event({"type": "done", "conversation_id": conversation_id, "engine": engine})
 
-    def stream_chat_response(self, conversation_id, message, context, user_id):
+    def stream_chat_response(self, conversation_id, message, context, user_id, allow_external=False):
         if not INFERENCE_SEMAPHORE.acquire(timeout=OLLAMA_QUEUE_TIMEOUT):
             self.send_json(503, {
                 "error": "model_busy",
@@ -463,17 +467,27 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 response = urllib.request.urlopen(request, timeout=OLLAMA_TIMEOUT)
             except (urllib.error.URLError, TimeoutError, ValueError, OSError):
-                try:
-                    answer, provider = adaptive.answer_with_provider(
-                        [{"role": "system", "content": SYSTEM_PROMPT}] + context
-                    )
+                if allow_external:
+                    try:
+                        answer, provider = adaptive.answer_with_provider(
+                            [{"role": "system", "content": SYSTEM_PROMPT}] + context,
+                            allow_external=True
+                        )
+                    except RuntimeError:
+                        self.send_json(503, {
+                            "error": "model_unavailable",
+                            "message": "تعذر توليد رد لشخصية اللعبة من النموذج المحلي أو مزودها المحدد حالياً.",
+                            "retry_after_seconds": 30,
+                            "conversation_id": conversation_id
+                        })
+                        return
                     save_message(conversation_id, "user", message, user_id)
                     save_message(conversation_id, "assistant", answer, user_id)
                     self.send_sse_static(answer, conversation_id, provider)
-                except RuntimeError:
+                else:
                     self.send_json(503, {
                         "error": "model_unavailable",
-                        "message": "محرك الذكاء الاصطناعي غير متاح. لم يُفعّل مزود خارجي أو تعذر الوصول إليه.",
+                        "message": "محرك الذكاء الاصطناعي المحلي غير متاح. لم تُرسل رسالتك إلى أي مزوّد خارجي. حاول مجدداً لاحقاً.",
                         "retry_after_seconds": 30,
                         "conversation_id": conversation_id
                     })
@@ -897,7 +911,7 @@ class Handler(BaseHTTPRequestHandler):
                 previous.insert(0, {"role": "system", "content": "معلومات اختار المستخدم حفظها صراحةً في ذاكرة حسابه الخاصة، استخدمها فقط عندما تكون ذات صلة ولا تفترض أنها حقائق خارج هذا السياق: " + saved_memory})
             context = fit_history_to_budget(previous + [{"role": "user", "content": message}])
             if streaming:
-                self.stream_chat_response(conversation_id, message, context, identity["user_id"])
+                self.stream_chat_response(conversation_id, message, context, identity["user_id"], allow_external=allow_npc_provider)
                 return
             answer, engine = generate_answer(context, allow_external=allow_npc_provider)
             if engine in ("busy", "fallback"):

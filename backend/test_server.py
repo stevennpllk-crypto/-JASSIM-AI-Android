@@ -160,6 +160,49 @@ class ServerSmokeTest(unittest.TestCase):
         finally:
             module.INFERENCE_SEMAPHORE.release()
 
+    def test_global_chat_opt_in_never_enables_private_chat_fallback(self):
+        import importlib.util
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            previous_allow = os.environ.get("JASSIM_ALLOW_EXTERNAL_CHAT")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            os.environ["JASSIM_ALLOW_EXTERNAL_CHAT"] = "true"
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_private_chat_routing_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                module.adaptive.ALLOW_EXTERNAL_CHAT = True
+                provider_calls = []
+                original_provider = module.adaptive.answer_with_provider
+                original_ollama = module.ask_ollama
+
+                def forbidden_provider(*args, **kwargs):
+                    provider_calls.append((args, kwargs))
+                    raise RuntimeError("external_chat_disabled")
+
+                module.adaptive.answer_with_provider = forbidden_provider
+                module.ask_ollama = lambda messages: (_ for _ in ()).throw(
+                    RuntimeError("ollama_unavailable"))
+                answer, engine = module.generate_answer([
+                    {"role": "user", "content": "private message"}
+                ])
+                self.assertEqual(engine, "fallback")
+                self.assertIn("لم تُرسل رسالتك إلى أي مزوّد خارجي", answer)
+                self.assertEqual(provider_calls, [])
+            finally:
+                if "module" in locals():
+                    module.adaptive.answer_with_provider = original_provider
+                    module.ask_ollama = original_ollama
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+                if previous_allow is None:
+                    os.environ.pop("JASSIM_ALLOW_EXTERNAL_CHAT", None)
+                else:
+                    os.environ["JASSIM_ALLOW_EXTERNAL_CHAT"] = previous_allow
+
     def test_liveness_and_readiness_are_distinct(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = os.environ.copy()

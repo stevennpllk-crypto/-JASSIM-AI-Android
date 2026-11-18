@@ -1,7 +1,7 @@
 """Adaptive provider evaluation and routing for JASSIM AI.
 
 Only synthetic prompts are used by the evaluator. Real conversation content is
-sent to public providers only when JASSIM_ALLOW_EXTERNAL_CHAT=true.
+sent to public providers only for explicitly authorized game-NPC turns.
 """
 import json
 import os
@@ -164,8 +164,8 @@ def evaluate_providers():
 
 
 def answer_with_provider(messages, allow_external=False):
-    """Route public inference only for globally opted-in chat or explicitly marked game-NPC turns."""
-    if not (ALLOW_EXTERNAL_CHAT or allow_external) or not ENABLE_PUBLIC_PROVIDERS:
+    """Route public inference only when the caller explicitly authorizes this turn."""
+    if not allow_external or not ENABLE_PUBLIC_PROVIDERS:
         raise RuntimeError("external_chat_disabled")
     ranked = provider_stats()
     by_id = {item["id"]: item for item in _configured_providers()}
