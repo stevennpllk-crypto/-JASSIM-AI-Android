@@ -15,7 +15,9 @@ DATA_DIR = Path(os.environ.get("JASSIM_DATA_DIR", str(Path(__file__).resolve().p
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "jassim.db"
 ALLOW_EXTERNAL_CHAT = os.environ.get("JASSIM_ALLOW_EXTERNAL_CHAT", "false").lower() in ("1", "true", "yes")
-ENABLE_PUBLIC_PROVIDERS = os.environ.get("JASSIM_ENABLE_PUBLIC_PROVIDERS", "true").lower() in ("1", "true", "yes")
+# Public inference is opt-in; private JASSIM chat never depends on it by default.
+ENABLE_PUBLIC_PROVIDERS = os.environ.get("JASSIM_ENABLE_PUBLIC_PROVIDERS", "false").lower() in ("1", "true", "yes")
+ALLOW_NPC_EXTERNAL_CHAT = os.environ.get("JASSIM_ALLOW_NPC_EXTERNAL_CHAT", "false").lower() in ("1", "true", "yes")
 TIMEOUT = max(8, min(int(os.environ.get("JASSIM_PROVIDER_TIMEOUT", "45")), 120))
 
 PROVIDERS = [
@@ -187,5 +189,5 @@ def external_chat_enabled():
 
 
 def npc_chat_enabled():
-    """NPC dialogue may use configured public providers without enabling external routing for ordinary chats."""
-    return ENABLE_PUBLIC_PROVIDERS and bool(_configured_providers())
+    """NPC dialogue requires an explicit server-operator opt-in as well as enabled providers."""
+    return ALLOW_NPC_EXTERNAL_CHAT and ENABLE_PUBLIC_PROVIDERS and bool(_configured_providers())
