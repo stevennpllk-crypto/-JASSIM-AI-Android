@@ -461,16 +461,14 @@ public class MainActivity extends Activity {
                 connection = openConnection("/health", "GET");
                 JSONObject result = readJsonResponse(connection);
                 boolean ok = result.optBoolean("ok", false);
-                boolean modelReady = result.optBoolean("model_ready", false);
-                boolean adaptiveReady = result.optBoolean("external_provider_ready", false);
-                boolean ready = modelReady || adaptiveReady;
+                boolean modelReady = result.optBoolean("private_chat_ready",
+                    result.optBoolean("model_ready", false));
                 String engine = result.optString("model", result.optString("engine", "غير معروف"));
                 runOnUiThread(() -> {
-                    status.setText(!ok ? "● الخادم غير جاهز"
-                        : modelReady ? "● الخادم متصل — النموذج المحلي جاهز"
-                        : adaptiveReady ? "● الخادم متصل — التوجيه الذكي جاهز"
-                        : "● الخادم متصل — النموذج غير جاهز (" + engine + ")");
-                    status.setTextColor(!ok ? 0xFFFF7777 : ready ? 0xFF62DCA8 : 0xFFFFC36B);
+                    status.setText(!ok ? "● الخادم غير متاح"
+                        : modelReady ? "● الخادم متصل — المحادثة الخاصة جاهزة"
+                        : "● الخادم متصل — النموذج المحلي غير جاهز (" + engine + ")");
+                    status.setTextColor(!ok ? 0xFFFF7777 : modelReady ? 0xFF62DCA8 : 0xFFFFC36B);
                 });
             } catch (Exception e) {
                 String error = e.getMessage() == null ? "تعذر فحص الخادم" : e.getMessage();
