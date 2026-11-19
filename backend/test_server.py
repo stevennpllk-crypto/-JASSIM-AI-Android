@@ -162,6 +162,15 @@ class ServerSmokeTest(unittest.TestCase):
                 self.assertEqual(
                     reopened.get_memory("private-chat", "memory-attacker"), ""
                 )
+
+                # Deleting a conversation with memory but zero messages must
+                # report success rather than a false 404.
+                reopened.set_memory("empty-delete", "ذاكرة بلا رسائل", "memory-owner")
+                deletion = reopened.delete_conversation("empty-delete", "memory-owner")
+                self.assertEqual(deletion, {"deleted_messages": 0})
+                self.assertIsNone(
+                    reopened.delete_conversation("empty-delete", "memory-owner")
+                )
             finally:
                 if previous_data_dir is None:
                     os.environ.pop("JASSIM_DATA_DIR", None)
