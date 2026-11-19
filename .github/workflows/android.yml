@@ -87,11 +87,11 @@ jobs:
             find app/build -maxdepth 6 -type f | sort || true
             exit 1
           fi
-          mkdir -p "$RUNNER_TEMP"
-          cp "$APK" "$RUNNER_TEMP/jassim-debug.apk"
-          test -s "$RUNNER_TEMP/jassim-debug.apk"
-          echo "Staged APK: $APK -> $RUNNER_TEMP/jassim-debug.apk"
-          sha256sum "$RUNNER_TEMP/jassim-debug.apk"
+          mkdir -p "$GITHUB_WORKSPACE/.ci-artifacts"
+          cp "$APK" "$GITHUB_WORKSPACE/.ci-artifacts/jassim-debug.apk"
+          test -s "$GITHUB_WORKSPACE/.ci-artifacts/jassim-debug.apk"
+          echo "Staged APK: $APK -> $GITHUB_WORKSPACE/.ci-artifacts/jassim-debug.apk"
+          sha256sum "$GITHUB_WORKSPACE/.ci-artifacts/jassim-debug.apk"
 
       - name: Android Emulator smoke test
         timeout-minutes: 25
@@ -107,7 +107,7 @@ jobs:
           script: |
             set -Eeuo pipefail
             SERIAL="emulator-5554"
-            APK="$RUNNER_TEMP/jassim-debug.apk"
+            APK="$GITHUB_WORKSPACE/.ci-artifacts/jassim-debug.apk"
 
             adb devices -l
             test "$(adb -s "$SERIAL" get-state)" = "device"
@@ -152,7 +152,7 @@ jobs:
           import zipfile
           from pathlib import Path
 
-          apk = Path(__import__("os").environ["RUNNER_TEMP"]) / "jassim-debug.apk"
+          apk = Path(__import__("os").environ["GITHUB_WORKSPACE"]) / ".ci-artifacts" / "jassim-debug.apk"
           if not apk.is_file() or apk.stat().st_size < 10240:
               raise SystemExit("APK is missing or unexpectedly small")
           with zipfile.ZipFile(apk) as archive:
@@ -173,5 +173,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: JASSIM-AI-debug-APK
-          path: ${{ runner.temp }}/jassim-debug.apk
+          path: .ci-artifacts/jassim-debug.apk
           if-no-files-found: error
