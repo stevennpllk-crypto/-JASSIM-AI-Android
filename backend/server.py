@@ -156,15 +156,21 @@ def delete_conversation(conversation_id, user_id="legacy-owner"):
                 (conversation_id, user_id)
             ).fetchone()
             if not owned:
-                return 0
-            cursor = db.execute("DELETE FROM messages WHERE conversation_id=?", (conversation_id,))
+                return None
+            message_cursor = db.execute(
+                "DELETE FROM messages WHERE conversation_id=?", (conversation_id,)
+            )
             db.execute("DELETE FROM memories WHERE conversation_id=?", (conversation_id,))
-            db.execute(
+            conversation_cursor = db.execute(
                 "DELETE FROM conversations WHERE conversation_id=? AND user_id=?",
                 (conversation_id, user_id)
             )
             db.commit()
-            return cursor.rowcount
+            if conversation_cursor.rowcount != 1:
+                return None
+            # A valid conversation may contain memory but no messages (for
+            # example after an interrupted write). Its deletion is still success.
+            return {"deleted_messages": message_cursor.rowcount}
         finally:
             db.close()
 
@@ -732,14 +738,14 @@ class Handler(BaseHTTPRequestHandler):
         if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", conversation_id):
             self.send_json(400, {"error": "invalid_conversation_id"})
             return
-        deleted_count = delete_conversation(conversation_id, identity['user_id'])
-        if deleted_count == 0:
+        deletion = delete_conversation(conversation_id, identity['user_id'])
+        if deletion is None:
             self.send_json(404, {"error": "conversation_not_found"})
             return
         self.send_json(200, {
             "deleted": True,
             "conversation_id": conversation_id,
-            "deleted_messages": deleted_count
+            "deleted_messages": deletion["deleted_messages"]
         })
 
     def do_POST(self):
