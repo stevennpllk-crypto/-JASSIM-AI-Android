@@ -77,6 +77,22 @@ jobs:
       - name: Build debug APK
         run: gradle assembleDebug
 
+      - name: Stage debug APK for emulator and artifact checks
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          APK="$(find app/build/outputs/apk -type f -name '*.apk' -print -quit)"
+          if [[ -z "$APK" || ! -s "$APK" ]]; then
+            echo "::error::Gradle completed but no APK was found under app/build/outputs/apk"
+            find app/build -maxdepth 6 -type f | sort || true
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP"
+          cp "$APK" "$RUNNER_TEMP/jassim-debug.apk"
+          test -s "$RUNNER_TEMP/jassim-debug.apk"
+          echo "Staged APK: $APK -> $RUNNER_TEMP/jassim-debug.apk"
+          sha256sum "$RUNNER_TEMP/jassim-debug.apk"
+
       - name: Android Emulator smoke test
         timeout-minutes: 25
         uses: reactivecircus/android-emulator-runner@v2
@@ -91,7 +107,7 @@ jobs:
           script: |
             set -Eeuo pipefail
             SERIAL="emulator-5554"
-            APK="$GITHUB_WORKSPACE/app/build/outputs/apk/debug/app-debug.apk"
+            APK="$RUNNER_TEMP/jassim-debug.apk"
 
             adb devices -l
             test "$(adb -s "$SERIAL" get-state)" = "device"
@@ -136,7 +152,7 @@ jobs:
           import zipfile
           from pathlib import Path
 
-          apk = Path("app/build/outputs/apk/debug/app-debug.apk")
+          apk = Path(__import__("os").environ["RUNNER_TEMP"]) / "jassim-debug.apk"
           if not apk.is_file() or apk.stat().st_size < 10240:
               raise SystemExit("APK is missing or unexpectedly small")
           with zipfile.ZipFile(apk) as archive:
@@ -157,5 +173,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: JASSIM-AI-debug-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ runner.temp }}/jassim-debug.apk
           if-no-files-found: error
