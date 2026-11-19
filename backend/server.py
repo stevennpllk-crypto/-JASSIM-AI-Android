@@ -156,15 +156,21 @@ def delete_conversation(conversation_id, user_id="legacy-owner"):
                 (conversation_id, user_id)
             ).fetchone()
             if not owned:
-                return 0
-            cursor = db.execute("DELETE FROM messages WHERE conversation_id=?", (conversation_id,))
+                return None
+            message_cursor = db.execute(
+                "DELETE FROM messages WHERE conversation_id=?", (conversation_id,)
+            )
             db.execute("DELETE FROM memories WHERE conversation_id=?", (conversation_id,))
-            db.execute(
+            conversation_cursor = db.execute(
                 "DELETE FROM conversations WHERE conversation_id=? AND user_id=?",
                 (conversation_id, user_id)
             )
             db.commit()
-            return cursor.rowcount
+            if conversation_cursor.rowcount != 1:
+                return None
+            # A valid conversation may contain memory but no messages (for
+            # example after an interrupted write). Its deletion is still success.
+            return {"deleted_messages": message_cursor.rowcount}
         finally:
             db.close()
 
@@ -353,17 +359,21 @@ def generate_answer(messages, allow_external=False):
         try:
             return ask_ollama(messages), "ollama"
         except (urllib.error.URLError, TimeoutError, ValueError, RuntimeError, OSError):
-            try:
-                answer, provider = adaptive.answer_with_provider(
-                    [{"role": "system", "content": SYSTEM_PROMPT}] + messages,
-                    allow_external=allow_external
-                )
-                return answer, provider
-            except RuntimeError:
-                return (
-                    "محرك الذكاء الاصطناعي غير متاح حالياً. "
-                    "لم يتمكن الخادم من الوصول إلى Ollama أو إلى مزود احتياطي مفعّل."
-                ), "fallback"
+            if allow_external:
+                try:
+                    answer, provider = adaptive.answer_with_provider(
+                        [{"role": "system", "content": SYSTEM_PROMPT}] + messages,
+                        allow_external=True
+                    )
+                    return answer, provider
+                except RuntimeError:
+                    return (
+                        "تعذر توليد رد لشخصية اللعبة من النموذج المحلي أو مزودها المحدد حالياً."
+                    ), "fallback"
+            return (
+                "محرك الذكاء الاصطناعي المحلي غير متاح حالياً. "
+                "لم تُرسل رسالتك إلى أي مزوّد خارجي. حاول مجدداً عندما يعود الخادم المحلي للعمل."
+            ), "fallback"
     finally:
         INFERENCE_SEMAPHORE.release()
 
@@ -428,7 +438,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_sse_event({"type": "token", "token": answer})
         self.send_sse_event({"type": "done", "conversation_id": conversation_id, "engine": engine})
 
-    def stream_chat_response(self, conversation_id, message, context, user_id):
+    def stream_chat_response(self, conversation_id, message, context, user_id, allow_external=False):
         if not INFERENCE_SEMAPHORE.acquire(timeout=OLLAMA_QUEUE_TIMEOUT):
             self.send_json(503, {
                 "error": "model_busy",
@@ -463,17 +473,27 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 response = urllib.request.urlopen(request, timeout=OLLAMA_TIMEOUT)
             except (urllib.error.URLError, TimeoutError, ValueError, OSError):
-                try:
-                    answer, provider = adaptive.answer_with_provider(
-                        [{"role": "system", "content": SYSTEM_PROMPT}] + context
-                    )
+                if allow_external:
+                    try:
+                        answer, provider = adaptive.answer_with_provider(
+                            [{"role": "system", "content": SYSTEM_PROMPT}] + context,
+                            allow_external=True
+                        )
+                    except RuntimeError:
+                        self.send_json(503, {
+                            "error": "model_unavailable",
+                            "message": "تعذر توليد رد لشخصية اللعبة من النموذج المحلي أو مزودها المحدد حالياً.",
+                            "retry_after_seconds": 30,
+                            "conversation_id": conversation_id
+                        })
+                        return
                     save_message(conversation_id, "user", message, user_id)
                     save_message(conversation_id, "assistant", answer, user_id)
                     self.send_sse_static(answer, conversation_id, provider)
-                except RuntimeError:
+                else:
                     self.send_json(503, {
                         "error": "model_unavailable",
-                        "message": "محرك الذكاء الاصطناعي غير متاح. لم يُفعّل مزود خارجي أو تعذر الوصول إليه.",
+                        "message": "محرك الذكاء الاصطناعي المحلي غير متاح. لم تُرسل رسالتك إلى أي مزوّد خارجي. حاول مجدداً لاحقاً.",
                         "retry_after_seconds": 30,
                         "conversation_id": conversation_id
                     })
@@ -601,9 +621,9 @@ class Handler(BaseHTTPRequestHandler):
             model_state = ollama_status()
             external_ready = adaptive.external_chat_enabled()
             npc_provider_ready = adaptive.npc_chat_enabled()
-            ready = bool(
-                (model_state["reachable"] and model_state["model_ready"]) or external_ready or npc_provider_ready
-            )
+            # Readiness represents the private chat path only. Optional external/NPC
+            # providers must never make the core JASSIM service appear ready.
+            ready = bool(model_state["reachable"] and model_state["model_ready"])
             if parsed.path == "/ready":
                 self.send_json(200 if ready else 503, {
                     "ready": ready,
@@ -622,6 +642,7 @@ class Handler(BaseHTTPRequestHandler):
                 "external_provider_ready": external_ready,
                 "model": OLLAMA_MODEL,
                 "model_ready": model_state["model_ready"],
+                "private_chat_ready": bool(model_state["reachable"] and model_state["model_ready"]),
                 "model_loaded": model_state["model_loaded"],
                 "ollama_reachable": model_state["reachable"],
                 "uptime_seconds": int(time.monotonic() - STARTED_AT),
@@ -717,14 +738,14 @@ class Handler(BaseHTTPRequestHandler):
         if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", conversation_id):
             self.send_json(400, {"error": "invalid_conversation_id"})
             return
-        deleted_count = delete_conversation(conversation_id, identity['user_id'])
-        if deleted_count == 0:
+        deletion = delete_conversation(conversation_id, identity['user_id'])
+        if deletion is None:
             self.send_json(404, {"error": "conversation_not_found"})
             return
         self.send_json(200, {
             "deleted": True,
             "conversation_id": conversation_id,
-            "deleted_messages": deleted_count
+            "deleted_messages": deletion["deleted_messages"]
         })
 
     def do_POST(self):
@@ -841,9 +862,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(400, {"error": "json_object_required"})
                 return
             message = str(body.get("message", "")).strip()
-            # Only the dedicated game NPC client opts its own dialogue into public inference.
-            # Ordinary JASSIM chats remain local-only unless the operator globally opts in.
-            allow_npc_provider = body.get("context") == "game_npc"
+            # A client context flag is not authorization: the server operator must explicitly enable NPC egress.
+            allow_npc_provider = body.get("context") == "game_npc" and adaptive.npc_chat_enabled()
             conversation_id = str(body.get("conversation_id", "default")).strip()[:100] or "default"
             if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", conversation_id):
                 self.send_json(400, {"error": "invalid_conversation_id"})
@@ -897,7 +917,7 @@ class Handler(BaseHTTPRequestHandler):
                 previous.insert(0, {"role": "system", "content": "معلومات اختار المستخدم حفظها صراحةً في ذاكرة حسابه الخاصة، استخدمها فقط عندما تكون ذات صلة ولا تفترض أنها حقائق خارج هذا السياق: " + saved_memory})
             context = fit_history_to_budget(previous + [{"role": "user", "content": message}])
             if streaming:
-                self.stream_chat_response(conversation_id, message, context, identity["user_id"])
+                self.stream_chat_response(conversation_id, message, context, identity["user_id"], allow_external=allow_npc_provider)
                 return
             answer, engine = generate_answer(context, allow_external=allow_npc_provider)
             if engine in ("busy", "fallback"):

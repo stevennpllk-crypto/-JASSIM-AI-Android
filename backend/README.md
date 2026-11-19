@@ -79,8 +79,9 @@ JASSIM can benchmark multiple OpenAI-compatible inference providers and rank the
 
 - `GET /api/providers` (Bearer token): current provider ranking and score history.
 - `POST /api/admin/evaluate` (Bearer token): run the synthetic benchmark against configured public providers.
-- `JASSIM_ENABLE_PUBLIC_PROVIDERS=true`: enable provider probes (synthetic prompts only).
-- `JASSIM_ALLOW_EXTERNAL_CHAT=true`: explicitly allow actual user messages to be sent to public providers when local Ollama is unavailable. This is OFF by default. Do not enable it for confidential conversations.
+- `JASSIM_ENABLE_PUBLIC_PROVIDERS=false` (default): public provider probes and routing are disabled. Set to `true` only when intentionally using public-provider backup features.
+- `JASSIM_ALLOW_NPC_EXTERNAL_CHAT=false` (default): a second server-side opt-in required before a request marked `context=game_npc` may use a public provider. A client-supplied context flag alone never grants this permission. Keep disabled unless the operator intentionally accepts external processing for game NPC dialogue.
+- Ordinary JASSIM user conversations remain local-only and are never sent to public providers as a fallback, even if the legacy `JASSIM_ALLOW_EXTERNAL_CHAT` flag is enabled.
 
 The initial public candidates are JarvisClaw and OVHcloud AI Endpoints. Provider availability, quotas, and terms can change; scores are routing heuristics, not proof of factual correctness. The system learns routing preferences from measured outcomes; it does not retrain model weights or rewrite its own source code. Source changes still require tests and a reviewed deployment.
 

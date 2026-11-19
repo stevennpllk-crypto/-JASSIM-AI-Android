@@ -65,7 +65,7 @@ class MultiUserAuthTest(unittest.TestCase):
             [x["conversation_id"] for x in self.server.list_conversations(20, second["id"])],
             ["private-second"]
         )
-        self.assertEqual(self.server.delete_conversation("private-first", second["id"]), 0)
+        self.assertIsNone(self.server.delete_conversation("private-first", second["id"]))
         with self.assertRaises(PermissionError):
             self.server.save_message("private-first", "user", "اختراق", second["id"])
 
