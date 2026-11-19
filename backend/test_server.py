@@ -140,6 +140,28 @@ class ServerSmokeTest(unittest.TestCase):
                 self.assertEqual(module.get_memory("chat-test"), "")
                 with self.assertRaises(ValueError):
                     module.set_memory("chat-test", " ")
+
+                # Account-scoped memory must not be visible to another user,
+                # and must survive reopening the database through a fresh module.
+                module.set_memory("private-chat", "معلومة خاصة بالمالك", "memory-owner")
+                self.assertEqual(
+                    module.get_memory("private-chat", "memory-attacker"), ""
+                )
+                with self.assertRaises(PermissionError):
+                    module.set_memory("private-chat", "تعديل غير مصرح", "memory-attacker")
+
+                reopened_spec = importlib.util.spec_from_file_location(
+                    "jassim_memory_reopened", Path(__file__).with_name("server.py")
+                )
+                reopened = importlib.util.module_from_spec(reopened_spec)
+                reopened_spec.loader.exec_module(reopened)
+                self.assertEqual(
+                    reopened.get_memory("private-chat", "memory-owner"),
+                    "معلومة خاصة بالمالك"
+                )
+                self.assertEqual(
+                    reopened.get_memory("private-chat", "memory-attacker"), ""
+                )
             finally:
                 if previous_data_dir is None:
                     os.environ.pop("JASSIM_DATA_DIR", None)
