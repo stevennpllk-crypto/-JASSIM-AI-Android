@@ -135,48 +135,4 @@ jobs:
           emulator-boot-timeout: 900
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: |
-            set -Eeuo pipefail
-            SERIAL="emulator-5554"
-            APK="${{ github.workspace }}/.ci-artifacts/jassim-debug.apk"
-
-            echo "Workspace: $GITHUB_WORKSPACE"
-            echo "Working directory: $PWD"
-            echo "APK path: $APK"
-            ls -l "$APK"
-            adb devices -l
-            test "$(adb -s "$SERIAL" get-state)" = "device"
-            test "$(adb -s "$SERIAL" shell getprop sys.boot_completed | tr -d '\r')" = "1"
-            test -s "$APK"
-            adb install -r "$APK"
-            adb shell am force-stop com.jassim.ai
-            adb logcat -c
-
-            # am start -W can time out on a slow headless emulator even when the
-            # activity is still starting. Keep checking the process, but never
-            # turn a crash into a passing smoke test.
-            start_output="$(adb shell am start -W -n com.jassim.ai/.MainActivity 2>&1 || true)"
-            printf '%s\n' "$start_output"
-            for attempt in $(seq 1 30); do
-              if adb shell pidof com.jassim.ai >/dev/null 2>&1; then
-                break
-              fi
-              sleep 1
-            done
-
-            if ! adb shell pidof com.jassim.ai >/dev/null 2>&1; then
-              echo "::error::JASSIM process did not stay alive after MainActivity launch"
-              echo "::group::Focused Android crash diagnostics"
-              adb logcat -b crash -d -v threadtime || true
-              adb logcat -d -v threadtime -s AndroidRuntime ActivityManager ActivityTaskManager System.err || true
-              adb shell dumpsys package com.jassim.ai || true
-              adb shell dumpsys activity activities | tail -n 120 || true
-              echo "::endgroup::"
-              exit 1
-            fi
-
-            resumed="$(adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' | tail -n 1 || true)"
-            echo "Resumed activity: $resumed"
-            echo "$resumed" | grep -q 'com.jassim.ai/.MainActivity'
-            echo "ANDROID_EMULATOR_SMOKE_OK: APK installed, MainActivity foregrounded, and process alive"
-
+          script: bash "$GITHUB_WORKSPACE/.github/scripts/emulator-smoke.sh"
