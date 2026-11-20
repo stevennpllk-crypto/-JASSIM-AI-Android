@@ -22,7 +22,7 @@ mkdir -p "$(dirname "$OUT")"
   env | sort | grep -E '^(ANDROID|JAVA_HOME|RUNNER_TEMP|HOME)=' || true
   echo
   echo "=== Recent emulator / adb log files ==="
-  find "${RUNNER_TEMP:-/tmp}" "$HOME/.android" -maxdepth 5 -type f \\( -iname '*emulator*.log' -o -iname '*adb*.log' \\) -print 2>/dev/null | head -n 30 | while IFS= read -r file; do
+  find "${RUNNER_TEMP:-/tmp}" "$HOME/.android" -maxdepth 5 -type f \( -iname '*emulator*.log' -o -iname '*adb*.log' \) -print 2>/dev/null | head -n 30 | while IFS= read -r file; do
     echo "--- $file"
     tail -n 100 "$file" 2>/dev/null || true
   done
