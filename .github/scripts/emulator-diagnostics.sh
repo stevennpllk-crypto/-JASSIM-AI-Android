@@ -2,6 +2,14 @@
 set -u
 
 OUT="${RUNNER_TEMP:-/tmp}/jassim-emulator-diagnostics.txt"
+SDK_ADB="${ANDROID_HOME:-/usr/local/lib/android/sdk}/platform-tools/adb"
+if [[ -x "$SDK_ADB" ]]; then
+  ADB="$SDK_ADB"
+elif command -v adb >/dev/null 2>&1; then
+  ADB="$(command -v adb)"
+else
+  ADB=""
+fi
 mkdir -p "$(dirname "$OUT")"
 {
   echo "=== JASSIM Android emulator diagnostics ==="
@@ -12,8 +20,8 @@ mkdir -p "$(dirname "$OUT")"
   (df -h "${RUNNER_TEMP:-/tmp}" || true)
   echo
   echo "=== ADB version and devices ==="
-  (adb version || true)
-  (adb devices -l || true)
+  ([[ -n "$ADB" ]] && "$ADB" version || echo "ADB binary not found")
+  ([[ -n "$ADB" ]] && "$ADB" devices -l || true)
   echo
   echo "=== Emulator / ADB processes ==="
   (pgrep -af 'emulator|qemu|adb' || true)
@@ -28,7 +36,7 @@ mkdir -p "$(dirname "$OUT")"
   done
   echo
   echo "=== Device boot property (best effort) ==="
-  adb -s emulator-5554 shell getprop sys.boot_completed 2>&1 || true
+  [[ -n "$ADB" ]] && "$ADB" -s emulator-5554 shell getprop sys.boot_completed 2>&1 || true
 } 2>&1 | tee "$OUT"
 
 echo "Diagnostics saved to: $OUT"
