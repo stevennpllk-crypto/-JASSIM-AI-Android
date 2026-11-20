@@ -93,6 +93,37 @@ jobs:
           echo "Staged APK: $APK -> $GITHUB_WORKSPACE/.ci-artifacts/jassim-debug.apk"
           sha256sum "$GITHUB_WORKSPACE/.ci-artifacts/jassim-debug.apk"
 
+      - name: Verify APK package
+        run: |
+          python - <<'PY'
+          import hashlib
+          import zipfile
+          from pathlib import Path
+
+          apk = Path(__import__("os").environ["GITHUB_WORKSPACE"]) / ".ci-artifacts" / "jassim-debug.apk"
+          if not apk.is_file() or apk.stat().st_size < 10240:
+              raise SystemExit("APK is missing or unexpectedly small")
+          with zipfile.ZipFile(apk) as archive:
+              bad_entry = archive.testzip()
+              if bad_entry:
+                  raise SystemExit(f"Corrupt APK entry: {bad_entry}")
+              names = set(archive.namelist())
+              required = {"AndroidManifest.xml", "classes.dex"}
+              missing = required - names
+              if missing:
+                  raise SystemExit(f"APK is missing required entries: {sorted(missing)}")
+          digest = hashlib.sha256(apk.read_bytes()).hexdigest()
+          print(f"Verified APK: {apk.stat().st_size} bytes")
+          print(f"SHA-256: {digest}")
+          PY
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: JASSIM-AI-debug-APK
+          path: .ci-artifacts/jassim-debug.apk
+          if-no-files-found: error
+
       - name: Android Emulator smoke test
         timeout-minutes: 25
         uses: reactivecircus/android-emulator-runner@v2
@@ -107,8 +138,12 @@ jobs:
           script: |
             set -Eeuo pipefail
             SERIAL="emulator-5554"
-            APK="$GITHUB_WORKSPACE/.ci-artifacts/jassim-debug.apk"
+            APK="${{ github.workspace }}/.ci-artifacts/jassim-debug.apk"
 
+            echo "Workspace: $GITHUB_WORKSPACE"
+            echo "Working directory: $PWD"
+            echo "APK path: $APK"
+            ls -l "$APK"
             adb devices -l
             test "$(adb -s "$SERIAL" get-state)" = "device"
             test "$(adb -s "$SERIAL" shell getprop sys.boot_completed | tr -d '\r')" = "1"
@@ -145,33 +180,3 @@ jobs:
             echo "$resumed" | grep -q 'com.jassim.ai/.MainActivity'
             echo "ANDROID_EMULATOR_SMOKE_OK: APK installed, MainActivity foregrounded, and process alive"
 
-      - name: Verify APK package
-        run: |
-          python - <<'PY'
-          import hashlib
-          import zipfile
-          from pathlib import Path
-
-          apk = Path(__import__("os").environ["GITHUB_WORKSPACE"]) / ".ci-artifacts" / "jassim-debug.apk"
-          if not apk.is_file() or apk.stat().st_size < 10240:
-              raise SystemExit("APK is missing or unexpectedly small")
-          with zipfile.ZipFile(apk) as archive:
-              bad_entry = archive.testzip()
-              if bad_entry:
-                  raise SystemExit(f"Corrupt APK entry: {bad_entry}")
-              names = set(archive.namelist())
-              required = {"AndroidManifest.xml", "classes.dex"}
-              missing = required - names
-              if missing:
-                  raise SystemExit(f"APK is missing required entries: {sorted(missing)}")
-          digest = hashlib.sha256(apk.read_bytes()).hexdigest()
-          print(f"Verified APK: {apk.stat().st_size} bytes")
-          print(f"SHA-256: {digest}")
-          PY
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: JASSIM-AI-debug-APK
-          path: .ci-artifacts/jassim-debug.apk
-          if-no-files-found: error
