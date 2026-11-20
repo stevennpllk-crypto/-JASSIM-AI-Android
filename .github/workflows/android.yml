@@ -132,7 +132,16 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
+      - name: Reset ADB before emulator startup
+        run: |
+          set -euo pipefail
+          adb kill-server || true
+          adb start-server
+          adb version
+          adb devices -l
+
       - name: Android Emulator smoke test
+        id: emulator-smoke
         timeout-minutes: 25
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -144,3 +153,15 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: bash "$GITHUB_WORKSPACE/.github/scripts/emulator-smoke.sh"
+
+      - name: Collect emulator diagnostics (even on failure)
+        if: always()
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/emulator-diagnostics.sh"
+
+      - name: Upload emulator diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: JASSIM-emulator-diagnostics
+          path: ${{ runner.temp }}/jassim-emulator-diagnostics.txt
+          if-no-files-found: warn
