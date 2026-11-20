@@ -132,14 +132,6 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
-      - name: Reset ADB before emulator startup
-        run: |
-          set -euo pipefail
-          adb kill-server || true
-          adb start-server
-          adb version
-          adb devices -l
-
       - name: Android Emulator smoke test
         id: emulator-smoke
         timeout-minutes: 25
