@@ -193,6 +193,45 @@ class ServerSmokeTest(unittest.TestCase):
                 proc.terminate()
                 proc.wait(timeout=5)
 
+    def test_npc_provider_does_not_mark_private_chat_ready(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with socket.socket() as port_probe:
+                port_probe.bind(("127.0.0.1", 0))
+                port = port_probe.getsockname()[1]
+            env = os.environ.copy()
+            env["JASSIM_DATA_DIR"] = tmp
+            env["JASSIM_PORT"] = str(port)
+            env["JASSIM_HOST"] = "127.0.0.1"
+            env["JASSIM_API_TOKEN"] = "readiness-npc-test-token"
+            env["JASSIM_ENABLE_PUBLIC_PROVIDERS"] = "true"
+            env["JASSIM_ALLOW_EXTERNAL_CHAT"] = "false"
+            env["JASSIM_OLLAMA_URL"] = "http://127.0.0.1:1"
+            env["JASSIM_OLLAMA_MODEL"] = "qwen3.5:4b"
+            proc = subprocess.Popen(
+                [sys.executable, str(Path(__file__).with_name("server.py"))],
+                env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+            base = "http://127.0.0.1:" + str(port)
+            try:
+                for _ in range(40):
+                    try:
+                        with urlopen(base + "/health", timeout=2) as response:
+                            health = json.loads(response.read())
+                        break
+                    except Exception:
+                        time.sleep(0.1)
+                else:
+                    self.fail("server did not start")
+                self.assertTrue(health["ok"])
+                # The NPC provider switch is on, but ordinary external chat is off
+                # and the private Ollama model is unavailable: /ready must stay down.
+                with self.assertRaises(Exception) as raised:
+                    urlopen(base + "/ready", timeout=3)
+                self.assertEqual(getattr(raised.exception, "code", None), 503)
+            finally:
+                proc.terminate()
+                proc.wait(timeout=5)
+
     def test_npc_turn_can_use_free_provider_without_global_chat_opt_in(self):
         import importlib.util
         with tempfile.TemporaryDirectory() as tmp:
