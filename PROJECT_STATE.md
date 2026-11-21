@@ -36,6 +36,11 @@ Purpose: durable handoff between ChatGPT conversations. This file records verifi
 - GitHub Actions run #598 (event: `pull_request`, head `a220573df1950494bdbf9e240d06efcfe370f97d`) completed successfully on 2026-11-21 21:53 UTC. Job `build` passed all steps: notebook JSON/code validation, 21 backend unit tests, deployed `/health` probe, Gradle debug APK build, APK ZIP integrity/required-entry verification, and artifact upload.
 - APK verified by CI: 40,473 bytes; SHA-256 `52b510738fb9918a68d6373b54fe59abaa66c7d86dfbe9cdf7d6916a52dba940`.
 - Artifact `JASSIM-AI-debug-APK`, ID `14726468586`, expires 2027-02-19 21:52:29 UTC. Download: https://github.com/stevennpllk-crypto/-JASSIM-AI-Android/actions/runs/44953779990/artifacts/14726468586
+- Run #603 (head `d1ebaf30ed607353de2b62069c62a82d21cc1d24`) completed successfully: 24 backend/static tests, notebook validation, deployed `/health`, Gradle debug APK build, APK integrity checks, and artifact upload.
+- The 3 Android privacy regression tests passed: no direct public LLM endpoints, chat only through the configured JASSIM backend, and HTTPS/session-token request checks.
+- The unauthenticated image-generation regression test passed as part of the 24-test suite.
+- Latest APK: 36,297 bytes; SHA-256 `49e2d4ca2a97042b8b53d1eb6d0d9bdab3e710d00358c37600d38f2aa9a72bc3`.
+- Artifact `JASSIM-AI-debug-APK`, ID `14727201559`, expires 2027-02-19 21:59:32 UTC. Download: https://github.com/stevennpllk-crypto/-JASSIM-AI-Android/actions/runs/44954357038/artifacts/14727201559
 - No emulator/device install or live user-chat test was performed. The workflow checks deployed `/health`, not `/ready` or inference. Do not imply device runtime success.
 - Note: the connector's commit-run wrapper returned an empty list, but the GitHub Actions REST runs endpoint confirmed run #598; use the direct endpoint for subsequent run discovery.
 
@@ -64,11 +69,10 @@ Purpose: durable handoff between ChatGPT conversations. This file records verifi
 
 ## Next actions for the next session
 1. Re-check the latest PR head and CI after this handoff update; the current verified run is #598 on the previous head.
-2. Add regression coverage for the authenticated image-generation route and verify no unauthenticated request reaches Hugging Face.
-3. Review Node 20 deprecation warnings and migrate compatible GitHub Actions to supported Node 24-compatible releases after checking compatibility.
-4. Verify `/ready` and an authenticated synthetic chat only against an authorized test environment; do not use real conversation data.
-5. Keep PR #19 unmerged until reviewed; do not deploy production or spend money without explicit approval.
-6. Test installation/runtime on a real device separately from APK compilation.
+2. Review Node 20 deprecation warnings and migrate compatible GitHub Actions to supported Node 24-compatible releases after checking compatibility.
+3. Verify `/ready` and an authenticated synthetic chat only against an authorized test environment; do not use real conversation data.
+4. Keep PR #19 unmerged until reviewed; do not deploy production or spend money without explicit approval.
+5. Test installation/runtime on a real device separately from APK compilation.
 
 ## Reporting rules
 Every progress report must distinguish:
