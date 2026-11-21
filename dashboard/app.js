@@ -23,7 +23,7 @@
       if(!response.ok)throw new Error(data.error||("HTTP "+response.status));
       if(!data.token||!data.token.startsWith("jss_"))throw new Error("لم يُرجع الخادم رمز جلسة صالحاً");
       state.token=data.token;sessionStorage.setItem("jassim_token",state.token);
-      $("settingsDialog").close();toast(mode==="register"?"تم إنشاء الحساب بنجاح":"تم تسجيل الدخول");await checkHealth();
+      $("settingsDialog").close();toast(mode==="register"?"تم إنشاء الحساب بنجاح":"تم تسجيل الدخول");await checkHealth();await loadConversationList();
     }catch(error){toast("تعذر إتمام العملية: "+error.message)}
     finally{button.disabled=false}
   }
