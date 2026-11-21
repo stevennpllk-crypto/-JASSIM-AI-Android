@@ -206,6 +206,19 @@ public class MainActivity extends Activity {
         return shape;
     }
 
+    private android.graphics.drawable.GradientDrawable gradientBackground(
+            int startColor, int endColor, int radiusDp, int strokeColor) {
+        android.graphics.drawable.GradientDrawable shape =
+            new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                new int[] { startColor, endColor });
+        shape.setCornerRadius(dp(radiusDp));
+        if (strokeColor != Color.TRANSPARENT) {
+            shape.setStroke(dp(1), strokeColor);
+        }
+        return shape;
+    }
+
     private Button actionButton(String label, String description, Runnable action) {
         Button button = new Button(this);
         button.setText(label);
@@ -217,7 +230,7 @@ public class MainActivity extends Activity {
         button.setMinHeight(dp(38));
         button.setMinimumHeight(dp(38));
         button.setPadding(dp(8), 0, dp(8), 0);
-        button.setBackground(rounded(0xFF252B42, 12));
+        button.setBackground(gradientBackground(0xFF293653, 0xFF202941, 12, 0xFF3B4A6B));
         button.setContentDescription(description);
         button.setOnClickListener(v -> action.run());
         return button;
@@ -230,12 +243,13 @@ public class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         root.setPadding(dp(14), dp(14), dp(14), dp(12));
-        root.setBackgroundColor(0xFF0B1020);
+        root.setBackground(gradientBackground(0xFF0A1020, 0xFF111C34, 0, Color.TRANSPARENT));
 
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.setOrientation(LinearLayout.HORIZONTAL);
-        header.setPadding(0, 0, 0, dp(12));
+        header.setPadding(dp(10), dp(9), dp(10), dp(9));
+        header.setBackground(gradientBackground(0xFF1B2944, 0xFF171F35, 18, 0xFF2C3B5C));
 
         TextView logo = new TextView(this);
         logo.setText("J");
@@ -304,7 +318,7 @@ public class MainActivity extends Activity {
         status.setTextSize(12);
         status.setGravity(Gravity.CENTER_VERTICAL);
         status.setPadding(dp(13), dp(9), dp(13), dp(9));
-        status.setBackground(rounded(0xFF20263A, 13));
+        status.setBackground(gradientBackground(0xFF202D49, 0xFF1A243A, 13, 0xFF344565));
         LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(-1, -2);
         statusLp.setMargins(0, 0, 0, dp(12));
         root.addView(status, statusLp);
@@ -322,7 +336,7 @@ public class MainActivity extends Activity {
         composerShell.setOrientation(LinearLayout.HORIZONTAL);
         composerShell.setGravity(Gravity.CENTER_VERTICAL);
         composerShell.setPadding(dp(7), dp(6), dp(7), dp(6));
-        composerShell.setBackground(rounded(surface, 20));
+        composerShell.setBackground(gradientBackground(0xFF1B2740, 0xFF151F34, 20, 0xFF344565));
         LinearLayout.LayoutParams shellLp = new LinearLayout.LayoutParams(-1, -2);
         shellLp.setMargins(0, dp(10), 0, 0);
 
@@ -407,7 +421,9 @@ public class MainActivity extends Activity {
         bubble.setLineSpacing(dp(2), 1.0f);
         bubble.setPadding(dp(14), dp(11), dp(14), dp(11));
         bubble.setMaxWidth((int)(getResources().getDisplayMetrics().widthPixels * 0.82f));
-        bubble.setBackground(rounded(isUser ? 0xFF263C69 : 0xFF1B2338, 17));
+        bubble.setBackground(isUser
+            ? gradientBackground(0xFF315DA0, 0xFF263D70, 18, 0xFF4B75B2)
+            : gradientBackground(0xFF202D49, 0xFF19243A, 18, 0xFF344563));
         bubble.setOnLongClickListener(v -> {
             // Read the live bubble text: assistant responses are updated while streaming.
             String currentText = bubble.getText().toString();
