@@ -397,8 +397,7 @@ public class MainActivity extends Activity {
     }
 
     private TextView addMessage(String who, String text) {
-        boolean isUser = "أنت".equals(who);
-        TextView bubble = new TextView(this);
+        boolean isUser = "أنت".equals(who);        TextView bubble = new TextView(this);
         bubble.setText(who + "\n" + text);
         bubble.setTextColor(0xFFF1F4FF);
         bubble.setTextSize(14);
@@ -409,14 +408,19 @@ public class MainActivity extends Activity {
         bubble.setMaxWidth((int)(getResources().getDisplayMetrics().widthPixels * 0.82f));
         bubble.setBackground(rounded(isUser ? 0xFF263C69 : 0xFF1B2338, 17));
         bubble.setOnLongClickListener(v -> {
+            // Read the live bubble text: assistant responses are updated while streaming.
+            String currentText = bubble.getText().toString();
+            int headerEnd = currentText.indexOf('\\n');
+            String currentMessage = headerEnd >= 0
+                ? currentText.substring(headerEnd + 1) : currentText;
             if (isUser) {
-                copyMessageToClipboard(text);
+                copyMessageToClipboard(currentMessage);
             } else {
                 new AlertDialog.Builder(this)
                     .setTitle("خيارات رد JASSIM AI")
                     .setItems(new String[]{"نسخ الرد", "حفظ الرد كملف TXT"}, (dialog, which) -> {
-                        if (which == 0) copyMessageToClipboard(text);
-                        else saveAssistantMessageAsFile(text);
+                        if (which == 0) copyMessageToClipboard(currentMessage);
+                        else saveAssistantMessageAsFile(currentMessage);
                     })
                     .show();
             }
@@ -797,8 +801,7 @@ public class MainActivity extends Activity {
                     .setTitle("محادثاتك الأخيرة")
                     .setItems(labels, (dialog, which) -> {
                         String selectedId = ids[which];
-                        if (selectedId == null || selectedId.isEmpty()) return;
-                        new AlertDialog.Builder(this)
+                        if (selectedId == null || selectedId.isEmpty()) return;                        new AlertDialog.Builder(this)
                             .setTitle("إدارة المحادثة")
                             .setItems(new String[]{"فتح المحادثة", "حذف المحادثة"}, (choiceDialog, action) -> {
                                 if (action == 0) {
@@ -1197,8 +1200,7 @@ public class MainActivity extends Activity {
             }
             final String answer = result;
             final String usedProvider = provider;
-            runOnUiThread(() -> {
-                responseBubble.setText("JASSIM AI\n" + answer);
+            runOnUiThread(() -> {                responseBubble.setText("JASSIM AI\n" + answer);
                 status.setText("● متصل عبر " + usedProvider + " — الخدمة العامة المجانية");
                 status.setTextColor(0xFFFFC36B);
             });
