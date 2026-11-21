@@ -12,6 +12,11 @@ public class ReplyExportTest {
         assertEquals("مرحبا بالعالم", ReplyExport.extractBody("JASSIM AI\nمرحبا بالعالم"));
     }
 
+    @Test public void extractsEveryLineFromMultilineReply() {
+        assertEquals("السطر الأول\nالسطر الثاني\nالسطر الثالث",
+            ReplyExport.extractBody("JASSIM AI\nالسطر الأول\nالسطر الثاني\nالسطر الثالث"));
+    }
+
     @Test public void handlesNullAndEmptyBubble() {
         assertEquals("", ReplyExport.extractBody(null));
         assertEquals("", ReplyExport.extractBody("JASSIM AI\n   "));
