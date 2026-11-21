@@ -17,7 +17,7 @@ services:
       JASSIM_HISTORY_CHAR_BUDGET: ${JASSIM_HISTORY_CHAR_BUDGET:-24000}
       JASSIM_REQUEST_TIMEOUT: ${JASSIM_REQUEST_TIMEOUT:-240}
     ports:
-      - "8787:8787"
+      - "127.0.0.1:8787:8787"
     volumes:
       - jassim-data:/data
     extra_hosts:
