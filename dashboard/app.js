@@ -1,6 +1,6 @@
 (() => {
   const $ = (id) => document.getElementById(id);
-  const state = { endpoint: localStorage.getItem("jassim_endpoint") || "https://jassim-ai-core-final-production.up.railway.app", token: sessionStorage.getItem("jassim_token") || "", conversation: "web-" + Math.random().toString(36).slice(2,10), connected: false, health: null, activeController: null };
+  const state = { endpoint: localStorage.getItem("jassim_endpoint") || "https://jassim-ai-core-final-production.up.railway.app", token: sessionStorage.getItem("jassim_token") || "", conversation: localStorage.getItem("jassim_conversation") || ("web-" + Math.random().toString(36).slice(2,10)), connected: false, health: null, activeController: null };
   $("conversationId").textContent = state.conversation;
   function toast(message){const el=$("toast");el.textContent=message;el.classList.add("show");setTimeout(()=>el.classList.remove("show"),2600)}
   function setStatus(ok,label){state.connected=ok;$("connectionLabel").textContent=label;$("sideStatus").textContent=label;$("chatConnection").textContent=label;document.querySelectorAll(".live-dot").forEach(x=>x.classList.toggle("online",ok));$("apiStat").textContent=ok?"متصل":"غير متصل";$("apiDetail").textContent=ok?"تم فحص /health بنجاح":"تحقق من عنوان الخادم";$("step1").textContent=ok?"✓":"●"}
@@ -23,7 +23,7 @@
       if(!response.ok)throw new Error(data.error||("HTTP "+response.status));
       if(!data.token||!data.token.startsWith("jss_"))throw new Error("لم يُرجع الخادم رمز جلسة صالحاً");
       state.token=data.token;sessionStorage.setItem("jassim_token",state.token);
-      $("settingsDialog").close();toast(mode==="register"?"تم إنشاء الحساب بنجاح":"تم تسجيل الدخول");await checkHealth();
+      $("settingsDialog").close();toast(mode==="register"?"تم إنشاء الحساب بنجاح":"تم تسجيل الدخول");await checkHealth();await loadConversationList();
     }catch(error){toast("تعذر إتمام العملية: "+error.message)}
     finally{button.disabled=false}
   }
@@ -39,7 +39,10 @@
         return;
       }
     }
-    state.token="";sessionStorage.removeItem("jassim_token");toast("تم تسجيل الخروج");openSettings();
+    state.token="";sessionStorage.removeItem("jassim_token");
+    state.conversation="web-"+Math.random().toString(36).slice(2,10);localStorage.setItem("jassim_conversation",state.conversation);$("conversationId").textContent=state.conversation;
+    $("messages").innerHTML="";addBubble("تم تسجيل الخروج. سجّل الدخول لعرض محادثات حسابك.","ai");$("conversationList").textContent="سجّل الدخول لعرض المحادثات المحفوظة.";$("historyOutput").textContent="لا توجد بيانات محمّلة.";
+    toast("تم تسجيل الخروج ومسح محتوى المحادثة من الشاشة");openSettings();
   });
   function downloadTextFile(name,type,content){
     const mimeTypes={txt:"text/plain;charset=utf-8",md:"text/markdown;charset=utf-8",json:"application/json;charset=utf-8",csv:"text/csv;charset=utf-8",html:"text/html;charset=utf-8",js:"text/javascript;charset=utf-8",py:"text/x-python;charset=utf-8",xml:"application/xml;charset=utf-8"};
@@ -90,7 +93,7 @@
       else answerBubble.textContent=(received?answerBubble.textContent+"\n\n":"")+"تعذر إكمال الرد: "+err.message;
     }finally{if(answerBubble.textContent.trim())attachAnswerExport(answerBubble);state.activeController=null;btn.textContent="إرسال ↑";btn.classList.remove("stop-active");btn.disabled=false}
   });
-  $("clearChat").addEventListener("click",()=>{state.conversation="web-"+Math.random().toString(36).slice(2,10);$("conversationId").textContent=state.conversation;$("messages").innerHTML="";const w=document.createElement("div");w.className="welcome";w.innerHTML="<div class='welcome-icon'>✳</div><b>بدأت محادثة جديدة</b><p>اكتب رسالتك للمتابعة.</p>";$("messages").appendChild(w)});
+  $("clearChat").addEventListener("click",()=>$("createConversation").click());
   $("generateImage").addEventListener("click",async()=>{
     const prompt=$("imagePrompt").value.trim();if(!prompt){toast("اكتب وصف الصورة أولاً");return}
     if(!state.endpoint||!state.token){toast("اربط الخادم وأدخل رمز الوصول أولاً");return}
@@ -104,7 +107,61 @@
     }catch(e){status.textContent="تعذر التوليد: "+e.message;toast("فشل توليد الصورة")}
     finally{btn.disabled=false;btn.textContent="توليد الصورة ✦"}
   });
-  $("loadHistory").addEventListener("click",async()=>{try{const h=await request("/api/history?conversation_id="+encodeURIComponent(state.conversation));$("historyOutput").textContent=JSON.stringify(h,null,2)}catch(e){$("historyOutput").textContent="تعذر تحميل السجل: "+e.message}});
+  function stopActiveGeneration(){if(state.activeController)state.activeController.abort()}
+  function renderConversation(messages){
+    $("messages").innerHTML="";
+    if(!Array.isArray(messages)||messages.length===0){addBubble("لا توجد رسائل محفوظة في هذه المحادثة بعد.","ai");return}
+    messages.forEach(item=>{if(item&&typeof item.content==="string"&&(item.role==="user"||item.role==="assistant"))addBubble(item.content,item.role==="user"?"user":"ai")});
+    $("messages").scrollTop=$("messages").scrollHeight;
+  }
+  async function loadConversationList(){
+    const list=$("conversationList");list.textContent="جارٍ تحميل المحادثات...";
+    try{
+      const data=await request("/api/conversations?limit=50");
+      const conversations=Array.isArray(data.conversations)?data.conversations:[];
+      list.innerHTML="";
+      if(!conversations.length){list.textContent="لا توجد محادثات محفوظة في هذا الحساب.";return}
+      conversations.forEach(item=>{
+        const row=document.createElement("div");row.className="conversation-row";
+        const open=document.createElement("button");open.type="button";open.className="conversation-open";
+        const title=document.createElement("strong");title.textContent=item.title||"محادثة";
+        const meta=document.createElement("small");meta.textContent=(item.message_count||0)+" رسالة · "+(item.updated_at||"");
+        open.append(title,meta);open.addEventListener("click",async()=>{
+          stopActiveGeneration();
+          try{const data=await request("/api/history?conversation_id="+encodeURIComponent(item.conversation_id));state.conversation=item.conversation_id;localStorage.setItem("jassim_conversation",state.conversation);$("conversationId").textContent=state.conversation;renderConversation(data.messages);showView("chat");toast("تم استعادة المحادثة")}
+          catch(error){toast("تعذر استعادة المحادثة: "+error.message)}
+        });
+        const remove=document.createElement("button");remove.type="button";remove.className="conversation-delete";remove.textContent="حذف";
+        remove.addEventListener("click",async event=>{
+          event.stopPropagation();
+          if(!window.confirm("هل تريد حذف هذه المحادثة ورسائلها نهائياً؟"))return;
+          remove.disabled=true;
+          try{
+            await request("/api/conversations?conversation_id="+encodeURIComponent(item.conversation_id),{method:"DELETE"});
+            if(state.conversation===item.conversation_id)$("createConversation").click();
+            toast("تم حذف المحادثة");await loadConversationList();
+          }catch(error){remove.disabled=false;toast("تعذر حذف المحادثة: "+error.message)}
+        });
+        row.append(open,remove);list.appendChild(row);
+      });
+    }catch(error){list.textContent="تعذر تحميل المحادثات: "+error.message}
+  }
+  $("loadHistory").addEventListener("click",async()=>{
+    try{const data=await request("/api/history?conversation_id="+encodeURIComponent(state.conversation));renderConversation(data.messages);$("historyOutput").textContent="تم تحميل "+(data.messages||[]).length+" رسالة للمحادثة الحالية.";showView("chat")}
+    catch(error){$("historyOutput").textContent="تعذر تحميل السجل: "+error.message}
+  });
+  $("refreshConversations").addEventListener("click",loadConversationList);
+  $("createConversation").addEventListener("click",()=>{
+    stopActiveGeneration();
+    state.conversation="web-"+Math.random().toString(36).slice(2,10);localStorage.setItem("jassim_conversation",state.conversation);$("conversationId").textContent=state.conversation;
+    $("messages").innerHTML="";addBubble("بدأت محادثة جديدة. اكتب رسالتك للمتابعة.","ai");showView("chat");
+  });
+  loadConversationList();
+  if(state.token){
+    request("/api/history?conversation_id="+encodeURIComponent(state.conversation)).then(data=>{
+      if(Array.isArray(data.messages)&&data.messages.length)renderConversation(data.messages);
+    }).catch(()=>{});
+  }
   $("serverUrlText").textContent=state.endpoint||"لم يتم الإعداد";checkHealth();
   if(!state.token)openSettings();
 })();
