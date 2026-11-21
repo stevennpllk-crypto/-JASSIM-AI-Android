@@ -179,7 +179,7 @@ def ensure_schema(db, sqlite_path=None):
 
 
 def _migrate_sqlite_once(target):
-    marker = "sqlite_to_postgres_v1"
+    marker = "sqlite_to_postgres_v2"
     if target.execute("SELECT name FROM schema_migrations WHERE name=?", (marker,)).fetchone():
         return
     source_path = SQLITE_PATH
