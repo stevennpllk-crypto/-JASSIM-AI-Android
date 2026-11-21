@@ -94,7 +94,8 @@ class MultiUserAuthTest(unittest.TestCase):
             ) as image_provider:
                 with self.assertRaises(HTTPError) as image_denied:
                     call("/api/images/generate", "POST", body=image_body)
-                self.assertEqual(image_denied.exception.code, 401)
+                expected_auth_status = 401 if self.server.API_TOKEN else 503
+                self.assertEqual(image_denied.exception.code, expected_auth_status)
                 image_provider.assert_not_called()
 
             _, first = call("/api/auth/register", "POST", body={
