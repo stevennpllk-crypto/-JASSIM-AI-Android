@@ -185,7 +185,3 @@ def answer_with_provider(messages, allow_external=False):
 def external_chat_enabled():
     return ALLOW_EXTERNAL_CHAT and ENABLE_PUBLIC_PROVIDERS
 
-
-def npc_chat_enabled():
-    """NPC dialogue may use configured public providers without enabling external routing for ordinary chats."""
-    return ENABLE_PUBLIC_PROVIDERS and bool(_configured_providers())
