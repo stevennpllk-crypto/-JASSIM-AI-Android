@@ -293,6 +293,7 @@ class ServerSmokeTest(unittest.TestCase):
             FakeOllamaHandler.offline = False
             FakeOllamaHandler.last_chat_payload = None
             env["JASSIM_API_TOKEN"] = "smoke-test-token"
+            env["JASSIM_RATE_LIMIT_PER_MINUTE"] = "200"
             env["JASSIM_ENABLE_PUBLIC_PROVIDERS"] = "false"
             fake_ollama = HTTPServer(("127.0.0.1", 0), FakeOllamaHandler)
             fake_thread = threading.Thread(target=fake_ollama.serve_forever, daemon=True)
