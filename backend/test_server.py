@@ -74,7 +74,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(notebook.get("nbformat"), 4)
         code_cells = [cell for cell in notebook.get("cells", []) if cell.get("cell_type") == "code"]
         self.assertGreaterEqual(len(code_cells), 8)
-        all_source = "\\n".join("".join(cell.get("source", [])) for cell in code_cells)
+        all_source = "\n".join("".join(cell.get("source", [])) for cell in code_cells)
         self.assertNotIn("print(API_TOKEN)", all_source)
         for index, cell in enumerate(code_cells):
             source = "".join(cell.get("source", []))
