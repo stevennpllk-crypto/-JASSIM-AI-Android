@@ -23,6 +23,9 @@ class PostgresConnection:
     def commit(self):
         self.connection.commit()
 
+    def rollback(self):
+        self.connection.rollback()
+
     def close(self):
         self.connection.close()
 
@@ -187,6 +190,25 @@ def _migrate_sqlite_once(target):
             tables = {row[0] for row in source.execute(
                 "SELECT name FROM sqlite_master WHERE type='table'"
             ).fetchall()}
+            # Preserve account identities and ownership before importing their data.
+            if "users" in tables:
+                for row in source.execute(
+                    "SELECT id,email_normalized,password_hash,role,created_at FROM users"
+                ):
+                    target.execute(
+                        """INSERT INTO users(id,email_normalized,password_hash,role,created_at)
+                           VALUES(?,?,?,?,?) ON CONFLICT(id) DO NOTHING""",
+                        tuple(row)
+                    )
+            if "conversations" in tables:
+                for row in source.execute(
+                    "SELECT conversation_id,user_id,created_at,updated_at FROM conversations"
+                ):
+                    target.execute(
+                        """INSERT INTO conversations(conversation_id,user_id,created_at,updated_at)
+                           VALUES(?,?,?,?) ON CONFLICT(conversation_id) DO NOTHING""",
+                        tuple(row)
+                    )
             if "messages" in tables:
                 for row in source.execute(
                     "SELECT id,conversation_id,role,content,created_at FROM messages ORDER BY id"
@@ -204,6 +226,15 @@ def _migrate_sqlite_once(target):
                         """INSERT INTO memories(conversation_id,content,updated_at) VALUES(?,?,?)
                            ON CONFLICT(conversation_id) DO UPDATE SET
                            content=EXCLUDED.content,updated_at=EXCLUDED.updated_at""",
+                        tuple(row)
+                    )
+            if "sessions" in tables:
+                for row in source.execute(
+                    "SELECT token_hash,user_id,created_at,expires_at,revoked_at FROM sessions"
+                ):
+                    target.execute(
+                        """INSERT INTO sessions(token_hash,user_id,created_at,expires_at,revoked_at)
+                           VALUES(?,?,?,?,?) ON CONFLICT(token_hash) DO NOTHING""",
                         tuple(row)
                     )
             if "provider_scores" in tables:
