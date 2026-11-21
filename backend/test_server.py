@@ -356,6 +356,57 @@ class ServerSmokeTest(unittest.TestCase):
                 with self.assertRaises(Exception):
                     urlopen(Request(api_base + "/api/conversations"), timeout=5)
                 headers = {"Authorization": "Bearer smoke-test-token"}
+                account_memory_payload = json.dumps({"content": "أفضل أن تكون الإجابات باللغة العربية"}).encode()
+                account_memory_post = Request(
+                    api_base + "/api/memories", data=account_memory_payload,
+                    headers={"Content-Type": "application/json", **headers})
+                with urlopen(account_memory_post, timeout=5) as response:
+                    account_memory = json.loads(response.read())["memory"]
+                account_memory_get = Request(api_base + "/api/memories", headers=headers)
+                with urlopen(account_memory_get, timeout=5) as response:
+                    self.assertEqual(json.loads(response.read())["memories"][0]["content"],
+                                     "أفضل أن تكون الإجابات باللغة العربية")
+                second_user_payload = json.dumps({
+                    "email": "second-user@example.com", "password": "StrongPassword123!"
+                }).encode()
+                second_user_register = Request(
+                    api_base + "/api/auth/register", data=second_user_payload,
+                    headers={"Content-Type": "application/json"})
+                with urlopen(second_user_register, timeout=5) as response:
+                    second_user_token = json.loads(response.read())["token"]
+                second_user_headers = {"Authorization": "Bearer " + second_user_token}
+                second_user_memories = Request(api_base + "/api/memories", headers=second_user_headers)
+                with urlopen(second_user_memories, timeout=5) as response:
+                    self.assertEqual(json.loads(response.read())["memories"], [])
+                foreign_delete = Request(
+                    api_base + "/api/memories?memory_id=" + account_memory["id"],
+                    headers=second_user_headers, method="DELETE")
+                with self.assertRaises(HTTPError) as foreign_delete_error:
+                    urlopen(foreign_delete, timeout=5)
+                self.assertEqual(foreign_delete_error.exception.code, 404)
+                context_payload = json.dumps({
+                    "message": "hello memory context", "conversation_id": "account-memory-context"
+                }).encode()
+                context_request = Request(
+                    api_base + "/api/chat", data=context_payload,
+                    headers={"Content-Type": "application/json", **headers})
+                with urlopen(context_request, timeout=10):
+                    pass
+                memory_context_messages = FakeOllamaHandler.last_chat_payload["messages"]
+                self.assertTrue(any(
+                    item.get("role") == "user" and "أفضل أن تكون الإجابات باللغة العربية" in item.get("content", "")
+                    for item in memory_context_messages
+                ))
+                delete_context_chat = Request(
+                    api_base + "/api/conversations?conversation_id=account-memory-context",
+                    headers=headers, method="DELETE")
+                with urlopen(delete_context_chat, timeout=5):
+                    pass
+                own_delete_memory = Request(
+                    api_base + "/api/memories?memory_id=" + account_memory["id"],
+                    headers=headers, method="DELETE")
+                with urlopen(own_delete_memory, timeout=5):
+                    pass
                 memory_payload = json.dumps({
                     "message": "تذكر أن أفضل الإجابات المختصرة",
                     "conversation_id": "memory-chat"
