@@ -601,8 +601,10 @@ class Handler(BaseHTTPRequestHandler):
             model_state = ollama_status()
             external_ready = adaptive.external_chat_enabled()
             npc_provider_ready = adaptive.npc_chat_enabled()
+            # Readiness represents the ordinary chat path. NPC-only provider
+            # availability must not mask an unavailable private chat engine.
             ready = bool(
-                (model_state["reachable"] and model_state["model_ready"]) or external_ready or npc_provider_ready
+                (model_state["reachable"] and model_state["model_ready"]) or external_ready
             )
             if parsed.path == "/ready":
                 self.send_json(200 if ready else 503, {
