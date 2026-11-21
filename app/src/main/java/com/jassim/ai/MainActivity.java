@@ -397,7 +397,8 @@ public class MainActivity extends Activity {
     }
 
     private TextView addMessage(String who, String text) {
-        boolean isUser = "أنت".equals(who);        TextView bubble = new TextView(this);
+        boolean isUser = "أنت".equals(who);
+        TextView bubble = new TextView(this);
         bubble.setText(who + "\n" + text);
         bubble.setTextColor(0xFFF1F4FF);
         bubble.setTextSize(14);
@@ -410,7 +411,7 @@ public class MainActivity extends Activity {
         bubble.setOnLongClickListener(v -> {
             // Read the live bubble text: assistant responses are updated while streaming.
             String currentText = bubble.getText().toString();
-            int headerEnd = currentText.indexOf('\\n');
+            int headerEnd = currentText.indexOf('\n');
             String currentMessage = headerEnd >= 0
                 ? currentText.substring(headerEnd + 1) : currentText;
             if (isUser) {
