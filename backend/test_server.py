@@ -176,6 +176,35 @@ class ServerSmokeTest(unittest.TestCase):
                 else:
                     os.environ["JASSIM_DATA_DIR"] = previous_data_dir
 
+    def test_account_memory_limit_is_enforced_per_user(self):
+        import importlib.util
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_account_memory_limit_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                for index in range(100):
+                    saved = module.save_account_memory("limit-user", "memory-" + str(index))
+                    self.assertTrue(saved["id"])
+                self.assertEqual(len(module.list_account_memories("limit-user", 100)), 100)
+                with self.assertRaisesRegex(ValueError, "memory_limit_reached"):
+                    module.save_account_memory("limit-user", "one-too-many")
+                # The cap belongs to each account, not to the whole service.
+                other = module.save_account_memory("different-user", "first memory")
+                self.assertEqual(other["content"], "first memory")
+                with self.assertRaises(ValueError):
+                    module.save_account_memory("limit-user", "x" * 1001)
+                with self.assertRaises(ValueError):
+                    module.save_account_memory("limit-user", "   ")
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+
     def test_inference_queue_rejects_overload_cleanly(self):
         import importlib.util
         spec = importlib.util.spec_from_file_location("jassim_queue_test", Path(__file__).with_name("server.py"))
