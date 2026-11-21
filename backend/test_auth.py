@@ -143,6 +143,20 @@ class MultiUserAuthTest(unittest.TestCase):
             self.assertEqual(call("/api/auth/me", token=first_token)[1]["user"]["email"],
                              "http-first@example.com")
 
+            # A normal account cannot self-select the NPC exception to ordinary
+            # external-chat policy by forging the request context field.
+            with patch.object(
+                self.server, "generate_answer",
+                return_value=("private local test answer", "ollama")
+            ) as generate:
+                _, npc_context_result = call("/api/chat", "POST", first_token, {
+                    "conversation_id": "http-npc-context",
+                    "message": "اختبار خصوصية",
+                    "context": "game_npc"
+                })
+                self.assertEqual(npc_context_result["engine"], "ollama")
+                self.assertFalse(generate.call_args.kwargs["allow_external"])
+
             _, saved = call("/api/chat", "POST", first_token, {
                 "conversation_id": "http-private-first",
                 "message": "تذكر أن هذه معلومة خاصة بالحساب الأول"
