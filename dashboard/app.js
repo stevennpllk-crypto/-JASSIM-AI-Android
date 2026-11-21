@@ -42,9 +42,13 @@
     state.token="";sessionStorage.removeItem("jassim_token");toast("تم تسجيل الخروج");openSettings();
   });
   function downloadTextFile(name,type,content){
-    const mime={txt:"text/plain;charset=utf-8",md:"text/markdown;charset=utf-8",json:"application/json;charset=utf-8",csv:"text/csv;charset=utf-8",html:"text/html;charset=utf-8",js:"text/javascript;charset=utf-8",py:"text/x-python;charset=utf-8",xml:"application/xml;charset=utf-8"}[type]||"text/plain;charset=utf-8";
+    const mimeTypes={txt:"text/plain;charset=utf-8",md:"text/markdown;charset=utf-8",json:"application/json;charset=utf-8",csv:"text/csv;charset=utf-8",html:"text/html;charset=utf-8",js:"text/javascript;charset=utf-8",py:"text/x-python;charset=utf-8",xml:"application/xml;charset=utf-8"};
+    if(!Object.prototype.hasOwnProperty.call(mimeTypes,type))throw new Error("نوع الملف غير مدعوم");
+    if(typeof content!=="string")throw new Error("محتوى الملف غير صالح");
+    if(content.length>100000)throw new Error("تجاوز الملف الحد الأقصى البالغ 100 ألف حرف");
     const safe=(name||"jassim-file").trim().replace(/[\\/:*?"<>|\x00-\x1f]/g,"-").replace(/\s+/g,"-").slice(0,80)||"jassim-file";
-    const blob=new Blob(["\ufeff",content],{type:mime});const url=URL.createObjectURL(blob);const link=document.createElement("a");link.href=url;link.download=safe+"."+type;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);return safe+"."+type;
+    const filename=safe+"."+type;
+    const blob=new Blob(["\ufeff",content],{type:mimeTypes[type]});const url=URL.createObjectURL(blob);const link=document.createElement("a");link.href=url;link.download=filename;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);return filename;
   }
   $("fileContent").addEventListener("input",()=>$("fileMeta").textContent=$("fileContent").value.length.toLocaleString("ar-TN")+" حرف · الملفات تُنشأ محلياً على جهازك");
   $("exportFile").addEventListener("click",()=>{const name=$("fileName").value,type=$("fileType").value,content=$("fileContent").value;if(!content.trim()){toast("أدخل محتوى الملف أولاً");return}if(content.length>100000){toast("تجاوز الملف الحد الأقصى المسموح");return}try{const filename=downloadTextFile(name,type,content);const item=document.createElement("div");item.className="file-item";const label=document.createElement("span");label.textContent=filename+" · "+content.length.toLocaleString("ar-TN")+" حرف";const status=document.createElement("small");status.textContent="تم تنزيله";item.append(label,status);$("fileResult").prepend(item);toast("تم إنشاء "+filename+" وتنزيله")}catch(error){toast("تعذر إنشاء الملف: "+error.message)}});
