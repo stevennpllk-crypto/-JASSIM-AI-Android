@@ -15,6 +15,7 @@
     <button class="nav active" data-view="overview"><i>◈</i> نظرة عامة</button>
     <button class="nav" data-view="chat"><i>✳</i> مركز المحادثة</button>
     <button class="nav" data-view="memory"><i>▤</i> الذاكرة والسجل</button>
+    <button class="nav" data-view="files"><i>▧</i> الملفات والتصدير</button>
     <button class="nav" data-view="images"><i>✧</i> استوديو الصور</button>
     <button class="nav" data-view="systems"><i>⌘</i> الخادم والمحركات</button>
     <div class="side-bottom"><span class="live-dot"></span><span id="sideStatus">بانتظار ربط الخادم</span><small>الإصدار 0.1 · لوحة تجريبية</small></div>
@@ -28,6 +29,18 @@
       <div class="bottom-grid"><article class="panel"><div class="panel-head"><div><h3>ابدأ من هنا</h3><p>خطوات إعداد المنصة</p></div><span class="panel-symbol">✦</span></div><div class="steps"><div><b>01</b><span><strong>اربط خادم API</strong><small>أدخل عنوان الخادم الذي تملكه.</small></span><span class="step-state" id="step1">●</span></div><div><b>02</b><span><strong>تحقق من محرك الذكاء</strong><small>تأكد أن نموذج اللغة يعمل فعلياً.</small></span><span class="step-state">○</span></div><div><b>03</b><span><strong>اربط تطبيق Android</strong><small>استخدم نفس عنوان API في التطبيق.</small></span><span class="step-state">○</span></div></div></article><article class="panel notice"><div class="panel-head"><div><h3>ملاحظة تشغيل</h3><p>شفافية حالة النظام</p></div><span class="panel-symbol">ⓘ</span></div><p>هذه الواجهة لا تدّعي أن الخادم أو النموذج يعملان قبل التحقق منهما. حالة المحرك تُقرأ من ردود API، أما موارد CPU وRAM فتحتاج نقطة مراقبة مخصصة.</p><div class="notice-foot">خصوصيتك أولاً · لا تضع مفاتيح سرية في رابط عام.</div></article></div>
     </section>
     <section class="view" id="chat"><div class="chat-layout"><div class="panel chat-panel"><div class="panel-head"><div><h3>محادثة JASSIM</h3><p>تُرسل الرسائل إلى خادمك المرتبط</p></div><button class="text-btn" id="clearChat">محادثة جديدة</button></div><div class="chat-messages" id="messages"><div class="welcome"><div class="welcome-icon">✳</div><b>أهلاً، أنا JASSIM AI</b><p>اربط الخادم من الإعدادات ثم ابدأ المحادثة.</p></div></div><form id="chatForm" class="composer"><textarea id="chatInput" rows="1" placeholder="اكتب رسالتك هنا..." maxlength="8000"></textarea><button class="send-btn" type="submit">إرسال ↑</button></form></div><aside class="panel chat-info"><h3>معلومات الجلسة</h3><p>المحادثة الحالية</p><code id="conversationId">default</code><hr><p>حالة الاتصال</p><strong id="chatConnection">غير متصل</strong><p class="hint">يتم حفظ السجل على الخادم إذا كانت واجهة API تدعم ذلك.</p></aside></div></section>
+    <section class="view" id="files">
+      <div class="panel file-studio">
+        <div class="panel-head"><div><h3>إنشاء الملفات وتصديرها</h3><p>أنشئ ملفاً نصياً أو برمجياً ثم نزّله مباشرة إلى جهازك.</p></div><span class="panel-symbol">▧</span></div>
+        <label for="fileName">اسم الملف</label><input id="fileName" type="text" maxlength="80" value="jassim-document" placeholder="اسم الملف">
+        <label for="fileType">نوع الملف</label>
+        <select id="fileType"><option value="txt">نص عادي (.txt)</option><option value="md">Markdown (.md)</option><option value="json">JSON (.json)</option><option value="csv">CSV (.csv)</option><option value="html">HTML (.html)</option><option value="js">JavaScript (.js)</option><option value="py">Python (.py)</option><option value="xml">XML (.xml)</option></select>
+        <label for="fileContent">محتوى الملف</label><textarea id="fileContent" rows="12" maxlength="100000" placeholder="اكتب المحتوى هنا أو الصق النص الذي أنشأه JASSIM AI..."></textarea>
+        <div class="file-actions"><span id="fileMeta">0 حرف · الملفات تُنشأ محلياً على جهازك</span><button class="primary" id="exportFile">إنشاء وتنزيل الملف ↓</button></div>
+        <p class="image-note">الملفات لا تُرفع إلى الخادم ولا تُحفظ في حسابك؛ التنزيل يتم مباشرة من المتصفح. الحد الأقصى 100 ألف حرف للملف الواحد.</p>
+        <div id="fileResult" class="file-result" aria-live="polite"></div>
+      </div>
+    </section>
     <section class="view" id="images">
       <div class="panel image-studio">
         <div class="panel-head"><div><h3>استوديو الصور الذكي</h3><p>حوّل وصفك إلى صورة باستخدام نموذج توليد صور خارجي.</p></div><span class="panel-symbol">✧</span></div>
