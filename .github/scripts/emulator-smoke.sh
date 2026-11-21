@@ -72,4 +72,11 @@ adb -s "$SERIAL" shell uiautomator dump /sdcard/jassim-window.xml >/dev/null 2>&
 ui_hierarchy="$(adb -s "$SERIAL" shell cat /sdcard/jassim-window.xml 2>/dev/null || true)"
 printf '%s' "$ui_hierarchy" | grep -Fq 'إدارة ذاكرة حسابك' || fail "Account memory button is missing from the Android UI"
 
+# Guard against exporting the placeholder captured before the assistant response streamed.
+MAIN_ACTIVITY="$GITHUB_WORKSPACE/app/src/main/java/com/jassim/ai/MainActivity.java"
+grep -Fq 'String currentText = bubble.getText().toString();' "$MAIN_ACTIVITY" || fail "Assistant long-press handler does not read the live bubble text"
+grep -Fq 'saveAssistantMessageAsFile(currentMessage);' "$MAIN_ACTIVITY" || fail "Assistant TXT export is not wired to the live response"
+grep -Fq 'content.getBytes(StandardCharsets.UTF_8)' "$MAIN_ACTIVITY" || fail "TXT export is not encoded as UTF-8"
+echo "TXT_EXPORT_REGRESSION_GUARD_OK: live response text is used and UTF-8 export is wired"
+
 echo "ANDROID_EMULATOR_SMOKE_OK: APK installed, MainActivity foregrounded, process alive ($process), and account-memory control is visible"
