@@ -140,6 +140,11 @@
     $("messages").innerHTML="";addBubble("بدأت محادثة جديدة. اكتب رسالتك للمتابعة.","ai");showView("chat");
   });
   loadConversationList();
+  if(state.token){
+    request("/api/history?conversation_id="+encodeURIComponent(state.conversation)).then(data=>{
+      if(Array.isArray(data.messages)&&data.messages.length)renderConversation(data.messages);
+    }).catch(()=>{});
+  }
   $("serverUrlText").textContent=state.endpoint||"لم يتم الإعداد";checkHealth();
   if(!state.token)openSettings();
 })();
