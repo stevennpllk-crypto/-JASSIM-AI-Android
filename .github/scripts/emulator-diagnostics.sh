@@ -36,7 +36,11 @@ mkdir -p "$(dirname "$OUT")"
   done
   echo
   echo "=== Device boot property (best effort) ==="
-  [[ -n "$ADB" ]] && "$ADB" -s emulator-5554 shell getprop sys.boot_completed 2>&1 || true
+  if [[ -n "$ADB" ]] && "$ADB" -s emulator-5554 get-state >/dev/null 2>&1; then
+    "$ADB" -s emulator-5554 shell getprop sys.boot_completed 2>&1 || true
+  else
+    echo "Emulator is no longer connected (it may have been shut down after the smoke test); skipping boot-property probe."
+  fi
 } 2>&1 | tee "$OUT"
 
 echo "Diagnostics saved to: $OUT"
