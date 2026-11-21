@@ -8,7 +8,7 @@
   async function request(path,options={}){if(!state.endpoint)throw new Error("أدخل عنوان الخادم أولاً");const url=state.endpoint.replace(/\/$/,"")+path;const response=await fetch(url,{...options,headers:{"Content-Type":"application/json",...(state.token?{"Authorization":"Bearer "+state.token}:{}),...(options.headers||{})}});if(!response.ok)throw new Error("HTTP "+response.status);return response.json()}
   async function checkHealth(){if(!state.endpoint){setStatus(false,"لم يتم إعداد الخادم");$("engineStat").textContent="غير معروف";$("storageStat").textContent="—";return}try{const h=await request("/health");state.health=h;setStatus(!!h.ok,h.ok?"الخادم متصل":"الخادم غير جاهز");if($("imageStatus"))$("imageStatus").textContent=h.image_generation_ready?"توليد الصور جاهز · "+(h.image_model||"FLUX"):"الخادم متصل، لكن توليد الصور ينتظر ضبط JASSIM_HF_TOKEN في Railway.";$("engineStat").textContent=h.model||h.engine||"غير معروف";$("engineDetail").textContent=h.model_ready?"النموذج جاهز للطلبات":(h.ollama_reachable?"Ollama متصل لكن النموذج غير محمّل":"محرك Ollama غير متاح");$("storageStat").textContent=h.storage||"غير معروف";$("checkedStat").textContent=new Date().toLocaleTimeString("ar-TN");$("systemEngine").textContent=h.engine||"غير معروف";$("systemStorage").textContent=h.storage||"غير معروف";$("serverUrlText").textContent=state.endpoint}catch(e){setStatus(false,"تعذر الاتصال");$("apiDetail").textContent=e.message;toast("فشل فحص الخادم: "+e.message)}}
   function addBubble(text,who){const box=document.createElement("div");box.className="bubble "+who;box.textContent=text; $("messages").appendChild(box); $("messages").scrollTop=$("messages").scrollHeight;return box}
-  function showView(id){document.querySelectorAll(".view").forEach(x=>x.classList.toggle("active",x.id===id));document.querySelectorAll(".nav").forEach(x=>x.classList.toggle("active",x.dataset.view===id));const names={overview:"نظرة عامة",chat:"مركز المحادثة",memory:"الذاكرة والسجل",images:"استوديو الصور",systems:"الخادم والمحركات"};$("pageTitle").textContent=names[id]||"JASSIM AI"}
+  function showView(id){document.querySelectorAll(".view").forEach(x=>x.classList.toggle("active",x.id===id));document.querySelectorAll(".nav").forEach(x=>x.classList.toggle("active",x.dataset.view===id));const names={overview:"نظرة عامة",chat:"مركز المحادثة",memory:"الذاكرة والسجل",files:"الملفات والتصدير",images:"استوديو الصور",systems:"الخادم والمحركات"};$("pageTitle").textContent=names[id]||"JASSIM AI"}
   document.querySelectorAll(".nav").forEach(b=>b.addEventListener("click",()=>showView(b.dataset.view)));
   document.querySelectorAll("[data-open]").forEach(b=>b.addEventListener("click",()=>showView(b.dataset.open)));
   $("settingsBtn").addEventListener("click",openSettings);$("heroConnect").addEventListener("click",openSettings);$("systemSettings").addEventListener("click",openSettings);$("refreshBtn").addEventListener("click",checkHealth);
@@ -41,6 +41,14 @@
     }
     state.token="";sessionStorage.removeItem("jassim_token");toast("تم تسجيل الخروج");openSettings();
   });
+  function downloadTextFile(name,type,content){
+    const mime={txt:"text/plain;charset=utf-8",md:"text/markdown;charset=utf-8",json:"application/json;charset=utf-8",csv:"text/csv;charset=utf-8",html:"text/html;charset=utf-8",js:"text/javascript;charset=utf-8",py:"text/x-python;charset=utf-8",xml:"application/xml;charset=utf-8"}[type]||"text/plain;charset=utf-8";
+    const safe=(name||"jassim-file").trim().replace(/[\\/:*?"<>|\x00-\x1f]/g,"-").replace(/\s+/g,"-").slice(0,80)||"jassim-file";
+    const blob=new Blob(["\ufeff",content],{type:mime});const url=URL.createObjectURL(blob);const link=document.createElement("a");link.href=url;link.download=safe+"."+type;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);return safe+"."+type;
+  }
+  $("fileContent").addEventListener("input",()=>$("fileMeta").textContent=$("fileContent").value.length.toLocaleString("ar-TN")+" حرف · الملفات تُنشأ محلياً على جهازك");
+  $("exportFile").addEventListener("click",()=>{const name=$("fileName").value,type=$("fileType").value,content=$("fileContent").value;if(!content.trim()){toast("أدخل محتوى الملف أولاً");return}if(content.length>100000){toast("تجاوز الملف الحد الأقصى المسموح");return}try{const filename=downloadTextFile(name,type,content);const item=document.createElement("div");item.className="file-item";const label=document.createElement("span");label.textContent=filename+" · "+content.length.toLocaleString("ar-TN")+" حرف";const status=document.createElement("small");status.textContent="تم تنزيله";item.append(label,status);$("fileResult").prepend(item);toast("تم إنشاء "+filename+" وتنزيله")}catch(error){toast("تعذر إنشاء الملف: "+error.message)}});
+  function attachAnswerExport(bubble){if(!bubble||!bubble.textContent.trim()||bubble.querySelector(".answer-export"))return;const content=bubble.textContent;const button=document.createElement("button");button.type="button";button.className="answer-export";button.textContent="تصدير الرد كملف TXT ↓";button.addEventListener("click",()=>{downloadTextFile("jassim-ai-answer","txt",content);toast("تم تنزيل رد JASSIM كملف نصي")});bubble.appendChild(button)}
   $("chatForm").addEventListener("submit",async e=>{
     e.preventDefault();
     if(state.activeController){state.activeController.abort();return}
@@ -76,7 +84,7 @@
     }catch(err){
       if(err.name==="AbortError")answerBubble.textContent=received?answerBubble.textContent+"\n\n[تم إيقاف التوليد]":"تم إيقاف التوليد.";
       else answerBubble.textContent=(received?answerBubble.textContent+"\n\n":"")+"تعذر إكمال الرد: "+err.message;
-    }finally{state.activeController=null;btn.textContent="إرسال ↑";btn.classList.remove("stop-active");btn.disabled=false}
+    }finally{if(answerBubble.textContent.trim())attachAnswerExport(answerBubble);state.activeController=null;btn.textContent="إرسال ↑";btn.classList.remove("stop-active");btn.disabled=false}
   });
   $("clearChat").addEventListener("click",()=>{state.conversation="web-"+Math.random().toString(36).slice(2,10);$("conversationId").textContent=state.conversation;$("messages").innerHTML="";const w=document.createElement("div");w.className="welcome";w.innerHTML="<div class='welcome-icon'>✳</div><b>بدأت محادثة جديدة</b><p>اكتب رسالتك للمتابعة.</p>";$("messages").appendChild(w)});
   $("generateImage").addEventListener("click",async()=>{
