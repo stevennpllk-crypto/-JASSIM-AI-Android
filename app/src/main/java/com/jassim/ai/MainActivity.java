@@ -266,6 +266,10 @@ public class MainActivity extends Activity {
         header.addView(accountButton, new LinearLayout.LayoutParams(-2, dp(38)));
         Button historyButton = actionButton("السجل", "سجل المحادثات", () -> showConversations());
         header.addView(historyButton, new LinearLayout.LayoutParams(-2, dp(38)));
+        Button memoryButton = actionButton("ذاكرة", "إدارة ذاكرة حسابك", () -> showAccountMemories());
+        LinearLayout.LayoutParams memoryLp = new LinearLayout.LayoutParams(-2, dp(38));
+        memoryLp.setMargins(dp(5), 0, 0, 0);
+        header.addView(memoryButton, memoryLp);
         Button newChat = actionButton("+", "محادثة جديدة", () -> newConversation());
         LinearLayout.LayoutParams newLp = new LinearLayout.LayoutParams(dp(40), dp(38));
         newLp.setMargins(dp(5), 0, 0, 0);
@@ -530,6 +534,148 @@ public class MainActivity extends Activity {
         });
     }
 
+
+    private void showAccountMemories() {
+        if (readApiToken().trim().isEmpty()) {
+            Toast.makeText(this, "سجّل الدخول أولاً لإدارة ذاكرة حسابك", Toast.LENGTH_LONG).show();
+            accountDialog();
+            return;
+        }
+        status.setText("● جارٍ تحميل ذاكرة حسابك...");
+        executor.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                connection = openConnection("/api/memories?limit=100", "GET");
+                JSONObject response = readJsonResponse(connection);
+                JSONArray items = response.optJSONArray("memories");
+                if (items == null) items = new JSONArray();
+                final JSONArray memories = items;
+                String[] labels = new String[memories.length()];
+                String[] ids = new String[memories.length()];
+                for (int i = 0; i < memories.length(); i++) {
+                    JSONObject item = memories.optJSONObject(i);
+                    if (item == null) item = new JSONObject();
+                    ids[i] = item.optString("id", "");
+                    String content = item.optString("content", "معلومة محفوظة");
+                    labels[i] = content.length() > 72 ? content.substring(0, 69) + "..." : content;
+                }
+                runOnUiThread(() -> {
+                    status.setText("● تم تحميل ذاكرة الحساب");
+                    status.setTextColor(0xFF62DCA8);
+                    AlertDialog dialog = new AlertDialog.Builder(this)
+                        .setTitle("ذاكرة حسابك (" + memories.length() + "/100)")
+                        .setItems(labels, (listDialog, which) -> {
+                            String selectedId = ids[which];
+                            if (selectedId == null || selectedId.isEmpty()) return;
+                            new AlertDialog.Builder(this)
+                                .setTitle("حذف المعلومة؟")
+                                .setMessage(labels[which] + "\n\nسيتم حذفها من ذاكرة حسابك.")
+                                .setNegativeButton("إلغاء", null)
+                                .setPositiveButton("حذف", (confirm, choice) -> deleteAccountMemory(selectedId))
+                                .show();
+                        })
+                        .setPositiveButton("إضافة معلومة", (d, which) -> promptSaveAccountMemory())
+                        .setNeutralButton("تحديث", (d, which) -> showAccountMemories())
+                        .setNegativeButton("إغلاق", null)
+                        .create();
+                    if (memories.length() == 0) {
+                        dialog.setMessage("لا توجد معلومات محفوظة بعد. أضف معلومة تريد من JASSIM تذكّرها في محادثاتك القادمة.");
+                    }
+                    dialog.show();
+                });
+            } catch (Exception e) {
+                String error = e.getMessage() == null ? "تعذر تحميل الذاكرة" : e.getMessage();
+                runOnUiThread(() -> {
+                    status.setText("● تعذر تحميل ذاكرة الحساب");
+                    status.setTextColor(0xFFFF7777);
+                    Toast.makeText(this, error, Toast.LENGTH_LONG).show();
+                });
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        });
+    }
+
+    private void promptSaveAccountMemory() {
+        EditText field = new EditText(this);
+        field.setHint("مثال: أفضل الشرح باللغة العربية وبخطوات واضحة");
+        field.setMinLines(2);
+        field.setMaxLines(4);
+        field.setGravity(Gravity.TOP | Gravity.RIGHT);
+        field.setTextDirection(View.TEXT_DIRECTION_RTL);
+        field.setFilters(new android.text.InputFilter[] {
+            new android.text.InputFilter.LengthFilter(1000)
+        });
+        int padding = dp(18);
+        LinearLayout wrapper = new LinearLayout(this);
+        wrapper.setPadding(padding, dp(8), padding, 0);
+        wrapper.addView(field, new LinearLayout.LayoutParams(-1, -2));
+        new AlertDialog.Builder(this)
+            .setTitle("إضافة إلى ذاكرة الحساب")
+            .setMessage("احفظ فقط المعلومات التي تريد تذكّرها. لا تضف كلمات مرور أو بيانات حساسة.")
+            .setView(wrapper)
+            .setNegativeButton("إلغاء", null)
+            .setPositiveButton("حفظ", (dialog, which) -> saveAccountMemory(field.getText().toString()))
+            .show();
+    }
+
+    private void saveAccountMemory(String content) {
+        final String value = content == null ? "" : content.trim();
+        if (value.isEmpty()) {
+            Toast.makeText(this, "اكتب معلومة أولاً", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (value.length() > 1000) {
+            Toast.makeText(this, "الحد الأقصى 1000 حرف", Toast.LENGTH_LONG).show();
+            return;
+        }
+        executor.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                connection = openConnection("/api/memories", "POST");
+                connection.setDoOutput(true);
+                connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                JSONObject payload = new JSONObject();
+                payload.put("content", value);
+                try (OutputStream output = connection.getOutputStream()) {
+                    output.write(payload.toString().getBytes(StandardCharsets.UTF_8));
+                }
+                readJsonResponse(connection);
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "تم حفظ المعلومة في ذاكرة حسابك", Toast.LENGTH_SHORT).show();
+                    showAccountMemories();
+                });
+            } catch (Exception e) {
+                String error = e.getMessage() == null ? "تعذر حفظ المعلومة" : e.getMessage();
+                runOnUiThread(() -> Toast.makeText(this, error, Toast.LENGTH_LONG).show());
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        });
+    }
+
+    private void deleteAccountMemory(String memoryId) {
+        executor.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                String encodedId = java.net.URLEncoder.encode(memoryId, "UTF-8");
+                connection = openConnection("/api/memories?memory_id=" + encodedId, "DELETE");
+                JSONObject result = readJsonResponse(connection);
+                if (!result.optBoolean("deleted", false)) {
+                    throw new IOException("لم يؤكد الخادم حذف المعلومة");
+                }
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "تم حذف المعلومة", Toast.LENGTH_SHORT).show();
+                    showAccountMemories();
+                });
+            } catch (Exception e) {
+                String error = e.getMessage() == null ? "تعذر حذف المعلومة" : e.getMessage();
+                runOnUiThread(() -> Toast.makeText(this, error, Toast.LENGTH_LONG).show());
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        });
+    }
 
     private void showConversations() {
         if (baseUrl().isEmpty()) {
