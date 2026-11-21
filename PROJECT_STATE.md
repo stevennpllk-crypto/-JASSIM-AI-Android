@@ -7,9 +7,10 @@ Purpose: durable handoff between ChatGPT conversations. This file records verifi
 - Repository: https://github.com/stevennpllk-crypto/-JASSIM-AI-Android
 - Default branch: main
 - Product: Arabic-first Android assistant + self-hosted Python API + SQLite + Arabic RTL dashboard.
-- Current verified main commit: `e676868d4d584148ef87493f0c6d439f7eab48c0`
-- Commit date: 2026-11-15 14:53:01 UTC
-- Commit message: "Keep offline readiness tests isolated from optional free providers"
+- Current verified main commit: `fc7d071f10c355c0b4309dec25cca990d3163c25`
+- Commit date: 2026-11-21 21:47:53 UTC
+- Commit message: `docs: add durable JASSIM AI project handoff state` (documentation-only; added this file)
+- Latest verified application-code baseline remains `e676868d4d584148ef87493f0c6d439f7eab48c0`.
 
 ## Verified repository architecture (README.md and ROADMAP.md)
 - Android client: `app/` (Java); HTTPS-only remote endpoint; API token stored with Android Keystore AES-GCM.
@@ -28,6 +29,12 @@ Purpose: durable handoff between ChatGPT conversations. This file records verifi
 - No paid hosting, paid model tier, production deployment, or spending without the user's explicit approval.
 - Do not claim an APK/device test, deployment, or feature is complete without verifiable evidence.
 
+## Current privacy-hardening work (unmerged)
+- Pull request #19: https://github.com/stevennpllk-crypto/-JASSIM-AI-Android/pull/19
+- Branch: `fix/opt-in-public-providers`; head currently contains changes removing the anonymous JarvisClaw CI probe, changing `JASSIM_ENABLE_PUBLIC_PROVIDERS` default to `false`, and adding opt-in regression coverage.
+- The PR is open and must not be merged without review/approval.
+- The available Actions lookup returned no PR-triggered workflow runs for the current head, and its combined commit status was empty. CI therefore remains unverified; inspect the PR Checks tab before claiming test success.
+
 ## Latest known CI / build history (historical; re-check before relying on it)
 - Earlier report: run #499 passed 20 backend tests, notebook validation, server health, APK compilation/package verification and artifact upload. Android unit tests/device runtime were not established by that report.
 - Earlier report: run #500 compiled an APK but emulator startup failed after a 600-second wait (adb exit 224 / broken pipe); no artifact was reported.
@@ -35,8 +42,8 @@ Purpose: durable handoff between ChatGPT conversations. This file records verifi
 - These run numbers/statuses are historical notes, not a statement of current GitHub Actions status. Check the latest Actions run and its artifacts before reporting current build status.
 
 ## Current verified workflow concern to audit
-- The current `.github/workflows/android.yml` includes a "Probe anonymous JarvisClaw fallback" step using a fixed synthetic prompt. It is marked `continue-on-error: true`, so it is not required for a successful workflow.
-- Confirm that this synthetic probe is still wanted and does not route any real user content. Keep ordinary JASSIM chats on the self-hosted server unless the operator explicitly enables an external provider.
+- On `main` at `fc7d071`, `.github/workflows/android.yml` still includes an optional anonymous JarvisClaw synthetic prompt probe. PR #19 removes it.
+- On `main`, `JASSIM_ENABLE_PUBLIC_PROVIDERS` defaults to `true`, while ordinary chat is separately gated by `JASSIM_ALLOW_EXTERNAL_CHAT=false`. PR #19 changes the public-provider master switch to default `false`, so NPC routing/evaluation also require explicit server-side opt-in.
 - The current workflow also checks the Railway `/health` URL. A healthy API process does not prove model readiness or successful inference; verify `/ready` and an authenticated synthetic chat separately when authorized and safe.
 
 ## Roadmap priorities from ROADMAP.md
@@ -49,13 +56,12 @@ Purpose: durable handoff between ChatGPT conversations. This file records verifi
 7. Device verification: real install/runtime test on a supported Android device; emulator failures must be reported separately from APK compilation.
 
 ## Next actions for the next session
-1. Re-check the latest main commit, open PRs, and latest Actions runs; do not assume the historical #499/#500/#501 state is current.
-2. Inspect the exact code and tests behind the latest offline-readiness/provider-routing commits.
-3. Audit every external network/provider path, especially the optional JarvisClaw workflow probe and NPC-only routing. Confirm normal private chats never leave the self-hosted backend by default.
-4. Run backend tests and notebook validation; inspect job logs for any failure.
-5. Build and verify the APK artifact. Report compile/package success separately from emulator/device runtime success.
-6. Fix only evidence-backed issues, preferably on a dedicated branch with a PR; do not merge or deploy production without explicit approval.
-7. Update this file after each meaningful verified milestone, including commit SHA, test results, APK artifact link/expiry, and unresolved issues.
+1. Review PR #19 and inspect its GitHub Actions Checks tab; verify backend tests, notebook validation, APK build, package integrity, and artifact upload independently.
+2. Inspect remaining external provider paths and confirm ordinary private chats and stored history cannot be routed externally by default.
+3. Verify `/ready` and an authenticated synthetic chat only against an authorized test environment; do not use real conversation data.
+4. Build and verify the APK artifact. Report compile/package success separately from emulator/device runtime success.
+5. Keep PR #19 unmerged until reviewed; do not deploy production or spend money without explicit approval.
+6. Update this file after each meaningful verified milestone, including commit SHA, test results, APK artifact link/expiry, and unresolved issues.
 
 ## Reporting rules
 Every progress report must distinguish:
