@@ -827,6 +827,56 @@ public class MainActivity extends Activity {
         return history;
     }
 
+    // Create a device-local guest session on first chat so the user can try JASSIM
+    // without filling a sign-in form. The random credentials are never displayed or logged.
+    // Guest history is tied to this installation until the user signs into a real account.
+    private void ensureGuestSession() throws Exception {
+        if (!readApiToken().trim().isEmpty()) return;
+        String guestId = UUID.randomUUID().toString().replace("-", "");
+        String guestEmail = "guest+" + guestId + "@guest.jassim.ai";
+        String guestPassword = UUID.randomUUID().toString() + UUID.randomUUID().toString();
+        HttpURLConnection connection = null;
+        try {
+            URL url = new URL(baseUrl() + "/api/auth/register");
+            connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("POST");
+            connection.setConnectTimeout(15000);
+            connection.setReadTimeout(25000);
+            connection.setDoOutput(true);
+            connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+            JSONObject payload = new JSONObject();
+            payload.put("email", guestEmail);
+            payload.put("password", guestPassword);
+            try (OutputStream output = connection.getOutputStream()) {
+                output.write(payload.toString().getBytes(StandardCharsets.UTF_8));
+            }
+            int code = connection.getResponseCode();
+            InputStream stream = code >= 200 && code < 300
+                ? connection.getInputStream() : connection.getErrorStream();
+            StringBuilder raw = new StringBuilder();
+            if (stream != null) {
+                try (BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) raw.append(line);
+                }
+            }
+            JSONObject result = new JSONObject(raw.toString());
+            if (code < 200 || code >= 300) {
+                throw new IOException(result.optString("error", "تعذر بدء جلسة الضيف") + " (HTTP " + code + ")");
+            }
+            String token = result.optString("token", "");
+            if (!token.startsWith("jss_")) throw new IOException("لم يُرجع الخادم جلسة ضيف صالحة");
+            saveApiToken(token);
+            runOnUiThread(() -> {
+                status.setText("● بدأت المحادثة كضيف — يمكنك إنشاء حساب لحفظها واستعادتها");
+                status.setTextColor(0xFFFFC36B);
+            });
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
+    }
+
     private void sendMessage() {
         String message = input.getText().toString().trim();
         if (message.isEmpty()) return;
@@ -859,6 +909,7 @@ public class MainActivity extends Activity {
             HttpURLConnection connection = null;
             StringBuilder answer = new StringBuilder();
             try {
+                ensureGuestSession();
                 connection = openConnection("/api/chat/stream", "POST");
                 activeChatConnection = connection;
                 connection.setReadTimeout(300000);
@@ -1166,6 +1217,18 @@ public class MainActivity extends Activity {
         passwordField.setInputType(android.text.InputType.TYPE_CLASS_TEXT
             | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
         fields.addView(passwordField);
+
+        CheckBox showPassword = new CheckBox(this);
+        showPassword.setText("إظهار كلمة المرور");
+        showPassword.setTextColor(0xFFE8ECFF);
+        showPassword.setOnCheckedChangeListener((button, checked) -> {
+            int cursor = passwordField.getSelectionStart();
+            passwordField.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | (checked ? android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                           : android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD));
+            if (cursor >= 0) passwordField.setSelection(Math.min(cursor, passwordField.length()));
+        });
+        fields.addView(showPassword);
 
         AlertDialog dialog = new AlertDialog.Builder(this)
             .setTitle("حساب JASSIM AI")
