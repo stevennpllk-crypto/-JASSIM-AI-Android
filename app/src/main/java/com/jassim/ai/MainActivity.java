@@ -12,6 +12,8 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.Intent;
+import android.net.Uri;
 import android.view.inputmethod.EditorInfo;
 import android.widget.*;
 import org.json.JSONObject;
@@ -42,6 +44,8 @@ public class MainActivity extends Activity {
     private Button stopButton;
     private volatile HttpURLConnection activeChatConnection;
     private volatile boolean cancelRequested;
+    private static final int REQUEST_CREATE_TEXT_FILE = 7314;
+    private String pendingExportText = "";
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private static final String KEY_ALIAS = "jassim_api_token_v1";
     private static final String DEFAULT_SERVER_URL =
@@ -405,10 +409,16 @@ public class MainActivity extends Activity {
         bubble.setMaxWidth((int)(getResources().getDisplayMetrics().widthPixels * 0.82f));
         bubble.setBackground(rounded(isUser ? 0xFF263C69 : 0xFF1B2338, 17));
         bubble.setOnLongClickListener(v -> {
-            ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-            if (clipboard != null) {
-                clipboard.setPrimaryClip(ClipData.newPlainText("JASSIM AI", text));
-                Toast.makeText(this, "تم نسخ الرسالة", Toast.LENGTH_SHORT).show();
+            if (isUser) {
+                copyMessageToClipboard(text);
+            } else {
+                new AlertDialog.Builder(this)
+                    .setTitle("خيارات رد JASSIM AI")
+                    .setItems(new String[]{"نسخ الرد", "حفظ الرد كملف TXT"}, (dialog, which) -> {
+                        if (which == 0) copyMessageToClipboard(text);
+                        else saveAssistantMessageAsFile(text);
+                    })
+                    .show();
             }
             return true;
         });
@@ -419,6 +429,69 @@ public class MainActivity extends Activity {
         messages.addView(bubble, lp);
         if (scroll != null) scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));
         return bubble;
+    }
+
+    private void copyMessageToClipboard(String text) {
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard != null) {
+            clipboard.setPrimaryClip(ClipData.newPlainText("JASSIM AI", text));
+            Toast.makeText(this, "تم نسخ الرسالة", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    // Export the assistant reply through Android's Storage Access Framework.
+    // The user chooses the destination; no broad storage permission is requested.
+    private void saveAssistantMessageAsFile(String bubbleText) {
+        String content = bubbleText == null ? "" : bubbleText;
+        int newline = content.indexOf('\\n');
+        if (newline >= 0) content = content.substring(newline + 1);
+        content = content.trim();
+        if (content.isEmpty()) {
+            Toast.makeText(this, "لا يوجد محتوى لحفظه", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (content.length() > 100000) {
+            Toast.makeText(this, "الرد طويل جداً للتصدير (الحد 100000 حرف)", Toast.LENGTH_LONG).show();
+            return;
+        }
+        pendingExportText = content;
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("text/plain");
+        intent.putExtra(Intent.EXTRA_TITLE, "jassim-ai-reply.txt");
+        try {
+            startActivityForResult(intent, REQUEST_CREATE_TEXT_FILE);
+        } catch (Exception e) {
+            pendingExportText = "";
+            Toast.makeText(this, "تعذر فتح نافذة حفظ الملف", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_CREATE_TEXT_FILE) return;
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) {
+            pendingExportText = "";
+            Toast.makeText(this, "تم إلغاء حفظ الملف", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Uri destination = data.getData();
+        String content = pendingExportText;
+        pendingExportText = "";
+        if (content == null || content.isEmpty() || content.length() > 100000) {
+            Toast.makeText(this, "محتوى الملف غير صالح", Toast.LENGTH_LONG).show();
+            return;
+        }
+        try (OutputStream output = getContentResolver().openOutputStream(destination, "w")) {
+            if (output == null) throw new IOException("تعذر فتح الملف المحدد");
+            output.write(content.getBytes(StandardCharsets.UTF_8));
+            output.flush();
+            Toast.makeText(this, "تم إنشاء الملف وحفظه بنجاح", Toast.LENGTH_LONG).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "فشل حفظ الملف: " +
+                (e.getMessage() == null ? "خطأ غير معروف" : e.getMessage()),
+                Toast.LENGTH_LONG).show();
+        }
     }
 
     private String baseUrl() {
