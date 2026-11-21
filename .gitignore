@@ -1,0 +1,33 @@
+# Local secrets and deployment configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local databases and runtime data
+backend/data/
+*.db
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# Android / Gradle
+.gradle/
+**/build/
+local.properties
+*.apk
+*.aab
+
+# IDE and notebook state
+.idea/
+.vscode/
+.ipynb_checkpoints/
+*.log

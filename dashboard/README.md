@@ -9,11 +9,13 @@ Open `index.html` in a browser. For browser API access, serve this directory ove
 The GitHub Actions workflow `.github/workflows/pages.yml` publishes this directory to GitHub Pages. Enable Pages with **GitHub Actions** as the deployment source in repository Settings if it is not already enabled.
 
 ## Connect
-Configure the base URL of the JASSIM API (without `/api/chat`). The dashboard calls:
+Configure the HTTPS base URL of the JASSIM API (without an API path). The dashboard supports account registration/login/logout and calls:
 - `GET /health`
-- `POST /api/chat`
+- `POST /api/auth/register`, `POST /api/auth/login`, and `POST /api/auth/logout`
+- `POST /api/chat/stream` for live SSE responses
 - `GET /api/history?conversation_id=...`
+- `POST /api/images/generate` when a server-side image provider is configured
 
-The current API must permit browser CORS from the dashboard origin. Do not expose an unauthenticated API publicly. Use HTTPS, authentication, rate limits, and private networking before public deployment.
+The backend must allow browser CORS from the exact dashboard origin. Do not expose the API directly over public plain HTTP. Use HTTPS, authentication, rate limits, and private networking before public deployment. The dashboard keeps the session token in tab-scoped session storage and only clears it after server-side logout succeeds (or the server confirms it is already invalid).
 
 This dashboard displays only values actually returned by the server; it does not fabricate CPU, RAM, GPU, or online status.

@@ -11,6 +11,8 @@ except PermissionError:
     # A platform-managed volume may disallow ownership changes. Fail clearly
     # rather than starting a server that cannot persist its database.
     raise SystemExit("JASSIM_DATA_DIR is not writable by the application user")
+# Drop root's supplementary groups before changing the effective identity.
+os.setgroups([])
 os.setgid(10001)
 os.setuid(10001)
 os.execv(sys.executable, [sys.executable, "/app/server.py"])

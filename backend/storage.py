@@ -23,6 +23,9 @@ class PostgresConnection:
     def commit(self):
         self.connection.commit()
 
+    def rollback(self):
+        self.connection.rollback()
+
     def close(self):
         self.connection.close()
 
@@ -64,6 +67,14 @@ def ensure_schema(db, sqlite_path=None):
                     content TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )""",
+                """CREATE TABLE IF NOT EXISTS account_memories (
+                    memory_id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )""",
+                "CREATE INDEX IF NOT EXISTS idx_account_memories_user ON account_memories(user_id, updated_at)",
                 """CREATE TABLE IF NOT EXISTS users (
                     id TEXT PRIMARY KEY,
                     email_normalized TEXT NOT NULL UNIQUE,
@@ -115,6 +126,14 @@ def ensure_schema(db, sqlite_path=None):
                     content TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )""",
+                """CREATE TABLE IF NOT EXISTS account_memories (
+                    memory_id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )""",
+                "CREATE INDEX IF NOT EXISTS idx_account_memories_user ON account_memories(user_id, updated_at)",
                 """CREATE TABLE IF NOT EXISTS users (
                     id TEXT PRIMARY KEY,
                     email_normalized TEXT NOT NULL UNIQUE,
@@ -176,10 +195,13 @@ def ensure_schema(db, sqlite_path=None):
 
 
 def _migrate_sqlite_once(target):
-    marker = "sqlite_to_postgres_v1"
+    marker = "sqlite_to_postgres_v2"
     if target.execute("SELECT name FROM schema_migrations WHERE name=?", (marker,)).fetchone():
         return
     source_path = SQLITE_PATH
+    if not source_path.exists():
+        # Do not mark migration complete before a legacy database is mounted.
+        return
     if source_path.exists():
         source = sqlite3.connect(source_path, timeout=5)
         source.row_factory = sqlite3.Row
@@ -187,6 +209,43 @@ def _migrate_sqlite_once(target):
             tables = {row[0] for row in source.execute(
                 "SELECT name FROM sqlite_master WHERE type='table'"
             ).fetchall()}
+            # Preserve account identities and ownership before importing their data.
+            # A user may have registered again in PostgreSQL after a v1 migration;
+            # map matching email addresses to that newer target identity.
+            user_id_map = {}
+            if "users" in tables:
+                for row in source.execute(
+                    "SELECT id,email_normalized,password_hash,role,created_at FROM users"
+                ):
+                    existing = target.execute(
+                        "SELECT id FROM users WHERE id=?", (row["id"],)
+                    ).fetchone()
+                    if not existing:
+                        existing = target.execute(
+                            "SELECT id FROM users WHERE email_normalized=?",
+                            (row["email_normalized"],)
+                        ).fetchone()
+                    if existing:
+                        user_id_map[row["id"]] = existing[0]
+                    else:
+                        target.execute(
+                            """INSERT INTO users(id,email_normalized,password_hash,role,created_at)
+                               VALUES(?,?,?,?,?) ON CONFLICT(id) DO NOTHING""",
+                            tuple(row)
+                        )
+                        user_id_map[row["id"]] = row["id"]
+            if "conversations" in tables:
+                for row in source.execute(
+                    "SELECT conversation_id,user_id,created_at,updated_at FROM conversations"
+                ):
+                    mapped_owner = user_id_map.get(row["user_id"], row["user_id"])
+                    target.execute(
+                        """INSERT INTO conversations(conversation_id,user_id,created_at,updated_at)
+                           VALUES(?,?,?,?) ON CONFLICT(conversation_id) DO UPDATE SET
+                           user_id=EXCLUDED.user_id,created_at=EXCLUDED.created_at,
+                           updated_at=EXCLUDED.updated_at""",
+                        (row["conversation_id"], mapped_owner, row["created_at"], row["updated_at"])
+                    )
             if "messages" in tables:
                 for row in source.execute(
                     "SELECT id,conversation_id,role,content,created_at FROM messages ORDER BY id"
@@ -205,6 +264,27 @@ def _migrate_sqlite_once(target):
                            ON CONFLICT(conversation_id) DO UPDATE SET
                            content=EXCLUDED.content,updated_at=EXCLUDED.updated_at""",
                         tuple(row)
+                    )
+            if "account_memories" in tables:
+                for row in source.execute(
+                    "SELECT memory_id,user_id,content,created_at,updated_at FROM account_memories"
+                ):
+                    mapped_owner = user_id_map.get(row["user_id"], row["user_id"])
+                    target.execute(
+                        """INSERT INTO account_memories(memory_id,user_id,content,created_at,updated_at)
+                           VALUES(?,?,?,?,?) ON CONFLICT(memory_id) DO NOTHING""",
+                        (row["memory_id"], mapped_owner, row["content"], row["created_at"], row["updated_at"])
+                    )
+            if "sessions" in tables:
+                for row in source.execute(
+                    "SELECT token_hash,user_id,created_at,expires_at,revoked_at FROM sessions"
+                ):
+                    mapped_owner = user_id_map.get(row["user_id"], row["user_id"])
+                    target.execute(
+                        """INSERT INTO sessions(token_hash,user_id,created_at,expires_at,revoked_at)
+                           VALUES(?,?,?,?,?) ON CONFLICT(token_hash) DO NOTHING""",
+                        (row["token_hash"], mapped_owner, row["created_at"],
+                         row["expires_at"], row["revoked_at"])
                     )
             if "provider_scores" in tables:
                 for row in source.execute(

@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 import subprocess
 import sys
 import time
@@ -73,6 +74,8 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(notebook.get("nbformat"), 4)
         code_cells = [cell for cell in notebook.get("cells", []) if cell.get("cell_type") == "code"]
         self.assertGreaterEqual(len(code_cells), 8)
+        all_source = "\n".join("".join(cell.get("source", [])) for cell in code_cells)
+        self.assertNotIn("print(API_TOKEN)", all_source)
         for index, cell in enumerate(code_cells):
             source = "".join(cell.get("source", []))
             self.assertTrue(source.strip(), f"Notebook code cell {index} is empty")
@@ -146,6 +149,62 @@ class ServerSmokeTest(unittest.TestCase):
                 else:
                     os.environ["JASSIM_DATA_DIR"] = previous_data_dir
 
+    def test_account_memory_isolated_between_users_and_user_managed(self):
+        import importlib.util
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location("jassim_account_memory_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                saved = module.save_account_memory("user-a", "يفضل الإجابات العربية")
+                self.assertEqual(saved["content"], "يفضل الإجابات العربية")
+                self.assertEqual(len(module.list_account_memories("user-a")), 1)
+                self.assertEqual(module.list_account_memories("user-b"), [])
+                self.assertFalse(module.delete_account_memory("user-b", saved["id"]))
+                self.assertEqual(len(module.list_account_memories("user-a")), 1)
+                self.assertTrue(module.delete_account_memory("user-a", saved["id"]))
+                self.assertEqual(module.list_account_memories("user-a"), [])
+                with self.assertRaises(ValueError):
+                    module.save_account_memory("user-a", " ")
+                with self.assertRaises(ValueError):
+                    module.save_account_memory("user-a", "x" * 1001)
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+
+    def test_account_memory_limit_is_enforced_per_user(self):
+        import importlib.util
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_account_memory_limit_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                for index in range(100):
+                    saved = module.save_account_memory("limit-user", "memory-" + str(index))
+                    self.assertTrue(saved["id"])
+                self.assertEqual(len(module.list_account_memories("limit-user", 100)), 100)
+                with self.assertRaisesRegex(ValueError, "memory_limit_reached"):
+                    module.save_account_memory("limit-user", "one-too-many")
+                # The cap belongs to each account, not to the whole service.
+                other = module.save_account_memory("different-user", "first memory")
+                self.assertEqual(other["content"], "first memory")
+                with self.assertRaises(ValueError):
+                    module.save_account_memory("limit-user", "x" * 1001)
+                with self.assertRaises(ValueError):
+                    module.save_account_memory("limit-user", "   ")
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+
     def test_inference_queue_rejects_overload_cleanly(self):
         import importlib.util
         spec = importlib.util.spec_from_file_location("jassim_queue_test", Path(__file__).with_name("server.py"))
@@ -193,54 +252,62 @@ class ServerSmokeTest(unittest.TestCase):
                 proc.terminate()
                 proc.wait(timeout=5)
 
-    def test_npc_turn_can_use_free_provider_without_global_chat_opt_in(self):
+    def test_client_cannot_enable_external_chat_with_npc_context(self):
         import importlib.util
         with tempfile.TemporaryDirectory() as tmp:
             previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
-            previous_allow = os.environ.get("JASSIM_ALLOW_EXTERNAL_CHAT")
-            previous_enabled = os.environ.get("JASSIM_ENABLE_PUBLIC_PROVIDERS")
             os.environ["JASSIM_DATA_DIR"] = tmp
-            os.environ["JASSIM_ALLOW_EXTERNAL_CHAT"] = "false"
-            os.environ["JASSIM_ENABLE_PUBLIC_PROVIDERS"] = "true"
+            spec = importlib.util.spec_from_file_location(
+                "jassim_npc_privacy_test", Path(__file__).with_name("server.py"))
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            previous_api_token = module.API_TOKEN
+            previous_allow_external = module.adaptive.ALLOW_EXTERNAL_CHAT
+            previous_ask_ollama = module.ask_ollama
+            previous_provider = module.adaptive.answer_with_provider
+            module.API_TOKEN = "test-operator-token"
+            module.adaptive.ALLOW_EXTERNAL_CHAT = False
+            module.ask_ollama = lambda messages: (_ for _ in ()).throw(
+                RuntimeError("ollama_unavailable"))
+            provider_calls = []
+
+            def fake_provider(messages, allow_external=False):
+                provider_calls.append(allow_external)
+                raise RuntimeError("external_chat_disabled")
+
+            module.adaptive.answer_with_provider = fake_provider
+            httpd = HTTPServer(("127.0.0.1", 0), module.Handler)
+            thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+            thread.start()
             try:
-                spec = importlib.util.spec_from_file_location(
-                    "jassim_npc_provider_test", Path(__file__).with_name("server.py"))
-                module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
-                calls = []
-
-                def fake_provider(messages, allow_external=False):
-                    calls.append(allow_external)
-                    if not allow_external:
-                        raise RuntimeError("external_chat_disabled")
-                    return "رد مجاني تجريبي لشخصية من المهدية", "jarvisclaw"
-
-                module.ask_ollama = lambda messages: (_ for _ in ()).throw(
-                    RuntimeError("ollama_unavailable"))
-                module.adaptive.answer_with_provider = fake_provider
-                answer, engine = module.generate_answer(
-                    [{"role": "user", "content": "مرحبا"}], allow_external=True)
-                self.assertEqual(engine, "jarvisclaw")
-                self.assertIn("رد مجاني", answer)
-                self.assertEqual(calls, [True])
-
-                answer, engine = module.generate_answer(
-                    [{"role": "user", "content": "محادثة خاصة"}], allow_external=False)
-                self.assertEqual(engine, "fallback")
-                self.assertEqual(calls, [True, False])
+                payload = json.dumps({
+                    "message": "هذه محادثة خاصة",
+                    "conversation_id": "npc-privacy",
+                    "context": "game_npc"
+                }).encode("utf-8")
+                request = Request(
+                    "http://127.0.0.1:%d/api/chat" % httpd.server_port,
+                    data=payload,
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": "Bearer test-operator-token"
+                    })
+                with self.assertRaises(HTTPError) as denied:
+                    urlopen(request, timeout=5)
+                self.assertEqual(denied.exception.code, 503)
+                self.assertEqual(provider_calls, [False])
             finally:
+                httpd.shutdown()
+                httpd.server_close()
+                thread.join(timeout=3)
+                module.API_TOKEN = previous_api_token
+                module.adaptive.ALLOW_EXTERNAL_CHAT = previous_allow_external
+                module.ask_ollama = previous_ask_ollama
+                module.adaptive.answer_with_provider = previous_provider
                 if previous_data_dir is None:
                     os.environ.pop("JASSIM_DATA_DIR", None)
                 else:
                     os.environ["JASSIM_DATA_DIR"] = previous_data_dir
-                if previous_allow is None:
-                    os.environ.pop("JASSIM_ALLOW_EXTERNAL_CHAT", None)
-                else:
-                    os.environ["JASSIM_ALLOW_EXTERNAL_CHAT"] = previous_allow
-                if previous_enabled is None:
-                    os.environ.pop("JASSIM_ENABLE_PUBLIC_PROVIDERS", None)
-                else:
-                    os.environ["JASSIM_ENABLE_PUBLIC_PROVIDERS"] = previous_enabled
 
     def test_server_health_and_chat(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -255,6 +322,7 @@ class ServerSmokeTest(unittest.TestCase):
             FakeOllamaHandler.offline = False
             FakeOllamaHandler.last_chat_payload = None
             env["JASSIM_API_TOKEN"] = "smoke-test-token"
+            env["JASSIM_RATE_LIMIT_PER_MINUTE"] = "200"
             env["JASSIM_ENABLE_PUBLIC_PROVIDERS"] = "false"
             fake_ollama = HTTPServer(("127.0.0.1", 0), FakeOllamaHandler)
             fake_thread = threading.Thread(target=fake_ollama.serve_forever, daemon=True)
@@ -318,6 +386,57 @@ class ServerSmokeTest(unittest.TestCase):
                 with self.assertRaises(Exception):
                     urlopen(Request(api_base + "/api/conversations"), timeout=5)
                 headers = {"Authorization": "Bearer smoke-test-token"}
+                account_memory_payload = json.dumps({"content": "أفضل أن تكون الإجابات باللغة العربية"}).encode()
+                account_memory_post = Request(
+                    api_base + "/api/memories", data=account_memory_payload,
+                    headers={"Content-Type": "application/json", **headers})
+                with urlopen(account_memory_post, timeout=5) as response:
+                    account_memory = json.loads(response.read())["memory"]
+                account_memory_get = Request(api_base + "/api/memories", headers=headers)
+                with urlopen(account_memory_get, timeout=5) as response:
+                    self.assertEqual(json.loads(response.read())["memories"][0]["content"],
+                                     "أفضل أن تكون الإجابات باللغة العربية")
+                second_user_payload = json.dumps({
+                    "email": "second-user@example.com", "password": "StrongPassword123!"
+                }).encode()
+                second_user_register = Request(
+                    api_base + "/api/auth/register", data=second_user_payload,
+                    headers={"Content-Type": "application/json"})
+                with urlopen(second_user_register, timeout=5) as response:
+                    second_user_token = json.loads(response.read())["token"]
+                second_user_headers = {"Authorization": "Bearer " + second_user_token}
+                second_user_memories = Request(api_base + "/api/memories", headers=second_user_headers)
+                with urlopen(second_user_memories, timeout=5) as response:
+                    self.assertEqual(json.loads(response.read())["memories"], [])
+                foreign_delete = Request(
+                    api_base + "/api/memories?memory_id=" + account_memory["id"],
+                    headers=second_user_headers, method="DELETE")
+                with self.assertRaises(HTTPError) as foreign_delete_error:
+                    urlopen(foreign_delete, timeout=5)
+                self.assertEqual(foreign_delete_error.exception.code, 404)
+                context_payload = json.dumps({
+                    "message": "hello memory context", "conversation_id": "account-memory-context"
+                }).encode()
+                context_request = Request(
+                    api_base + "/api/chat", data=context_payload,
+                    headers={"Content-Type": "application/json", **headers})
+                with urlopen(context_request, timeout=10):
+                    pass
+                memory_context_messages = FakeOllamaHandler.last_chat_payload["messages"]
+                self.assertTrue(any(
+                    item.get("role") == "user" and "أفضل أن تكون الإجابات باللغة العربية" in item.get("content", "")
+                    for item in memory_context_messages
+                ))
+                delete_context_chat = Request(
+                    api_base + "/api/conversations?conversation_id=account-memory-context",
+                    headers=headers, method="DELETE")
+                with urlopen(delete_context_chat, timeout=5):
+                    pass
+                own_delete_memory = Request(
+                    api_base + "/api/memories?memory_id=" + account_memory["id"],
+                    headers=headers, method="DELETE")
+                with urlopen(own_delete_memory, timeout=5):
+                    pass
                 memory_payload = json.dumps({
                     "message": "تذكر أن أفضل الإجابات المختصرة",
                     "conversation_id": "memory-chat"
