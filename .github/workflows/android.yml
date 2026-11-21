@@ -99,7 +99,7 @@ jobs:
           gradle-version: '8.9'
 
       - name: Build debug APK
-        run: gradle assembleDebug
+        run: gradle assembleDebug --build-cache --parallel
 
       - name: Verify APK package
         run: |
