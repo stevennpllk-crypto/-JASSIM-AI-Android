@@ -191,25 +191,41 @@ def _migrate_sqlite_once(target):
                 "SELECT name FROM sqlite_master WHERE type='table'"
             ).fetchall()}
             # Preserve account identities and ownership before importing their data.
+            # A user may have registered again in PostgreSQL after a v1 migration;
+            # map matching email addresses to that newer target identity.
+            user_id_map = {}
             if "users" in tables:
                 for row in source.execute(
                     "SELECT id,email_normalized,password_hash,role,created_at FROM users"
                 ):
-                    target.execute(
-                        """INSERT INTO users(id,email_normalized,password_hash,role,created_at)
-                           VALUES(?,?,?,?,?) ON CONFLICT(id) DO NOTHING""",
-                        tuple(row)
-                    )
+                    existing = target.execute(
+                        "SELECT id FROM users WHERE id=?", (row["id"],)
+                    ).fetchone()
+                    if not existing:
+                        existing = target.execute(
+                            "SELECT id FROM users WHERE email_normalized=?",
+                            (row["email_normalized"],)
+                        ).fetchone()
+                    if existing:
+                        user_id_map[row["id"]] = existing[0]
+                    else:
+                        target.execute(
+                            """INSERT INTO users(id,email_normalized,password_hash,role,created_at)
+                               VALUES(?,?,?,?,?) ON CONFLICT(id) DO NOTHING""",
+                            tuple(row)
+                        )
+                        user_id_map[row["id"]] = row["id"]
             if "conversations" in tables:
                 for row in source.execute(
                     "SELECT conversation_id,user_id,created_at,updated_at FROM conversations"
                 ):
+                    mapped_owner = user_id_map.get(row["user_id"], row["user_id"])
                     target.execute(
                         """INSERT INTO conversations(conversation_id,user_id,created_at,updated_at)
                            VALUES(?,?,?,?) ON CONFLICT(conversation_id) DO UPDATE SET
                            user_id=EXCLUDED.user_id,created_at=EXCLUDED.created_at,
                            updated_at=EXCLUDED.updated_at""",
-                        tuple(row)
+                        (row["conversation_id"], mapped_owner, row["created_at"], row["updated_at"])
                     )
             if "messages" in tables:
                 for row in source.execute(
@@ -234,10 +250,12 @@ def _migrate_sqlite_once(target):
                 for row in source.execute(
                     "SELECT token_hash,user_id,created_at,expires_at,revoked_at FROM sessions"
                 ):
+                    mapped_owner = user_id_map.get(row["user_id"], row["user_id"])
                     target.execute(
                         """INSERT INTO sessions(token_hash,user_id,created_at,expires_at,revoked_at)
                            VALUES(?,?,?,?,?) ON CONFLICT(token_hash) DO NOTHING""",
-                        tuple(row)
+                        (row["token_hash"], mapped_owner, row["created_at"],
+                         row["expires_at"], row["revoked_at"])
                     )
             if "provider_scores" in tables:
                 for row in source.execute(
