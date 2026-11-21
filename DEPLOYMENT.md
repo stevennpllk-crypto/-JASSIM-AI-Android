@@ -57,7 +57,7 @@ The Colab notebook automatically selects Qwen3.5 9B when it detects an NVIDIA GP
 - SQLite is stored in `jassim-data`; model weights are stored in `ollama-models`.
 - Back up the database volume before upgrades. Find the exact volume name with `docker volume ls`; Compose may prefix it with the project name.
 - Docker starts services again after a host reboot. If model download or API startup failed, inspect logs and run `docker compose ... up -d` again.
-- A health check reports an unhealthy service. Docker's restart policy restarts crashed processes, but does not automatically restart a process that remains alive while unhealthy. Monitor `/ready` externally and alert/restart on sustained failures; test backup restoration periodically.
+- A health check reports an unhealthy service. Docker's restart policy restarts crashed processes, but does not automatically restart a process that remains alive while unhealthy. Monitor `/ready` externally and alert/restart on sustained failures; test backup restoration periodically. `/ready` is successful when the local Ollama model is available or external chat has been explicitly enabled by the operator.
 
 ## Honest limits
 
