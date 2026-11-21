@@ -33,7 +33,11 @@ Purpose: durable handoff between ChatGPT conversations. This file records verifi
 - Pull request #19: https://github.com/stevennpllk-crypto/-JASSIM-AI-Android/pull/19
 - Branch: `fix/opt-in-public-providers`; head currently contains changes removing the anonymous JarvisClaw CI probe, changing `JASSIM_ENABLE_PUBLIC_PROVIDERS` default to `false`, and adding opt-in regression coverage.
 - The PR is open and must not be merged without review/approval.
-- The available Actions lookup returned no PR-triggered workflow runs for the current head, and its combined commit status was empty. CI therefore remains unverified; inspect the PR Checks tab before claiming test success.
+- GitHub Actions run #598 (event: `pull_request`, head `a220573df1950494bdbf9e240d06efcfe370f97d`) completed successfully on 2026-11-21 21:53 UTC. Job `build` passed all steps: notebook JSON/code validation, 21 backend unit tests, deployed `/health` probe, Gradle debug APK build, APK ZIP integrity/required-entry verification, and artifact upload.
+- APK verified by CI: 40,473 bytes; SHA-256 `52b510738fb9918a68d6373b54fe59abaa66c7d86dfbe9cdf7d6916a52dba940`.
+- Artifact `JASSIM-AI-debug-APK`, ID `14726468586`, expires 2027-02-19 21:52:29 UTC. Download: https://github.com/stevennpllk-crypto/-JASSIM-AI-Android/actions/runs/44953779990/artifacts/14726468586
+- No emulator/device install or live user-chat test was performed. The workflow checks deployed `/health`, not `/ready` or inference. Do not imply device runtime success.
+- Note: the connector's commit-run wrapper returned an empty list, but the GitHub Actions REST runs endpoint confirmed run #598; use the direct endpoint for subsequent run discovery.
 
 ## Latest known CI / build history (historical; re-check before relying on it)
 - Earlier report: run #499 passed 20 backend tests, notebook validation, server health, APK compilation/package verification and artifact upload. Android unit tests/device runtime were not established by that report.
@@ -41,7 +45,10 @@ Purpose: durable handoff between ChatGPT conversations. This file records verifi
 - A prior handoff mentioned run #501 as in progress, but its completion was never verified in the available conversation context.
 - These run numbers/statuses are historical notes, not a statement of current GitHub Actions status. Check the latest Actions run and its artifacts before reporting current build status.
 
-## Current verified workflow concern to audit
+## External provider audit (read-only inspection)
+- Text generation provider calls are centralized in `backend/adaptive.py`; ordinary external chat additionally requires `JASSIM_ALLOW_EXTERNAL_CHAT=true`. PR #19 also defaults the public-provider master switch to `false`, covering provider evaluation and the NPC opt-in path.
+- Image generation uses Hugging Face only through the explicit authenticated `/api/images/generate` endpoint. The endpoint requires an authenticated session; the provider token is read server-side from `JASSIM_HF_TOKEN`. A prompt explicitly submitted to this endpoint is sent to Hugging Face when the token is configured. Do not describe image prompts as private/local in that configuration.
+- CI's former anonymous JarvisClaw probe is removed on the PR branch. No production settings or deployments were changed.
 - On `main` at `fc7d071`, `.github/workflows/android.yml` still includes an optional anonymous JarvisClaw synthetic prompt probe. PR #19 removes it.
 - On `main`, `JASSIM_ENABLE_PUBLIC_PROVIDERS` defaults to `true`, while ordinary chat is separately gated by `JASSIM_ALLOW_EXTERNAL_CHAT=false`. PR #19 changes the public-provider master switch to default `false`, so NPC routing/evaluation also require explicit server-side opt-in.
 - The current workflow also checks the Railway `/health` URL. A healthy API process does not prove model readiness or successful inference; verify `/ready` and an authenticated synthetic chat separately when authorized and safe.
@@ -56,12 +63,12 @@ Purpose: durable handoff between ChatGPT conversations. This file records verifi
 7. Device verification: real install/runtime test on a supported Android device; emulator failures must be reported separately from APK compilation.
 
 ## Next actions for the next session
-1. Review PR #19 and inspect its GitHub Actions Checks tab; verify backend tests, notebook validation, APK build, package integrity, and artifact upload independently.
-2. Inspect remaining external provider paths and confirm ordinary private chats and stored history cannot be routed externally by default.
-3. Verify `/ready` and an authenticated synthetic chat only against an authorized test environment; do not use real conversation data.
-4. Build and verify the APK artifact. Report compile/package success separately from emulator/device runtime success.
+1. Re-check the latest PR head and CI after this handoff update; the current verified run is #598 on the previous head.
+2. Add regression coverage for the authenticated image-generation route and verify no unauthenticated request reaches Hugging Face.
+3. Review Node 20 deprecation warnings and migrate compatible GitHub Actions to supported Node 24-compatible releases after checking compatibility.
+4. Verify `/ready` and an authenticated synthetic chat only against an authorized test environment; do not use real conversation data.
 5. Keep PR #19 unmerged until reviewed; do not deploy production or spend money without explicit approval.
-6. Update this file after each meaningful verified milestone, including commit SHA, test results, APK artifact link/expiry, and unresolved issues.
+6. Test installation/runtime on a real device separately from APK compilation.
 
 ## Reporting rules
 Every progress report must distinguish:
