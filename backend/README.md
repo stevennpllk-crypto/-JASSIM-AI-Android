@@ -89,7 +89,7 @@ The initial public candidates are JarvisClaw and OVHcloud AI Endpoints. Provider
 
 When `DATABASE_URL` is configured, the API stores chat messages, conversation memories, and adaptive-provider scores in PostgreSQL through the shared `storage.py` adapter. Without it, local development and tests continue to use SQLite.
 
-On the first PostgreSQL startup, the backend checks the existing `JASSIM_DATA_DIR/jassim.db` SQLite file and imports users, sessions, conversation ownership, messages, memories, and provider scores once. The source SQLite file is retained; the migration is marked in PostgreSQL so later replicas do not repeat it. All API replicas then share the same records.
+On PostgreSQL startup, migration `sqlite_to_postgres_v2` checks the existing `JASSIM_DATA_DIR/jassim.db` SQLite file and imports users, sessions, conversation ownership, messages, memories, and provider scores. Version 2 also backfills account and ownership tables for databases previously marked by v1. The source SQLite file is retained; the v2 migration marker prevents later replicas from repeating the import. Keep the source volume or a backup until account/session counts and conversation ownership are verified.
 
 Railway deploys PostgreSQL privately and injects `DATABASE_URL=${{Postgres.DATABASE_URL}}` into the API service. After migration and verification, the legacy SQLite volume can be detached (not deleted), allowing multiple API replicas to run without a single-writer disk mount.
 
