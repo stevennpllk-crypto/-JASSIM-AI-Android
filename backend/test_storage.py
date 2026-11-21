@@ -37,7 +37,7 @@ class SharedStorageTests(unittest.TestCase):
         raw = sqlite3.connect(":memory:")
         db = storage.PostgresConnection(raw)
         db.execute("CREATE TABLE rollback_test (value TEXT)")
-        db.execute("INSERT INTO rollback_test(value) VALUES(?)", ("temporary",))
+        db.execute("INSERT INTO rollback_test(value) VALUES('temporary')")
         db.rollback()
         self.assertEqual(db.execute("SELECT COUNT(*) FROM rollback_test").fetchone()[0], 0)
         db.close()
