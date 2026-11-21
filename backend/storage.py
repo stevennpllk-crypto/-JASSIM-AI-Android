@@ -67,6 +67,14 @@ def ensure_schema(db, sqlite_path=None):
                     content TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )""",
+                """CREATE TABLE IF NOT EXISTS account_memories (
+                    memory_id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )""",
+                "CREATE INDEX IF NOT EXISTS idx_account_memories_user ON account_memories(user_id, updated_at)",
                 """CREATE TABLE IF NOT EXISTS users (
                     id TEXT PRIMARY KEY,
                     email_normalized TEXT NOT NULL UNIQUE,
@@ -118,6 +126,14 @@ def ensure_schema(db, sqlite_path=None):
                     content TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )""",
+                """CREATE TABLE IF NOT EXISTS account_memories (
+                    memory_id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )""",
+                "CREATE INDEX IF NOT EXISTS idx_account_memories_user ON account_memories(user_id, updated_at)",
                 """CREATE TABLE IF NOT EXISTS users (
                     id TEXT PRIMARY KEY,
                     email_normalized TEXT NOT NULL UNIQUE,
