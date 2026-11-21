@@ -183,6 +183,9 @@ def _migrate_sqlite_once(target):
     if target.execute("SELECT name FROM schema_migrations WHERE name=?", (marker,)).fetchone():
         return
     source_path = SQLITE_PATH
+    if not source_path.exists():
+        # Do not mark migration complete before a legacy database is mounted.
+        return
     if source_path.exists():
         source = sqlite3.connect(source_path, timeout=5)
         source.row_factory = sqlite3.Row
