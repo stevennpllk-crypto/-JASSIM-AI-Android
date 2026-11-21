@@ -1,6 +1,6 @@
 # JASSIM AI Self-Hosted Backend
 
-A small self-hosted HTTP API for the existing JASSIM AI Android client. It uses only Python's standard library and keeps chat history in SQLite.
+A small self-hosted HTTP API for the JASSIM AI Android client. The core API uses Python's standard library; PostgreSQL deployments additionally install psycopg. SQLite is the default local store.
 
 ## Safety defaults
 - Binds to `127.0.0.1` when run directly. The container uses `0.0.0.0` inside its isolated network.
@@ -51,7 +51,7 @@ export JASSIM_API_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsaf
 export JASSIM_CORS_ORIGIN="https://stevennpllk-crypto.github.io"
 python server.py
 ``
-Enter the same token in the Android app settings or the dashboard connection settings. `/health` remains public for connection checks; chat and history require the token. If `JASSIM_API_TOKEN` is unset, the server remains in local-development mode without authentication, so do not expose it publicly.
+Enter the same token in the Android app settings or the dashboard connection settings. `/health` remains public for connection checks; chat and history require the token. If `JASSIM_API_TOKEN` is unset, the legacy operator/admin token is disabled; protected API routes still require an account session. Registration and login are public endpoints protected by the process-local rate limiter. Do not expose the service publicly without HTTPS and abuse protection.
 
 ## Enable a real local model
 The API can call an Ollama server compatible with `POST /api/chat`.
@@ -67,7 +67,7 @@ JASSIM_OLLAMA_MODEL=qwen2.5:0.5b python server.py
 If Ollama is unavailable, the API returns an explicit fallback response; it does not pretend that a language model is running.
 
 ## Android compatibility
-The API preserves the existing contract: `POST /api/chat` with JSON `{"message":"..."}`, returning both `answer` and `reply`. The current Android app can use this endpoint after local-network cleartext policy and automatic connection are configured in a later, separate change.
+The API preserves the existing contract: `POST /api/chat` with JSON `{"message":"..."}`, returning both `answer` and `reply`. The Android app supports HTTPS endpoints and automatically checks the configured discovery registry before using the saved/default server address.
 
 ## Current limits
 This is a self-hosted API foundation, not an unlimited GPU host. A 3 GB Android phone can host the API and SQLite store, but it is not suitable for large LLM inference. For larger models, connect a separately owned computer or GPU host with sufficient RAM/VRAM and persistent storage.
@@ -89,7 +89,7 @@ The initial public candidates are JarvisClaw and OVHcloud AI Endpoints. Provider
 
 When `DATABASE_URL` is configured, the API stores chat messages, conversation memories, and adaptive-provider scores in PostgreSQL through the shared `storage.py` adapter. Without it, local development and tests continue to use SQLite.
 
-On the first PostgreSQL startup, the backend checks the existing `JASSIM_DATA_DIR/jassim.db` SQLite file and imports its messages, memories, and provider scores once. The source SQLite file is retained; the migration is marked in PostgreSQL so later replicas do not repeat it. All API replicas then share the same records.
+On the first PostgreSQL startup, the backend checks the existing `JASSIM_DATA_DIR/jassim.db` SQLite file and imports users, sessions, conversation ownership, messages, memories, and provider scores once. The source SQLite file is retained; the migration is marked in PostgreSQL so later replicas do not repeat it. All API replicas then share the same records.
 
 Railway deploys PostgreSQL privately and injects `DATABASE_URL=${{Postgres.DATABASE_URL}}` into the API service. After migration and verification, the legacy SQLite volume can be detached (not deleted), allowing multiple API replicas to run without a single-writer disk mount.
 
@@ -111,7 +111,7 @@ Send the returned token on normal API requests as `Authorization: Bearer <sessio
 
 ## Account privacy and migration
 
-Every conversation has one owner in the `conversations` table. History, memory, listing and deletion are scoped to the authenticated owner. A user cannot claim an existing conversation ID belonging to another account. Existing messages and memories are assigned to the non-login `legacy-owner` account during schema initialization; they are not exposed to newly registered accounts.
+Every conversation has one owner in the `conversations` table. History, memory, listing and deletion are scoped to the authenticated owner. A user cannot claim an existing conversation ID belonging to another account. Existing messages without an ownership record are assigned to the non-login `legacy-owner` account during schema initialization; imported account-owned conversations retain their original owner.
 
 `JASSIM_API_TOKEN` remains an operator/admin credential for maintenance and backwards compatibility. It must not be embedded in a distributed APK or shared with ordinary users. New users receive their own session token after login or registration.
 
