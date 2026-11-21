@@ -48,6 +48,10 @@ Purpose: durable handoff between ChatGPT conversations. This file records verifi
 - Artifact `JASSIM-AI-debug-APK`, ID `14727685207`, ZIP size 32,543 bytes; artifact ZIP digest `sha256:9ac1936c1cbd9f22f4d4190bcb61c2991a9a9eb5fea949013b8e646e609251c5`. Download: https://github.com/stevennpllk-crypto/-JASSIM-AI-Android/actions/runs/44955673750/artifacts/14727685207 (expires 2027-02-19 22:14:05 UTC).
 - Run #605 still checks only deployed `/health`; it does not prove production `/ready`, authenticated live inference, or physical-device runtime. The readiness fix is unit-tested only.
 - CI log warning: GitHub Actions reports Node.js 20 deprecation for several pinned action major versions; no compatibility migration has been made yet.
+- Account-memory isolation regression: extended `test_accounts_cannot_read_or_delete_each_others_chats` to verify another account cannot read, overwrite, or clear the first account's conversation memory; owner can still read and clear it.
+- GitHub Actions run #607 passed on head `27c2ae9b4ebc68eafa5e93d8fc8f5889ed07eac9`: 25 backend tests in 3.493s, notebook validation, deployed `/health`, Gradle debug APK build, APK ZIP integrity/required-entry checks, and artifact upload.
+- Latest APK: 36,296 bytes; SHA-256 `ce6ccd936c58dd796e6b2d6e63927acd62e52cfc8d08ef17f104e56d1641c22b`.
+- Artifact `JASSIM-AI-debug-APK`, ID `14727674568`, ZIP size 32,544 bytes; ZIP digest `sha256:3ce83a295f7bc93372474811db64783373c650fe946b299410f856f487dfd3a8`. Download: https://github.com/stevennpllk-crypto/-JASSIM-AI-Android/actions/runs/44957795272/artifacts/14727674568 (expires 2027-02-19 22:38:30 UTC).
 - No emulator/device install or live user-chat test was performed. The workflow checks deployed `/health`, not `/ready` or inference. Do not imply device runtime success.
 - Note: the connector's commit-run wrapper returned an empty list, but the GitHub Actions REST runs endpoint confirmed run #598; use the direct endpoint for subsequent run discovery.
 
