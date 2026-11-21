@@ -265,6 +265,16 @@ def _migrate_sqlite_once(target):
                            content=EXCLUDED.content,updated_at=EXCLUDED.updated_at""",
                         tuple(row)
                     )
+            if "account_memories" in tables:
+                for row in source.execute(
+                    "SELECT memory_id,user_id,content,created_at,updated_at FROM account_memories"
+                ):
+                    mapped_owner = user_id_map.get(row["user_id"], row["user_id"])
+                    target.execute(
+                        """INSERT INTO account_memories(memory_id,user_id,content,created_at,updated_at)
+                           VALUES(?,?,?,?,?) ON CONFLICT(memory_id) DO NOTHING""",
+                        (row["memory_id"], mapped_owner, row["content"], row["created_at"], row["updated_at"])
+                    )
             if "sessions" in tables:
                 for row in source.execute(
                     "SELECT token_hash,user_id,created_at,expires_at,revoked_at FROM sessions"
