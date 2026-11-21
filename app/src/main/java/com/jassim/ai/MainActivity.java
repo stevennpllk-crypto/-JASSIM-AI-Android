@@ -447,10 +447,7 @@ public class MainActivity extends Activity {
     // Export the assistant reply through Android's Storage Access Framework.
     // The user chooses the destination; no broad storage permission is requested.
     private void saveAssistantMessageAsFile(String bubbleText) {
-        String content = bubbleText == null ? "" : bubbleText;
-        int newline = content.indexOf('\n');
-        if (newline >= 0) content = content.substring(newline + 1);
-        content = content.trim();
+        String content = ReplyExport.extractBody(bubbleText);
         if (content.isEmpty()) {
             Toast.makeText(this, "لا يوجد محتوى لحفظه", Toast.LENGTH_SHORT).show();
             return;
@@ -489,7 +486,7 @@ public class MainActivity extends Activity {
         }
         try (OutputStream output = getContentResolver().openOutputStream(destination, "w")) {
             if (output == null) throw new IOException("تعذر فتح الملف المحدد");
-            output.write(content.getBytes(StandardCharsets.UTF_8));
+            output.write(ReplyExport.toUtf8(content));
             output.flush();
             Toast.makeText(this, "تم إنشاء الملف وحفظه بنجاح", Toast.LENGTH_LONG).show();
         } catch (Exception e) {
