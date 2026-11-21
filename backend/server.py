@@ -756,7 +756,13 @@ class Handler(BaseHTTPRequestHandler):
                         user = auth.create_user(db, email, password)
                     else:
                         row = auth.find_user_by_email(db, email)
-                        if not row or not auth.verify_password(password, row[2]):
+                        if not row:
+                            # Perform the same PBKDF2 work as a normal failed login
+                            # to reduce account-enumeration timing differences.
+                            auth.verify_password(password, auth.DUMMY_PASSWORD_HASH)
+                            self.send_json(401, {"error": "invalid_credentials"})
+                            return
+                        if not auth.verify_password(password, row[2]):
                             self.send_json(401, {"error": "invalid_credentials"})
                             return
                         user = {"id": row[0], "email": row[1], "role": row[3]}
