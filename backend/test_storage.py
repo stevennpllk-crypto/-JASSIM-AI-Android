@@ -94,6 +94,7 @@ class SharedStorageTests(unittest.TestCase):
             target = SQLiteBackedPostgresTarget(target_path)
             target.db.executescript("""
                 CREATE TABLE schema_migrations (name TEXT PRIMARY KEY);
+                INSERT INTO schema_migrations(name) VALUES ('sqlite_to_postgres_v1');
                 CREATE TABLE users (
                     id TEXT PRIMARY KEY, email_normalized TEXT UNIQUE,
                     password_hash TEXT, role TEXT, created_at TEXT
@@ -138,7 +139,7 @@ class SharedStorageTests(unittest.TestCase):
                     "SELECT token_hash FROM sessions WHERE token_hash=?", ("token-digest",)
                 ).fetchone())
                 self.assertIsNotNone(target.execute(
-                    "SELECT name FROM schema_migrations WHERE name=?", ("sqlite_to_postgres_v1",)
+                    "SELECT name FROM schema_migrations WHERE name=?", ("sqlite_to_postgres_v2",)
                 ).fetchone())
             finally:
                 storage.SQLITE_PATH = previous_path
