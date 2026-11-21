@@ -67,4 +67,9 @@ done
 printf 'Resumed activity: %s\n' "$resumed"
 printf '%s' "$resumed" | grep -Fq "$ACTIVITY" || fail "MainActivity is not the resumed foreground activity"
 
-echo "ANDROID_EMULATOR_SMOKE_OK: APK installed, MainActivity foregrounded, and process alive ($process)"
+# Assert the native Android UI exposes the account-memory entry point.
+adb -s "$SERIAL" shell uiautomator dump /sdcard/jassim-window.xml >/dev/null 2>&1 || fail "Could not inspect Android UI hierarchy"
+ui_hierarchy="$(adb -s "$SERIAL" shell cat /sdcard/jassim-window.xml 2>/dev/null || true)"
+printf '%s' "$ui_hierarchy" | grep -Fq 'إدارة ذاكرة حسابك' || fail "Account memory button is missing from the Android UI"
+
+echo "ANDROID_EMULATOR_SMOKE_OK: APK installed, MainActivity foregrounded, process alive ($process), and account-memory control is visible"
