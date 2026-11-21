@@ -39,7 +39,10 @@
         return;
       }
     }
-    state.token="";sessionStorage.removeItem("jassim_token");toast("تم تسجيل الخروج");openSettings();
+    state.token="";sessionStorage.removeItem("jassim_token");
+    state.conversation="web-"+Math.random().toString(36).slice(2,10);localStorage.setItem("jassim_conversation",state.conversation);$("conversationId").textContent=state.conversation;
+    $("messages").innerHTML="";addBubble("تم تسجيل الخروج. سجّل الدخول لعرض محادثات حسابك.","ai");$("conversationList").textContent="سجّل الدخول لعرض المحادثات المحفوظة.";$("historyOutput").textContent="لا توجد بيانات محمّلة.";
+    toast("تم تسجيل الخروج ومسح محتوى المحادثة من الشاشة");openSettings();
   });
   function downloadTextFile(name,type,content){
     const mimeTypes={txt:"text/plain;charset=utf-8",md:"text/markdown;charset=utf-8",json:"application/json;charset=utf-8",csv:"text/csv;charset=utf-8",html:"text/html;charset=utf-8",js:"text/javascript;charset=utf-8",py:"text/x-python;charset=utf-8",xml:"application/xml;charset=utf-8"};
