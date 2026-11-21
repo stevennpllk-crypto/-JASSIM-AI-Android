@@ -264,25 +264,34 @@ public class MainActivity extends Activity {
 
         Button accountButton = actionButton("حساب", "تسجيل الدخول أو إنشاء حساب", () -> accountDialog());
         header.addView(accountButton, new LinearLayout.LayoutParams(-2, dp(38)));
+        root.addView(header);
+
+        // Keep action controls on their own row so narrow phones do not clip
+        // the account-memory entry point or make it inaccessible to TalkBack.
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        actions.setPadding(0, 0, 0, dp(12));
+
         Button historyButton = actionButton("السجل", "سجل المحادثات", () -> showConversations());
-        header.addView(historyButton, new LinearLayout.LayoutParams(-2, dp(38)));
+        actions.addView(historyButton, new LinearLayout.LayoutParams(-2, dp(38)));
         Button memoryButton = actionButton("ذاكرة", "إدارة ذاكرة حسابك", () -> showAccountMemories());
         LinearLayout.LayoutParams memoryLp = new LinearLayout.LayoutParams(-2, dp(38));
         memoryLp.setMargins(dp(5), 0, 0, 0);
-        header.addView(memoryButton, memoryLp);
+        actions.addView(memoryButton, memoryLp);
         Button newChat = actionButton("+", "محادثة جديدة", () -> newConversation());
         LinearLayout.LayoutParams newLp = new LinearLayout.LayoutParams(dp(40), dp(38));
         newLp.setMargins(dp(5), 0, 0, 0);
-        header.addView(newChat, newLp);
+        actions.addView(newChat, newLp);
         Button improve = actionButton("⚡", "اختبار وتحسين الخادم", () -> runProviderEvaluation());
         LinearLayout.LayoutParams improveLp = new LinearLayout.LayoutParams(dp(40), dp(38));
         improveLp.setMargins(dp(5), 0, 0, 0);
-        header.addView(improve, improveLp);
+        actions.addView(improve, improveLp);
         Button settings = actionButton("⚙", "إعدادات الاتصال", () -> endpointDialog());
         LinearLayout.LayoutParams settingsLp = new LinearLayout.LayoutParams(dp(40), dp(38));
         settingsLp.setMargins(dp(5), 0, 0, 0);
-        header.addView(settings, settingsLp);
-        root.addView(header);
+        actions.addView(settings, settingsLp);
+        root.addView(actions);
 
         status = new TextView(this);
         status.setText("● جارٍ فحص الاتصال...");
