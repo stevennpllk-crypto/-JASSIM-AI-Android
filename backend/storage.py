@@ -206,7 +206,9 @@ def _migrate_sqlite_once(target):
                 ):
                     target.execute(
                         """INSERT INTO conversations(conversation_id,user_id,created_at,updated_at)
-                           VALUES(?,?,?,?) ON CONFLICT(conversation_id) DO NOTHING""",
+                           VALUES(?,?,?,?) ON CONFLICT(conversation_id) DO UPDATE SET
+                           user_id=EXCLUDED.user_id,created_at=EXCLUDED.created_at,
+                           updated_at=EXCLUDED.updated_at""",
                         tuple(row)
                     )
             if "messages" in tables:
