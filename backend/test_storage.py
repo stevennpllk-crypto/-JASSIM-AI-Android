@@ -63,6 +63,10 @@ class SharedStorageTests(unittest.TestCase):
                 CREATE TABLE memories (
                     conversation_id TEXT PRIMARY KEY, content TEXT, updated_at TEXT
                 );
+                CREATE TABLE account_memories (
+                    memory_id TEXT PRIMARY KEY, user_id TEXT, content TEXT,
+                    created_at TEXT, updated_at TEXT
+                );
                 CREATE TABLE sessions (
                     token_hash TEXT PRIMARY KEY, user_id TEXT,
                     created_at TEXT, expires_at TEXT, revoked_at TEXT
@@ -75,6 +79,7 @@ class SharedStorageTests(unittest.TestCase):
                 INSERT INTO conversations VALUES ('chat-1','user-1','2026-01-01','2026-01-02');
                 INSERT INTO messages VALUES (1,'chat-1','user','private message','2026-01-02');
                 INSERT INTO memories VALUES ('chat-1','private memory','2026-01-02');
+                INSERT INTO account_memories VALUES ('memory-1','user-1','private account memory','2026-01-01','2026-01-02');
                 INSERT INTO sessions VALUES ('token-digest','user-1','2026-01-01','2026-02-01',NULL);
                 INSERT INTO provider_scores VALUES ('local',2,1,120.0,0.8,'2026-01-02',NULL);
             """)
@@ -112,6 +117,10 @@ class SharedStorageTests(unittest.TestCase):
                 CREATE TABLE memories (
                     conversation_id TEXT PRIMARY KEY, content TEXT, updated_at TEXT
                 );
+                CREATE TABLE account_memories (
+                    memory_id TEXT PRIMARY KEY, user_id TEXT, content TEXT,
+                    created_at TEXT, updated_at TEXT
+                );
                 CREATE TABLE sessions (
                     token_hash TEXT PRIMARY KEY, user_id TEXT,
                     created_at TEXT, expires_at TEXT, revoked_at TEXT
@@ -140,6 +149,9 @@ class SharedStorageTests(unittest.TestCase):
                 self.assertEqual(target.execute(
                     "SELECT content FROM memories WHERE conversation_id=?", ("chat-1",)
                 ).fetchone()[0], "private memory")
+                self.assertEqual(target.execute(
+                    "SELECT user_id,content FROM account_memories WHERE memory_id=?", ("memory-1",)
+                ).fetchone(), ("new-user-id", "private account memory"))
                 self.assertEqual(target.execute(
                     "SELECT user_id FROM sessions WHERE token_hash=?", ("token-digest",)
                 ).fetchone()[0], "new-user-id")
