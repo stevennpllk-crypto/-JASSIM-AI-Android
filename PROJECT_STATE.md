@@ -41,6 +41,13 @@ Purpose: durable handoff between ChatGPT conversations. This file records verifi
 - The unauthenticated image-generation regression test passed as part of the 24-test suite.
 - Latest APK: 36,297 bytes; SHA-256 `49e2d4ca2a97042b8b53d1eb6d0d9bdab3e710d00358c37600d38f2aa9a72bc3`.
 - Artifact `JASSIM-AI-debug-APK`, ID `14727201559`, expires 2027-02-19 21:59:32 UTC. Download: https://github.com/stevennpllk-crypto/-JASSIM-AI-Android/actions/runs/44954357038/artifacts/14727201559
+- Follow-up fix: `backend/server.py` now defines `/ready` for ordinary chat only (private Ollama model ready or explicitly enabled ordinary external chat); NPC-only provider availability no longer makes ordinary chat appear ready.
+- Regression test `test_npc_provider_does_not_mark_private_chat_ready` verifies that with Ollama unavailable, public providers enabled, and ordinary external chat disabled, `/ready` remains HTTP 503.
+- GitHub Actions run #605 passed on head `b8cf20227a3a61c362ddda8145451d1b40aecefd`: 25 backend tests in 3.426s (including the new readiness regression), notebook validation, deployed `/health`, Gradle debug APK build, APK integrity checks, and artifact upload.
+- Latest APK: 36,297 bytes; SHA-256 `7967d151dd0d69378f57bef949fdabca86428a1fefdbd4ac3f4433642589febd`.
+- Artifact `JASSIM-AI-debug-APK`, ID `14727685207`, ZIP size 32,543 bytes; artifact ZIP digest `sha256:9ac1936c1cbd9f22f4d4190bcb61c2991a9a9eb5fea949013b8e646e609251c5`. Download: https://github.com/stevennpllk-crypto/-JASSIM-AI-Android/actions/runs/44955673750/artifacts/14727685207 (expires 2027-02-19 22:14:05 UTC).
+- Run #605 still checks only deployed `/health`; it does not prove production `/ready`, authenticated live inference, or physical-device runtime. The readiness fix is unit-tested only.
+- CI log warning: GitHub Actions reports Node.js 20 deprecation for several pinned action major versions; no compatibility migration has been made yet.
 - No emulator/device install or live user-chat test was performed. The workflow checks deployed `/health`, not `/ready` or inference. Do not imply device runtime success.
 - Note: the connector's commit-run wrapper returned an empty list, but the GitHub Actions REST runs endpoint confirmed run #598; use the direct endpoint for subsequent run discovery.
 
