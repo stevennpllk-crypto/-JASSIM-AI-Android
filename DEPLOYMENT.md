@@ -24,7 +24,7 @@ The Colab notebook automatically selects Qwen3.5 9B when it detects an NVIDIA GP
 
 1. Clone this repository on the server.
 2. Copy `.env.example` to `.env`.
-3. Generate a private token and place it in `.env`:
+3. Generate a private **operator/admin** token and place it in `.env` (ordinary users sign in with their own accounts):
 
    ```sh
    python3 -c "import secrets; print(secrets.token_urlsafe(48))"
@@ -50,18 +50,18 @@ The Colab notebook automatically selects Qwen3.5 9B when it detects an NVIDIA GP
    docker compose --env-file .env -f docker-compose.always-on.yml logs -f ollama jassim-api
    ```
 
-7. Configure Android with the public HTTPS URL and the private token from `.env`. Never commit the token or place it in the APK.
+7. Configure Android with the public HTTPS URL, then register or sign in. Keep the operator token in server secrets; do not place it in the APK or share it with ordinary users.
 
 ## Persistence and recovery
 
 - SQLite is stored in `jassim-data`; model weights are stored in `ollama-models`.
 - Back up the database volume before upgrades. Find the exact volume name with `docker volume ls`; Compose may prefix it with the project name.
 - Docker starts services again after a host reboot. If model download or API startup failed, inspect logs and run `docker compose ... up -d` again.
-- A health check reports an unhealthy service. Docker's restart policy restarts crashed processes, but does not automatically restart a process that remains alive while unhealthy. Monitor `/ready` externally and alert/restart on sustained failures; test backup restoration periodically.
+- A health check reports an unhealthy service. Docker's restart policy restarts crashed processes, but does not automatically restart a process that remains alive while unhealthy. Monitor `/ready` externally and alert/restart on sustained failures; test backup restoration periodically. `/ready` is successful when the local Ollama model is available or external chat has been explicitly enabled by the operator.
 
 ## Honest limits
 
 - This provides restartability only on a host that remains powered and connected. It cannot prevent a provider from suspending a free instance.
 - A stable public address requires a domain/reverse proxy or a configured named tunnel. Cloudflare Quick Tunnel URLs are temporary.
-- The shared Bearer token is still one shared identity, not individual accounts.
-- `/health` is liveness/diagnostics. `/ready` returns HTTP 503 unless the API token is configured and Ollama is reachable with the configured model installed.
+- Individual account sessions and per-conversation ownership are supported. Registration is currently open; email verification, password recovery, and rate limiting shared across replicas remain future hardening work.
+- `/health` is liveness/diagnostics. `/ready` returns HTTP 503 unless the local Ollama model is reachable and installed, or the operator explicitly enables external chat.

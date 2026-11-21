@@ -8,9 +8,9 @@ See [ROADMAP.md](ROADMAP.md) for the complete staged plan: streaming chat, user-
 
 ## Components
 
-- `app/`: native Android client (Java). Configure the server URL and API token in the app's Settings. The active conversation transcript is restored from the authenticated history endpoint on startup.
+- `app/`: native Android client (Java). Configure the HTTPS server URL, then register or sign in; account session tokens are encrypted with Android Keystore. An optional legacy operator token remains for maintenance.
 - `DEPLOYMENT.md`: restartable Docker deployment, persistent model/database volumes, readiness checks, and HTTPS guidance.
-- `backend/server.py`: Python standard-library API (v0.4.0) with SQLite persistence, Bearer authentication, input-size checks, per-IP rate limiting, model readiness checks, an authenticated model inventory endpoint, and an SSE streaming route.
+- `backend/server.py`: Python API (v0.6.0) with account sessions, PBKDF2 password hashing, per-account conversation ownership, SQLite/PostgreSQL storage, bounded requests, rate limiting, adaptive provider routing, image generation, and SSE chat streaming.
 - `dashboard/`: Arabic RTL dashboard for health checks and chat.
 - `.github/workflows/android.yml`: backend smoke tests, debug APK build, ZIP integrity/required-entry verification, and artifact upload.
 - `.github/workflows/pages.yml`: GitHub Pages deployment workflow for the dashboard.
@@ -22,8 +22,8 @@ See [ROADMAP.md](ROADMAP.md) for the complete staged plan: streaming chat, user-
 - The dashboard stores its endpoint in browser local storage and its token in session storage. Use it only on a trusted device and close the browser session when finished.
 - Use HTTPS for any server reachable over the internet. The Android app intentionally rejects plain HTTP endpoints.
 - Keep the API bound to `127.0.0.1` behind a trusted HTTPS reverse proxy/tunnel. Do not expose the Python HTTP server directly to the public internet.
-- The shared Bearer token currently represents one shared API identity, not individual user accounts. Rotate it if it was ever exposed. A multi-user login/session system is a separate next step.
-- `/health` is a public liveness/diagnostics endpoint. `/ready` returns HTTP 503 unless the token is configured and Ollama can see the configured model. A successful chat request remains the definitive inference test.
+- The app supports individual account sessions. `JASSIM_API_TOKEN` is a separate legacy operator/admin credential; never embed it in the APK or share it with ordinary users.
+- `/health` is a public liveness/diagnostics endpoint. `/ready` returns HTTP 503 unless the local model is available or the operator explicitly enables external chat. A successful authenticated chat request remains the definitive inference test.
 
 ## Run the API
 
@@ -101,7 +101,7 @@ Enable GitHub Pages for this repository and choose GitHub Actions as the deploym
 
 ## Current limitations
 
-- One shared Bearer token; no user registration, per-user permissions, or token revocation UI yet.
+- Registration is open and rate-limited per server process; email verification, password recovery, and shared rate limiting across replicas are not yet implemented.
 - No guaranteed always-on GPU hosting is included.
 - `/health` reports API liveness and model diagnostics; `/ready` confirms the configured model is installed and reachable, but only a successful authenticated chat request proves a generation completed.
 

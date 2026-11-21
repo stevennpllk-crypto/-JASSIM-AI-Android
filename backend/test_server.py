@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 import subprocess
 import sys
 import time
@@ -73,6 +74,8 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(notebook.get("nbformat"), 4)
         code_cells = [cell for cell in notebook.get("cells", []) if cell.get("cell_type") == "code"]
         self.assertGreaterEqual(len(code_cells), 8)
+        all_source = "\n".join("".join(cell.get("source", [])) for cell in code_cells)
+        self.assertNotIn("print(API_TOKEN)", all_source)
         for index, cell in enumerate(code_cells):
             source = "".join(cell.get("source", []))
             self.assertTrue(source.strip(), f"Notebook code cell {index} is empty")
@@ -193,54 +196,62 @@ class ServerSmokeTest(unittest.TestCase):
                 proc.terminate()
                 proc.wait(timeout=5)
 
-    def test_npc_turn_can_use_free_provider_without_global_chat_opt_in(self):
+    def test_client_cannot_enable_external_chat_with_npc_context(self):
         import importlib.util
         with tempfile.TemporaryDirectory() as tmp:
             previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
-            previous_allow = os.environ.get("JASSIM_ALLOW_EXTERNAL_CHAT")
-            previous_enabled = os.environ.get("JASSIM_ENABLE_PUBLIC_PROVIDERS")
             os.environ["JASSIM_DATA_DIR"] = tmp
-            os.environ["JASSIM_ALLOW_EXTERNAL_CHAT"] = "false"
-            os.environ["JASSIM_ENABLE_PUBLIC_PROVIDERS"] = "true"
+            spec = importlib.util.spec_from_file_location(
+                "jassim_npc_privacy_test", Path(__file__).with_name("server.py"))
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            previous_api_token = module.API_TOKEN
+            previous_allow_external = module.adaptive.ALLOW_EXTERNAL_CHAT
+            previous_ask_ollama = module.ask_ollama
+            previous_provider = module.adaptive.answer_with_provider
+            module.API_TOKEN = "test-operator-token"
+            module.adaptive.ALLOW_EXTERNAL_CHAT = False
+            module.ask_ollama = lambda messages: (_ for _ in ()).throw(
+                RuntimeError("ollama_unavailable"))
+            provider_calls = []
+
+            def fake_provider(messages, allow_external=False):
+                provider_calls.append(allow_external)
+                raise RuntimeError("external_chat_disabled")
+
+            module.adaptive.answer_with_provider = fake_provider
+            httpd = HTTPServer(("127.0.0.1", 0), module.Handler)
+            thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+            thread.start()
             try:
-                spec = importlib.util.spec_from_file_location(
-                    "jassim_npc_provider_test", Path(__file__).with_name("server.py"))
-                module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
-                calls = []
-
-                def fake_provider(messages, allow_external=False):
-                    calls.append(allow_external)
-                    if not allow_external:
-                        raise RuntimeError("external_chat_disabled")
-                    return "رد مجاني تجريبي لشخصية من المهدية", "jarvisclaw"
-
-                module.ask_ollama = lambda messages: (_ for _ in ()).throw(
-                    RuntimeError("ollama_unavailable"))
-                module.adaptive.answer_with_provider = fake_provider
-                answer, engine = module.generate_answer(
-                    [{"role": "user", "content": "مرحبا"}], allow_external=True)
-                self.assertEqual(engine, "jarvisclaw")
-                self.assertIn("رد مجاني", answer)
-                self.assertEqual(calls, [True])
-
-                answer, engine = module.generate_answer(
-                    [{"role": "user", "content": "محادثة خاصة"}], allow_external=False)
-                self.assertEqual(engine, "fallback")
-                self.assertEqual(calls, [True, False])
+                payload = json.dumps({
+                    "message": "هذه محادثة خاصة",
+                    "conversation_id": "npc-privacy",
+                    "context": "game_npc"
+                }).encode("utf-8")
+                request = Request(
+                    "http://127.0.0.1:%d/api/chat" % httpd.server_port,
+                    data=payload,
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": "Bearer test-operator-token"
+                    })
+                with self.assertRaises(HTTPError) as denied:
+                    urlopen(request, timeout=5)
+                self.assertEqual(denied.exception.code, 503)
+                self.assertEqual(provider_calls, [False])
             finally:
+                httpd.shutdown()
+                httpd.server_close()
+                thread.join(timeout=3)
+                module.API_TOKEN = previous_api_token
+                module.adaptive.ALLOW_EXTERNAL_CHAT = previous_allow_external
+                module.ask_ollama = previous_ask_ollama
+                module.adaptive.answer_with_provider = previous_provider
                 if previous_data_dir is None:
                     os.environ.pop("JASSIM_DATA_DIR", None)
                 else:
                     os.environ["JASSIM_DATA_DIR"] = previous_data_dir
-                if previous_allow is None:
-                    os.environ.pop("JASSIM_ALLOW_EXTERNAL_CHAT", None)
-                else:
-                    os.environ["JASSIM_ALLOW_EXTERNAL_CHAT"] = previous_allow
-                if previous_enabled is None:
-                    os.environ.pop("JASSIM_ENABLE_PUBLIC_PROVIDERS", None)
-                else:
-                    os.environ["JASSIM_ENABLE_PUBLIC_PROVIDERS"] = previous_enabled
 
     def test_server_health_and_chat(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -31,15 +31,15 @@ Build an independent, Arabic-first AI assistant with a polished Android app and 
 - [ ] Add request IDs, structured logs, and safe error categories.
 
 ### Phase 1 — ChatGPT-like conversation experience
-- [x] Stream generated text to Android clients over SSE with incremental rendering and stop control; web streaming remains pending.
+- [x] Stream generated text to Android and web clients over SSE with incremental rendering and stop control.
 - [x] Restore the active conversation transcript on Android app startup.
 - [x] Conversation list, open, and delete with confirmation; rename, archive, search, and export remain planned.
 - [x] Android long-press message copying and keyboard send action.
 - [ ] Markdown rendering, code blocks, copy buttons, and syntax highlighting.
 - [x] Stop the active Android response stream.
 - [ ] Regenerate response, edit-and-resend, and retry.
-- [ ] Per-user accounts and short-lived revocable sessions; remove the shared-token-only limitation.
-- [ ] Server-side conversation ownership and authorization checks.
+- [x] Individual user accounts and revocable 30-day sessions; the legacy operator token remains separate for administration.
+- [x] Server-side conversation ownership and authorization checks.
 
 ### Phase 2 — Personal memory and knowledge
 - [ ] User-controlled saved facts with inspect, edit, disable, export, and delete.
@@ -82,11 +82,11 @@ Build an independent, Arabic-first AI assistant with a polished Android app and 
 
 ## Current honest limitations
 
-- The current backend is a single shared Bearer-token service, not a multi-user product.
+- The backend supports individual account sessions and conversation ownership. Registration is currently open, email verification and password recovery are not implemented, and rate limiting is process-local rather than shared across replicas.
 - The self-hosted API default is Qwen 3.5 4B. The Colab GPU notebook selects Qwen 3.5 9B when it detects an NVIDIA GPU and falls back to 4B otherwise. Stronger answers require a larger capable model and sufficient host RAM/VRAM; model selection is configurable through `JASSIM_OLLAMA_MODEL`. Quality and speed depend on host memory and quantization. Keep-alive applies only while Ollama itself remains running.
 - The legacy `/api/chat` endpoint returns complete JSON responses; `/api/chat/stream` streams token events over SSE and the Android client renders them incrementally. The standard API profile defaults to 8K context / 3K output with a 24K-character recent-history cap; the Colab GPU profile raises recent history to 32K characters. Actual quality still depends on the selected model and available GPU/RAM. Ollama keep-alive holds the model in memory while the process runs. Colab Watchdog and Docker restart policies recover crashed processes, but neither can keep an interrupted Colab session or suspended host alive.
 - Android can list recent conversations, open one, and delete one after confirmation. Rename, archive, search, and export are not implemented yet.
-- The dashboard and Android client do not yet offer full file, image, audio, or tool workflows.
+- The dashboard supports hosted image generation through a configured provider; Android image workflows, file understanding, audio, and general tool workflows remain unimplemented.
 - Colab watchdog recovery can restart crashed processes only while the runtime is alive. The Docker deployment can restart crashed services on an always-on host; Colab and Quick Tunnels remain temporary.
 - Free hosting does not guarantee persistent storage, sufficient RAM, or GPU access.
 

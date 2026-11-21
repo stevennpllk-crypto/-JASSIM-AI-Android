@@ -381,7 +381,7 @@ public class MainActivity extends Activity {
     private TextView addMessage(String who, String text) {
         boolean isUser = "أنت".equals(who);
         TextView bubble = new TextView(this);
-        bubble.setText(who + "\\n" + text);
+        bubble.setText(who + "\n" + text);
         bubble.setTextColor(0xFFF1F4FF);
         bubble.setTextSize(14);
         bubble.setTextDirection(View.TEXT_DIRECTION_RTL);
