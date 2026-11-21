@@ -23,7 +23,7 @@
       if(!response.ok)throw new Error(data.error||("HTTP "+response.status));
       if(!data.token||!data.token.startsWith("jss_"))throw new Error("لم يُرجع الخادم رمز جلسة صالحاً");
       state.token=data.token;sessionStorage.setItem("jassim_token",state.token);
-      $("settingsDialog").close();toast(mode==="register"?"تم إنشاء الحساب بنجاح":"تم تسجيل الدخول");await checkHealth();await loadConversationList();
+      $("settingsDialog").close();toast(mode==="register"?"تم إنشاء الحساب بنجاح":"تم تسجيل الدخول");await checkHealth();await loadConversationList();await loadAccountMemories();
     }catch(error){toast("تعذر إتمام العملية: "+error.message)}
     finally{button.disabled=false}
   }
@@ -41,7 +41,7 @@
     }
     state.token="";sessionStorage.removeItem("jassim_token");
     state.conversation="web-"+Math.random().toString(36).slice(2,10);localStorage.setItem("jassim_conversation",state.conversation);$("conversationId").textContent=state.conversation;
-    $("messages").innerHTML="";addBubble("تم تسجيل الخروج. سجّل الدخول لعرض محادثات حسابك.","ai");$("conversationList").textContent="سجّل الدخول لعرض المحادثات المحفوظة.";$("historyOutput").textContent="لا توجد بيانات محمّلة.";
+    $("messages").innerHTML="";addBubble("تم تسجيل الخروج. سجّل الدخول لعرض محادثات حسابك.","ai");$("conversationList").textContent="سجّل الدخول لعرض المحادثات المحفوظة.";$("historyOutput").textContent="لا توجد بيانات محمّلة.";$("accountMemoryList").textContent="سجّل الدخول لعرض ذاكرة حسابك.";$("accountMemoryContent").value="";
     toast("تم تسجيل الخروج ومسح محتوى المحادثة من الشاشة");openSettings();
   });
   function downloadTextFile(name,type,content){
@@ -146,6 +146,40 @@
       });
     }catch(error){list.textContent="تعذر تحميل المحادثات: "+error.message}
   }
+  async function loadAccountMemories(){
+    const list=$("accountMemoryList");
+    if(!state.token){list.textContent="سجّل الدخول لعرض ذاكرة حسابك.";return}
+    list.textContent="جارٍ تحميل الذاكرة...";
+    try{
+      const data=await request("/api/memories?limit=100");
+      const memories=Array.isArray(data.memories)?data.memories:[];
+      list.textContent="";
+      if(!memories.length){list.textContent="لا توجد معلومات محفوظة بعد.";return}
+      memories.forEach(item=>{
+        const row=document.createElement("div");row.className="account-memory-row";
+        const content=document.createElement("p");content.textContent=item.content||"";
+        const remove=document.createElement("button");remove.type="button";remove.className="conversation-delete";remove.textContent="حذف";
+        remove.addEventListener("click",async()=>{
+          if(!window.confirm("هل تريد حذف هذه المعلومة من ذاكرة حسابك؟"))return;
+          remove.disabled=true;
+          try{await request("/api/memories?memory_id="+encodeURIComponent(item.id),{method:"DELETE"});await loadAccountMemories();toast("تم حذف المعلومة من الذاكرة")}
+          catch(error){remove.disabled=false;toast("تعذر حذف المعلومة: "+error.message)}
+        });
+        row.append(content,remove);list.appendChild(row);
+      });
+    }catch(error){list.textContent="تعذر تحميل الذاكرة: "+error.message}
+  }
+  $("saveAccountMemory").addEventListener("click",async()=>{
+    const content=$("accountMemoryContent").value.trim();
+    if(!content){toast("اكتب المعلومة التي تريد حفظها");return}
+    if(!state.token){toast("سجّل الدخول أولاً");return}
+    const button=$("saveAccountMemory");button.disabled=true;
+    try{await request("/api/memories",{method:"POST",body:JSON.stringify({content})});$("accountMemoryContent").value="";await loadAccountMemories();toast("تم حفظ المعلومة في ذاكرة حسابك")}
+    catch(error){toast("تعذر حفظ المعلومة: "+error.message)}
+    finally{button.disabled=false}
+  });
+  $("refreshAccountMemories").addEventListener("click",loadAccountMemories);
+  document.querySelectorAll('.nav[data-view="memory"]').forEach(button=>button.addEventListener("click",loadAccountMemories));
   $("loadHistory").addEventListener("click",async()=>{
     try{const data=await request("/api/history?conversation_id="+encodeURIComponent(state.conversation));renderConversation(data.messages);$("historyOutput").textContent="تم تحميل "+(data.messages||[]).length+" رسالة للمحادثة الحالية.";showView("chat")}
     catch(error){$("historyOutput").textContent="تعذر تحميل السجل: "+error.message}
@@ -157,6 +191,7 @@
     $("messages").innerHTML="";addBubble("بدأت محادثة جديدة. اكتب رسالتك للمتابعة.","ai");showView("chat");
   });
   loadConversationList();
+  if(state.token)loadAccountMemories();
   if(state.token){
     request("/api/history?conversation_id="+encodeURIComponent(state.conversation)).then(data=>{
       if(Array.isArray(data.messages)&&data.messages.length)renderConversation(data.messages);
