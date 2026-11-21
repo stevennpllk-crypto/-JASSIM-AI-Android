@@ -31,7 +31,14 @@
   $("registerAccount").addEventListener("click",()=>authenticateAccount("register"));
   $("logoutAccount").addEventListener("click",async()=>{
     if(!state.token)return;
-    try{await request("/api/auth/logout",{method:"POST",body:"{}"})}catch(_){}
+    try{
+      await request("/api/auth/logout",{method:"POST",body:"{}"});
+    }catch(error){
+      if(!String(error.message||"").includes("HTTP 401")){
+        toast("تعذر إبطال الجلسة على الخادم؛ احتفظنا بتسجيل الدخول حتى لا تبقى الجلسة فعالة دون تنبيه.");
+        return;
+      }
+    }
     state.token="";sessionStorage.removeItem("jassim_token");toast("تم تسجيل الخروج");openSettings();
   });
   $("chatForm").addEventListener("submit",async e=>{
