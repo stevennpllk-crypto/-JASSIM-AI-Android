@@ -126,7 +126,18 @@
           try{const data=await request("/api/history?conversation_id="+encodeURIComponent(item.conversation_id));state.conversation=item.conversation_id;localStorage.setItem("jassim_conversation",state.conversation);$("conversationId").textContent=state.conversation;renderConversation(data.messages);showView("chat");toast("تم استعادة المحادثة")}
           catch(error){toast("تعذر استعادة المحادثة: "+error.message)}
         });
-        row.appendChild(open);list.appendChild(row);
+        const remove=document.createElement("button");remove.type="button";remove.className="conversation-delete";remove.textContent="حذف";
+        remove.addEventListener("click",async event=>{
+          event.stopPropagation();
+          if(!window.confirm("هل تريد حذف هذه المحادثة ورسائلها نهائياً؟"))return;
+          remove.disabled=true;
+          try{
+            await request("/api/conversations?conversation_id="+encodeURIComponent(item.conversation_id),{method:"DELETE"});
+            if(state.conversation===item.conversation_id)$("createConversation").click();
+            toast("تم حذف المحادثة");await loadConversationList();
+          }catch(error){remove.disabled=false;toast("تعذر حذف المحادثة: "+error.message)}
+        });
+        row.append(open,remove);list.appendChild(row);
       });
     }catch(error){list.textContent="تعذر تحميل المحادثات: "+error.message}
   }
