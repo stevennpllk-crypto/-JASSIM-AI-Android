@@ -96,3 +96,16 @@ Every progress report must distinguish:
 - Free/temporary hosting vs stable paid hosting.
 
 Do not invent percentages of model quality or project completion. Any comparison must state its benchmark, model/version, test set, and date.
+
+
+## Security follow-up and latest verified build (2026-11-21 22:46 UTC)
+- Login timing hardening: unknown email addresses now perform a dummy PBKDF2-HMAC-SHA256 verification before returning the same generic `invalid_credentials` response as a wrong password. Password verification rejects empty inputs and inputs over 256 characters.
+- NPC routing authorization hardening: a request's `context=game_npc` field no longer grants ordinary user accounts the public-provider exception. Only the server-admin identity can request that path; the public-provider master switch must still be enabled.
+- Added HTTP regression coverage for unknown-account PBKDF2 work and for a normal authenticated account attempting to forge `context=game_npc`. Existing test suite remains 25 test methods; all pass in run #611 (3.627 seconds).
+- Removed `.github/workflows/probe-llm-fallback.yml`. The repository branch now contains only `.github/workflows/android.yml` and `.github/workflows/pages.yml`; no separate automatic anonymous-provider probe workflow remains on this PR branch.
+- Important audit disclosure: before deletion, workflow run #137 completed successfully and its two steps contacted JarvisClaw and OVH using only the fixed synthetic prompt `Reply exactly: JASSIM ONLINE`. These were not user conversation transcripts. The workflow file has since been deleted on this branch.
+- Run #611 passed on exact latest application branch head `8a7e9f0e879e30b7c3ebc7ab096bf1891f7d408d`: 25 backend tests, notebook code validation, deployed `/health` probe, Gradle debug APK build, APK package integrity verification, and artifact upload.
+- Latest APK: 36,301 bytes; SHA-256 `2e373cf3ce6197ad4ab701c1474eb23888ba5fba78f9e453056bc1d66c46b980`.
+- Artifact `JASSIM-AI-debug-APK`, ID `14727874863`, size 32,548 bytes; ZIP digest `sha256:e29bfa99547ed82f54006be36cbbaf4cc9fe1364f5536d3b7d6eef93949e2302`. Download: https://github.com/stevennpllk-crypto/-JASSIM-AI-Android/actions/runs/44958330742/artifacts/14727874863 (expires 2027-02-19 22:44:58 UTC).
+- Run #611's workflow still does not prove physical-device install/runtime or successful authenticated live inference. The deployed check is `/health`, not `/ready` or model inference.
+- PR #19 remains open and unmerged. No production deployment, paid provider, or production configuration was changed.
