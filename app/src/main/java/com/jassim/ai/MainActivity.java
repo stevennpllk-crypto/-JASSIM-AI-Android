@@ -421,7 +421,7 @@ public class MainActivity extends Activity {
                     .setTitle("خيارات رد JASSIM AI")
                     .setItems(new String[]{"نسخ الرد", "حفظ الرد كملف TXT"}, (dialog, which) -> {
                         if (which == 0) copyMessageToClipboard(currentMessage);
-                        else saveAssistantMessageAsFile(currentMessage);
+                        else saveAssistantMessageAsFile(currentText);
                     })
                     .show();
             }
