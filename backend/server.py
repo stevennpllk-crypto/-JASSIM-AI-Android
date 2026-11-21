@@ -600,9 +600,8 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path in ("/health", "/ready"):
             model_state = ollama_status()
             external_ready = adaptive.external_chat_enabled()
-            npc_provider_ready = adaptive.npc_chat_enabled()
             ready = bool(
-                (model_state["reachable"] and model_state["model_ready"]) or external_ready or npc_provider_ready
+                (model_state["reachable"] and model_state["model_ready"]) or external_ready
             )
             if parsed.path == "/ready":
                 self.send_json(200 if ready else 503, {
@@ -610,8 +609,7 @@ class Handler(BaseHTTPRequestHandler):
                     "api_token_configured": bool(API_TOKEN),
                     "ollama_reachable": model_state["reachable"],
                     "model_ready": model_state["model_ready"],
-                    "external_provider_ready": external_ready,
-                    "npc_provider_ready": npc_provider_ready
+                    "external_provider_ready": external_ready
                 })
                 return
             self.send_json(200, {
@@ -841,9 +839,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(400, {"error": "json_object_required"})
                 return
             message = str(body.get("message", "")).strip()
-            # Only the dedicated game NPC client opts its own dialogue into public inference.
-            # Ordinary JASSIM chats remain local-only unless the operator globally opts in.
-            allow_npc_provider = body.get("context") == "game_npc"
+            # Client-supplied context must never override the server's external-data policy.
             conversation_id = str(body.get("conversation_id", "default")).strip()[:100] or "default"
             if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", conversation_id):
                 self.send_json(400, {"error": "invalid_conversation_id"})
@@ -899,7 +895,7 @@ class Handler(BaseHTTPRequestHandler):
             if streaming:
                 self.stream_chat_response(conversation_id, message, context, identity["user_id"])
                 return
-            answer, engine = generate_answer(context, allow_external=allow_npc_provider)
+            answer, engine = generate_answer(context)
             if engine in ("busy", "fallback"):
                 # Do not return a fake successful chat response when no model
                 # generated an answer. The client can preserve and retry it.
