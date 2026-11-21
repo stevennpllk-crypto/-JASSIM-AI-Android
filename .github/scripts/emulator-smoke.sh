@@ -76,7 +76,9 @@ printf '%s' "$ui_hierarchy" | grep -Fq 'إدارة ذاكرة حسابك' || fai
 MAIN_ACTIVITY="$GITHUB_WORKSPACE/app/src/main/java/com/jassim/ai/MainActivity.java"
 grep -Fq 'String currentText = bubble.getText().toString();' "$MAIN_ACTIVITY" || fail "Assistant long-press handler does not read the live bubble text"
 grep -Fq 'saveAssistantMessageAsFile(currentMessage);' "$MAIN_ACTIVITY" || fail "Assistant TXT export is not wired to the live response"
-grep -Fq 'content.getBytes(StandardCharsets.UTF_8)' "$MAIN_ACTIVITY" || fail "TXT export is not encoded as UTF-8"
+REPLY_EXPORT="$GITHUB_WORKSPACE/app/src/main/java/com/jassim/ai/ReplyExport.java"
+grep -Fq 'output.write(ReplyExport.toUtf8(content));' "$MAIN_ACTIVITY" || fail "TXT export is not wired to the UTF-8 helper"
+grep -Fq 'return content.getBytes(StandardCharsets.UTF_8);' "$REPLY_EXPORT" || fail "ReplyExport helper does not encode content as UTF-8"
 echo "TXT_EXPORT_REGRESSION_GUARD_OK: live response text is used and UTF-8 export is wired"
 
 echo "ANDROID_EMULATOR_SMOKE_OK: APK installed, MainActivity foregrounded, process alive ($process), and account-memory control is visible"
