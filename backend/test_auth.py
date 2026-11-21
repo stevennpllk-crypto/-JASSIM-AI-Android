@@ -45,6 +45,8 @@ class MultiUserAuthTest(unittest.TestCase):
         self.assertNotEqual(row[2], "a-long-test-password")
         self.assertTrue(auth.verify_password("a-long-test-password", row[2]))
         self.assertFalse(auth.verify_password("wrong-password", row[2]))
+        self.assertFalse(auth.verify_password("x" * 257, row[2]))
+        self.assertFalse(auth.verify_password("", row[2]))
         token = auth.issue_session(self.db, user["id"])
         identity = auth.authenticate_session(self.db, token)
         self.assertEqual(identity["user_id"], user["id"])
@@ -121,6 +123,22 @@ class MultiUserAuthTest(unittest.TestCase):
             _, second = call("/api/auth/register", "POST", body={
                 "email": "http-second@example.com", "password": "second-password-123"
             })
+            # Unknown accounts still execute PBKDF2 before returning the same
+            # generic credentials error, limiting username timing disclosure.
+            with patch.object(auth, "verify_password", wraps=auth.verify_password) as verifier:
+                with self.assertRaises(HTTPError) as unknown_login:
+                    call("/api/auth/login", "POST", body={
+                        "email": "missing@example.com", "password": "some-password-123"
+                    })
+                self.assertEqual(unknown_login.exception.code, 401)
+                self.assertEqual(verifier.call_count, 1)
+            with patch.object(auth, "verify_password", wraps=auth.verify_password) as verifier:
+                with self.assertRaises(HTTPError) as wrong_login:
+                    call("/api/auth/login", "POST", body={
+                        "email": "http-first@example.com", "password": "wrong-password-123"
+                    })
+                self.assertEqual(wrong_login.exception.code, 401)
+                self.assertEqual(verifier.call_count, 1)
             first_token, second_token = first["token"], second["token"]
             self.assertEqual(call("/api/auth/me", token=first_token)[1]["user"]["email"],
                              "http-first@example.com")
