@@ -51,7 +51,14 @@
         <div id="imageResult" class="image-result" aria-live="polite"></div>
       </div>
     </section>
-    <section class="view" id="memory"><div class="panel empty-panel"><div class="panel-head"><div><h3>الذاكرة والسجل</h3><p>استعرض محادثات حسابك واستعد أي محادثة محفوظة.</p></div><button class="secondary" id="refreshConversations">تحديث القائمة ↻</button></div><div class="memory-actions"><button class="primary" id="createConversation">محادثة جديدة +</button><button class="secondary" id="loadHistory">استعادة المحادثة الحالية</button></div><div id="conversationList" class="conversation-list" aria-live="polite">جارٍ تحميل المحادثات...</div><pre id="historyOutput" class="history-output">اختر محادثة لعرضها.</pre></div></section>
+    <section class="view" id="memory"><div class="panel empty-panel"><div class="panel-head"><div><h3>الذاكرة والسجل</h3><p>استعرض محادثات حسابك واستعد أي محادثة محفوظة.</p></div><button class="secondary" id="refreshConversations">تحديث القائمة ↻</button></div><div class="memory-actions"><button class="primary" id="createConversation">محادثة جديدة +</button><button class="secondary" id="loadHistory">استعادة المحادثة الحالية</button></div><div id="conversationList" class="conversation-list" aria-live="polite">جارٍ تحميل المحادثات...</div>
+<div class="account-memory-panel">
+  <div class="panel-head"><div><h3>ذاكرة الحساب</h3><p>لا تُحفظ معلومة هنا إلا عندما تضيفها بنفسك. يمكنك حذفها في أي وقت.</p></div><button class="secondary" id="refreshAccountMemories" type="button">تحديث الذاكرة ↻</button></div>
+  <label for="accountMemoryContent">معلومة تريد من JASSIM تذكّرها في محادثاتك القادمة</label>
+  <textarea id="accountMemoryContent" maxlength="1000" rows="3" placeholder="مثال: أفضل الشرح باللغة العربية وبخطوات واضحة."></textarea>
+  <button class="primary" id="saveAccountMemory" type="button">حفظ في ذاكرة الحساب +</button>
+  <div id="accountMemoryList" class="account-memory-list" aria-live="polite">سجّل الدخول لعرض ذاكرة حسابك.</div>
+</div><pre id="historyOutput" class="history-output">اختر محادثة لعرضها.</pre></div></section>
     <section class="view" id="systems"><div class="system-grid"><article class="panel"><h3>اتصال الخادم</h3><p>عنوان API الأساسي</p><div class="server-url" id="serverUrlText">لم يتم الإعداد</div><button class="primary" id="systemSettings">إعداد الاتصال</button></article><article class="panel"><h3>محرك النموذج</h3><p>تُعرض حالة المحرك حسب استجابة الخادم، ولا يتم افتراض توفر GPU.</p><strong id="systemEngine">غير معروف</strong></article><article class="panel"><h3>التخزين</h3><p>قاعدة بيانات المحادثات</p><strong id="systemStorage">غير معروف</strong></article><article class="panel"><h3>أمان الاتصال</h3><p>استخدم HTTPS عند الاتصال عبر الإنترنت، ولا تكشف الخادم دون مصادقة وحدود استخدام.</p><span class="tag warning">يتطلب إعداداً قبل النشر العام</span></article></div></section>
     <footer>JASSIM AI CLOUD <span>واجهة أولية قابلة للتطوير · لا تمثل حالة تشغيل فعلية دون اتصال</span></footer>
   </main>
