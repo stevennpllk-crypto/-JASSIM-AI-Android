@@ -17,3 +17,12 @@
 .conversation-open{flex:1;min-width:0}
 .conversation-delete{align-self:center;border:1px solid #6b3544;background:#321d2a;color:#ffb9c7;border-radius:9px;padding:8px 12px;cursor:pointer}
 .conversation-delete:disabled{opacity:.55;cursor:wait}
+
+/* Account-wide, explicitly user-managed memory */
+.account-memory-panel{margin-top:26px;padding-top:22px;border-top:1px solid var(--line)}
+.account-memory-panel label{display:block;margin:14px 0 8px;font-size:12px}
+.account-memory-panel textarea{box-sizing:border-box;width:100%;resize:vertical;background:#0a1220;border:1px solid #35435d;border-radius:10px;padding:12px;color:#edf3ff;font:inherit;line-height:1.7}
+.account-memory-panel>button{margin-top:10px}
+.account-memory-list{display:grid;gap:9px;margin-top:14px}
+.account-memory-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--line);border-radius:10px}
+.account-memory-row p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;line-height:1.7}
