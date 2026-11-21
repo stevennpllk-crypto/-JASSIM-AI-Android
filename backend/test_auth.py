@@ -8,6 +8,7 @@ import threading
 from http.server import ThreadingHTTPServer
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
+from unittest.mock import patch
 from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parent
@@ -85,6 +86,17 @@ class MultiUserAuthTest(unittest.TestCase):
                 return response.status, json.loads(response.read().decode("utf-8"))
 
         try:
+            # Image prompts must never reach Hugging Face from an unauthenticated request.
+            image_body = {"prompt": "synthetic privacy regression test"}
+            with patch.object(
+                self.server, "generate_image_hf",
+                side_effect=AssertionError("unauthenticated request reached image provider")
+            ) as image_provider:
+                with self.assertRaises(HTTPError) as image_denied:
+                    call("/api/images/generate", "POST", body=image_body)
+                self.assertEqual(image_denied.exception.code, 401)
+                image_provider.assert_not_called()
+
             _, first = call("/api/auth/register", "POST", body={
                 "email": "http-first@example.com", "password": "first-password-123"
             })
