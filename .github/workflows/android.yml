@@ -104,6 +104,9 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Run Android unit tests
+        run: gradle testDebugUnitTest --build-cache --parallel
+
       - name: Build debug APK
         run: gradle assembleDebug --build-cache --parallel
 
