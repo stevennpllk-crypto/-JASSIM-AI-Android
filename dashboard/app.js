@@ -104,6 +104,7 @@
     }catch(e){status.textContent="تعذر التوليد: "+e.message;toast("فشل توليد الصورة")}
     finally{btn.disabled=false;btn.textContent="توليد الصورة ✦"}
   });
+  function stopActiveGeneration(){if(state.activeController)state.activeController.abort()}
   function renderConversation(messages){
     $("messages").innerHTML="";
     if(!Array.isArray(messages)||messages.length===0){addBubble("لا توجد رسائل محفوظة في هذه المحادثة بعد.","ai");return}
@@ -123,6 +124,7 @@
         const title=document.createElement("strong");title.textContent=item.title||"محادثة";
         const meta=document.createElement("small");meta.textContent=(item.message_count||0)+" رسالة · "+(item.updated_at||"");
         open.append(title,meta);open.addEventListener("click",async()=>{
+          stopActiveGeneration();
           try{const data=await request("/api/history?conversation_id="+encodeURIComponent(item.conversation_id));state.conversation=item.conversation_id;localStorage.setItem("jassim_conversation",state.conversation);$("conversationId").textContent=state.conversation;renderConversation(data.messages);showView("chat");toast("تم استعادة المحادثة")}
           catch(error){toast("تعذر استعادة المحادثة: "+error.message)}
         });
@@ -147,6 +149,7 @@
   });
   $("refreshConversations").addEventListener("click",loadConversationList);
   $("createConversation").addEventListener("click",()=>{
+    stopActiveGeneration();
     state.conversation="web-"+Math.random().toString(36).slice(2,10);localStorage.setItem("jassim_conversation",state.conversation);$("conversationId").textContent=state.conversation;
     $("messages").innerHTML="";addBubble("بدأت محادثة جديدة. اكتب رسالتك للمتابعة.","ai");showView("chat");
   });
