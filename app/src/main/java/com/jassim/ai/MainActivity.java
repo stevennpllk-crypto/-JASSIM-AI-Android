@@ -162,9 +162,10 @@ public class MainActivity extends Activity {
                         : "● تم اكتشاف الخادم تلقائياً — جارٍ الاتصال...");
                     checkHealth();
                     if (readApiToken().isEmpty()) {
-                        status.setText("● أنشئ حساباً أو سجّل الدخول للبدء");
+                        // Keep the chat immediately usable for first-time users.
+                        // Account sign-in is optional until they need cloud history or memory.
+                        status.setText("● يمكنك بدء المحادثة الآن — سجّل الدخول لحفظ السجل والذاكرة");
                         status.setTextColor(0xFFFFC36B);
-                        accountDialog();
                     } else {
                         loadHistory();
                     }
