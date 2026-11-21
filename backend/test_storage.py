@@ -56,7 +56,6 @@ class SharedStorageTests(unittest.TestCase):
                     conversation_id TEXT PRIMARY KEY, user_id TEXT,
                     created_at TEXT, updated_at TEXT
                 );
-                INSERT INTO conversations VALUES ('chat-1','legacy-owner','old','old');
                 CREATE TABLE messages (
                     id INTEGER PRIMARY KEY, conversation_id TEXT,
                     role TEXT, content TEXT, created_at TEXT
@@ -104,6 +103,7 @@ class SharedStorageTests(unittest.TestCase):
                     conversation_id TEXT PRIMARY KEY, user_id TEXT,
                     created_at TEXT, updated_at TEXT
                 );
+                INSERT INTO conversations VALUES ('chat-1','legacy-owner','old','old');
                 CREATE TABLE messages (
                     id INTEGER PRIMARY KEY, conversation_id TEXT,
                     role TEXT, content TEXT, created_at TEXT
