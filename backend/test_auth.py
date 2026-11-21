@@ -70,6 +70,23 @@ class MultiUserAuthTest(unittest.TestCase):
         with self.assertRaises(PermissionError):
             self.server.save_message("private-first", "user", "اختراق", second["id"])
 
+        # Conversation memory must obey the same owner boundary as chat history.
+        self.server.set_memory("private-first", "ذاكرة سرية للحساب الأول", first["id"])
+        self.assertEqual(
+            self.server.get_memory("private-first", first["id"]),
+            "ذاكرة سرية للحساب الأول"
+        )
+        self.assertEqual(self.server.get_memory("private-first", second["id"]), "")
+        with self.assertRaises(PermissionError):
+            self.server.set_memory("private-first", "محاولة تعديل", second["id"])
+        self.assertFalse(self.server.clear_memory("private-first", second["id"]))
+        self.assertEqual(
+            self.server.get_memory("private-first", first["id"]),
+            "ذاكرة سرية للحساب الأول"
+        )
+        self.assertTrue(self.server.clear_memory("private-first", first["id"]))
+        self.assertEqual(self.server.get_memory("private-first", first["id"]), "")
+
     def test_http_registration_and_cross_account_access(self):
         httpd = ThreadingHTTPServer(("127.0.0.1", 0), self.server.Handler)
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
