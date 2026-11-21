@@ -99,6 +99,7 @@ class SharedStorageTests(unittest.TestCase):
                     id TEXT PRIMARY KEY, email_normalized TEXT UNIQUE,
                     password_hash TEXT, role TEXT, created_at TEXT
                 );
+                INSERT INTO users VALUES ('new-user-id','one@example.com','new-password-hash','user','2026-02-01');
                 CREATE TABLE conversations (
                     conversation_id TEXT PRIMARY KEY, user_id TEXT,
                     created_at TEXT, updated_at TEXT
@@ -125,20 +126,23 @@ class SharedStorageTests(unittest.TestCase):
             try:
                 storage._migrate_sqlite_once(target)
                 self.assertEqual(target.execute(
-                    "SELECT email_normalized FROM users WHERE id=?", ("user-1",)
+                    "SELECT email_normalized FROM users WHERE id=?", ("new-user-id",)
                 ).fetchone()[0], "one@example.com")
+                self.assertIsNone(target.execute(
+                    "SELECT id FROM users WHERE id=?", ("user-1",)
+                ).fetchone())
                 self.assertEqual(target.execute(
                     "SELECT user_id FROM conversations WHERE conversation_id=?", ("chat-1",)
-                ).fetchone()[0], "user-1")
+                ).fetchone()[0], "new-user-id")
                 self.assertEqual(target.execute(
                     "SELECT content FROM messages WHERE id=?", (1,)
                 ).fetchone()[0], "private message")
                 self.assertEqual(target.execute(
                     "SELECT content FROM memories WHERE conversation_id=?", ("chat-1",)
                 ).fetchone()[0], "private memory")
-                self.assertIsNotNone(target.execute(
-                    "SELECT token_hash FROM sessions WHERE token_hash=?", ("token-digest",)
-                ).fetchone())
+                self.assertEqual(target.execute(
+                    "SELECT user_id FROM sessions WHERE token_hash=?", ("token-digest",)
+                ).fetchone()[0], "new-user-id")
                 self.assertIsNotNone(target.execute(
                     "SELECT name FROM schema_migrations WHERE name=?", ("sqlite_to_postgres_v2",)
                 ).fetchone())
