@@ -15,8 +15,8 @@ RUN pip install --no-cache-dir 'psycopg[binary]>=3.2,<4' \
     && mkdir -p /data \
     && chown -R jassim:jassim /app /data
 
-# Run the API as the dedicated unprivileged account.
-USER jassim
+# Entrypoint starts as root only to prepare the mounted volume, then drops to UID/GID 10001.
+USER root
 EXPOSE 8787
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
