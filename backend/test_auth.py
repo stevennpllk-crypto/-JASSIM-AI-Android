@@ -84,7 +84,7 @@ class MultiUserAuthTest(unittest.TestCase):
                 })
             self.assertEqual(denied_chat.exception.code, 401)
 
-            with patch.object(self.server, "generate_image_hf") as provider:
+            with patch.object(self.server, "generate_image_private") as provider:
                 with self.assertRaises(HTTPError) as denied_image:
                     request("/api/images/generate", "POST", {"prompt": "must not reach provider"})
                 self.assertEqual(denied_image.exception.code, 401)
@@ -245,7 +245,7 @@ class MultiUserAuthTest(unittest.TestCase):
                 },
                 method="POST"
             )
-            with patch.object(self.server, "generate_image_hf") as provider:
+            with patch.object(self.server, "generate_image_private") as provider:
                 with self.assertRaises(HTTPError) as expired_image:
                     urlopen(image_request, timeout=5)
                 self.assertEqual(expired_image.exception.code, 401)
@@ -276,14 +276,14 @@ class MultiUserAuthTest(unittest.TestCase):
                 return response.status, json.loads(response.read().decode("utf-8"))
 
         try:
-            with patch.object(self.server, "generate_image_hf") as provider:
+            with patch.object(self.server, "generate_image_private") as provider:
                 with self.assertRaises(HTTPError) as denied:
                     post()
                 self.assertEqual(denied.exception.code, 401)
                 provider.assert_not_called()
 
             before = self.db.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
-            with patch.object(self.server, "generate_image_hf", return_value=("aGVsbG8=", "image/png", "test-model")) as provider:
+            with patch.object(self.server, "generate_image_private", return_value=("aGVsbG8=", "image/png", "test-model")) as provider:
                 status, result = post(token)
                 self.assertEqual(status, 200)
                 self.assertEqual(result["image_base64"], "aGVsbG8=")
