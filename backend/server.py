@@ -88,13 +88,8 @@ def private_chat_ready(model_state, external_ready=False, api_token_configured=N
 
 
 def can_route_npc_externally(body, identity):
-    """Only an authenticated server administrator may opt an NPC turn into public inference."""
-    return bool(
-        isinstance(body, dict)
-        and isinstance(identity, dict)
-        and body.get("context") == "game_npc"
-        and identity.get("role") == "admin"
-    )
+    """No account, role, or request context may route private chats to a public model."""
+    return False
 
 
 def connect_db():
@@ -373,46 +368,16 @@ def generate_answer(messages, allow_external=False):
         try:
             return ask_ollama(messages), "ollama"
         except (urllib.error.URLError, TimeoutError, ValueError, RuntimeError, OSError):
-            try:
-                answer, provider = adaptive.answer_with_provider(
-                    [{"role": "system", "content": SYSTEM_PROMPT}] + messages,
-                    allow_external=allow_external
-                )
-                return answer, provider
-            except RuntimeError:
-                return (
-                    "محرك الذكاء الاصطناعي غير متاح حالياً. "
-                    "لم يتمكن الخادم من الوصول إلى Ollama أو إلى مزود احتياطي مفعّل."
-                ), "fallback"
+            return (
+                "محرك JASSIM الخاص غير متاح حالياً. تعذر الاتصال بنموذج Ollama المحلي؛ "
+                "لم يتم إرسال رسالتك إلى أي مزود ذكاء اصطناعي خارجي."
+            ), "fallback"
     finally:
         INFERENCE_SEMAPHORE.release()
 
 def generate_image_hf(prompt, width=1024, height=1024):
-    """Generate an image through Hugging Face Inference Providers; secrets stay server-side."""
-    token = os.environ.get("JASSIM_HF_TOKEN", "").strip()
-    if not token:
-        raise RuntimeError("image_provider_not_configured")
-    model = os.environ.get("JASSIM_IMAGE_MODEL", "black-forest-labs/FLUX.1-schnell").strip()
-    payload = json.dumps({"inputs": prompt, "parameters": {"width": width, "height": height}}).encode("utf-8")
-    request = urllib.request.Request(
-        "https://router.huggingface.co/hf-inference/models/" + model, data=payload,
-        headers={"Authorization": "Bearer " + token, "Content-Type": "application/json", "Accept": "image/png"},
-        method="POST"
-    )
-    timeout = max(30, min(int(os.environ.get("JASSIM_IMAGE_TIMEOUT", "180")), 300))
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        image_bytes = response.read(12 * 1024 * 1024 + 1)
-        content_type = response.headers.get("Content-Type", "image/png").split(";")[0].strip()
-    if len(image_bytes) > 12 * 1024 * 1024:
-        raise RuntimeError("generated_image_too_large")
-    if not content_type.startswith("image/"):
-        try:
-            detail = json.loads(image_bytes.decode("utf-8")).get("error", "provider_error")
-        except Exception:
-            detail = "provider_returned_non_image"
-        raise RuntimeError(str(detail)[:240])
-    import base64
-    return base64.b64encode(image_bytes).decode("ascii"), content_type, model
+    """Image generation stays disabled until a private, self-hosted image model exists."""
+    raise RuntimeError("private_image_engine_not_configured")
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "JASSIM-AI/0.6.0"
@@ -483,21 +448,12 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 response = urllib.request.urlopen(request, timeout=OLLAMA_TIMEOUT)
             except (urllib.error.URLError, TimeoutError, ValueError, OSError):
-                try:
-                    answer, provider = adaptive.answer_with_provider(
-                        [{"role": "system", "content": SYSTEM_PROMPT}] + context,
-                        allow_external=allow_external
-                    )
-                    save_message(conversation_id, "user", message, user_id)
-                    save_message(conversation_id, "assistant", answer, user_id)
-                    self.send_sse_static(answer, conversation_id, provider)
-                except RuntimeError:
-                    self.send_json(503, {
-                        "error": "model_unavailable",
-                        "message": "محرك الذكاء الاصطناعي غير متاح. لم يُفعّل مزود خارجي أو تعذر الوصول إليه.",
-                        "retry_after_seconds": 30,
-                        "conversation_id": conversation_id
-                    })
+                self.send_json(503, {
+                    "error": "model_unavailable",
+                    "message": "محرك JASSIM الخاص غير متاح حالياً. لم يتم الاتصال بأي مزود ذكاء اصطناعي خارجي.",
+                    "retry_after_seconds": 30,
+                    "conversation_id": conversation_id
+                })
                 return
 
             self.send_sse_headers()
@@ -881,9 +837,9 @@ class Handler(BaseHTTPRequestHandler):
                     image_b64, mime, model = generate_image_hf(prompt)
                 except RuntimeError as exc:
                     reason = str(exc)
-                    status = 503 if reason == "image_provider_not_configured" else 502
+                    status = 503 if reason == "private_image_engine_not_configured" else 502
                     self.send_json(status, {
-                        "error": "image_provider_not_configured" if status == 503 else "image_generation_failed",
+                        "error": "private_image_engine_not_configured" if status == 503 else "image_generation_failed",
                         "detail": reason
                     })
                     return
