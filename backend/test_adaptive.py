@@ -26,10 +26,34 @@ class AdaptiveRouterTests(unittest.TestCase):
         adaptive.ALLOW_EXTERNAL_CHAT = False
         try:
             self.assertFalse(adaptive.external_chat_enabled())
-            with self.assertRaises(RuntimeError):
-                adaptive.answer_with_provider([{"role": "user", "content": "test"}])
+            with patch.object(adaptive, "_request") as request:
+                with self.assertRaisesRegex(RuntimeError, "external_chat_disabled"):
+                    adaptive.answer_with_provider([{"role": "user", "content": "private test"}])
+                request.assert_not_called()
         finally:
             adaptive.ALLOW_EXTERNAL_CHAT = old
+
+    def test_npc_external_routing_requires_separate_opt_in(self):
+        old_chat = adaptive.ALLOW_EXTERNAL_CHAT
+        old_npc = adaptive.ALLOW_EXTERNAL_NPC_CHAT
+        old_public = adaptive.ENABLE_PUBLIC_PROVIDERS
+        adaptive.ALLOW_EXTERNAL_CHAT = False
+        adaptive.ALLOW_EXTERNAL_NPC_CHAT = False
+        adaptive.ENABLE_PUBLIC_PROVIDERS = True
+        try:
+            self.assertFalse(adaptive.npc_chat_enabled())
+            with patch.object(adaptive, "provider_stats") as stats, patch.object(adaptive, "_request") as request:
+                with self.assertRaisesRegex(RuntimeError, "external_chat_disabled"):
+                    adaptive.answer_with_provider(
+                        [{"role": "user", "content": "private conversation history"}],
+                        allow_external=True,
+                    )
+                stats.assert_not_called()
+                request.assert_not_called()
+        finally:
+            adaptive.ALLOW_EXTERNAL_CHAT = old_chat
+            adaptive.ALLOW_EXTERNAL_NPC_CHAT = old_npc
+            adaptive.ENABLE_PUBLIC_PROVIDERS = old_public
 
     def test_provider_score_persists_and_ranks(self):
         adaptive._record("jarvisclaw", 500, 0.9)
