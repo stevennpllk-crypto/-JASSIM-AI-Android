@@ -254,7 +254,7 @@ class ServerSmokeTest(unittest.TestCase):
             env["JASSIM_PORT"] = str(port)
             env["JASSIM_HOST"] = "127.0.0.1"
             env.pop("JASSIM_API_TOKEN", None)
-                        env["JASSIM_OLLAMA_URL"] = "http://127.0.0.1:1"
+            env["JASSIM_OLLAMA_URL"] = "http://127.0.0.1:1"
             proc = subprocess.Popen(
                 [sys.executable, str(Path(__file__).with_name("server.py"))],
                 env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
