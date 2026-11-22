@@ -25,7 +25,8 @@ class SharedStorageTests(unittest.TestCase):
                 tables = {item[0] for item in db.execute(
                     "SELECT name FROM sqlite_master WHERE type='table'"
                 ).fetchall()}
-                self.assertTrue({"messages", "memories", "provider_scores"} <= tables)
+                self.assertTrue({"messages", "memories"} <= tables)
+                self.assertNotIn("provider_scores", tables)
             finally:
                 db.close()
 
