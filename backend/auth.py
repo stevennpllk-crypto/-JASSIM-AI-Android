@@ -36,7 +36,13 @@ def hash_password(password):
     )
 
 
+DUMMY_PASSWORD_HASH = "pbkdf2_sha256$310000$00112233445566778899aabbccddeeff$0000000000000000000000000000000000000000000000000000000000000000"
+
+
 def verify_password(password, encoded):
+    password = str(password or "")
+    if len(password) < 1 or len(password) > 256:
+        return False
     try:
         algorithm, iterations, salt_hex, digest_hex = str(encoded).split("$", 3)
         if algorithm != "pbkdf2_sha256":

@@ -8,6 +8,7 @@ import threading
 from http.server import ThreadingHTTPServer
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
+from unittest.mock import patch
 from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parent
@@ -44,6 +45,8 @@ class MultiUserAuthTest(unittest.TestCase):
         self.assertNotEqual(row[2], "a-long-test-password")
         self.assertTrue(auth.verify_password("a-long-test-password", row[2]))
         self.assertFalse(auth.verify_password("wrong-password", row[2]))
+        self.assertFalse(auth.verify_password("x" * 257, row[2]))
+        self.assertFalse(auth.verify_password("", row[2]))
         token = auth.issue_session(self.db, user["id"])
         identity = auth.authenticate_session(self.db, token)
         self.assertEqual(identity["user_id"], user["id"])
@@ -69,6 +72,23 @@ class MultiUserAuthTest(unittest.TestCase):
         with self.assertRaises(PermissionError):
             self.server.save_message("private-first", "user", "اختراق", second["id"])
 
+        # Conversation memory must obey the same owner boundary as chat history.
+        self.server.set_memory("private-first", "ذاكرة سرية للحساب الأول", first["id"])
+        self.assertEqual(
+            self.server.get_memory("private-first", first["id"]),
+            "ذاكرة سرية للحساب الأول"
+        )
+        self.assertEqual(self.server.get_memory("private-first", second["id"]), "")
+        with self.assertRaises(PermissionError):
+            self.server.set_memory("private-first", "محاولة تعديل", second["id"])
+        self.assertFalse(self.server.clear_memory("private-first", second["id"]))
+        self.assertEqual(
+            self.server.get_memory("private-first", first["id"]),
+            "ذاكرة سرية للحساب الأول"
+        )
+        self.assertTrue(self.server.clear_memory("private-first", first["id"]))
+        self.assertEqual(self.server.get_memory("private-first", first["id"]), "")
+
     def test_http_registration_and_cross_account_access(self):
         httpd = ThreadingHTTPServer(("127.0.0.1", 0), self.server.Handler)
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
@@ -85,15 +105,57 @@ class MultiUserAuthTest(unittest.TestCase):
                 return response.status, json.loads(response.read().decode("utf-8"))
 
         try:
+            # Image prompts must never reach Hugging Face from an unauthenticated request.
+            image_body = {"prompt": "synthetic privacy regression test"}
+            with patch.object(
+                self.server, "generate_image_hf",
+                side_effect=AssertionError("unauthenticated request reached image provider")
+            ) as image_provider:
+                with self.assertRaises(HTTPError) as image_denied:
+                    call("/api/images/generate", "POST", body=image_body)
+                expected_auth_status = 401 if self.server.API_TOKEN else 503
+                self.assertEqual(image_denied.exception.code, expected_auth_status)
+                image_provider.assert_not_called()
+
             _, first = call("/api/auth/register", "POST", body={
                 "email": "http-first@example.com", "password": "first-password-123"
             })
             _, second = call("/api/auth/register", "POST", body={
                 "email": "http-second@example.com", "password": "second-password-123"
             })
+            # Unknown accounts still execute PBKDF2 before returning the same
+            # generic credentials error, limiting username timing disclosure.
+            with patch.object(auth, "verify_password", wraps=auth.verify_password) as verifier:
+                with self.assertRaises(HTTPError) as unknown_login:
+                    call("/api/auth/login", "POST", body={
+                        "email": "missing@example.com", "password": "some-password-123"
+                    })
+                self.assertEqual(unknown_login.exception.code, 401)
+                self.assertEqual(verifier.call_count, 1)
+            with patch.object(auth, "verify_password", wraps=auth.verify_password) as verifier:
+                with self.assertRaises(HTTPError) as wrong_login:
+                    call("/api/auth/login", "POST", body={
+                        "email": "http-first@example.com", "password": "wrong-password-123"
+                    })
+                self.assertEqual(wrong_login.exception.code, 401)
+                self.assertEqual(verifier.call_count, 1)
             first_token, second_token = first["token"], second["token"]
             self.assertEqual(call("/api/auth/me", token=first_token)[1]["user"]["email"],
                              "http-first@example.com")
+
+            # A normal account cannot self-select the NPC exception to ordinary
+            # external-chat policy by forging the request context field.
+            with patch.object(
+                self.server, "generate_answer",
+                return_value=("private local test answer", "ollama")
+            ) as generate:
+                _, npc_context_result = call("/api/chat", "POST", first_token, {
+                    "conversation_id": "http-npc-context",
+                    "message": "اختبار خصوصية",
+                    "context": "game_npc"
+                })
+                self.assertEqual(npc_context_result["engine"], "ollama")
+                self.assertFalse(generate.call_args.kwargs["allow_external"])
 
             _, saved = call("/api/chat", "POST", first_token, {
                 "conversation_id": "http-private-first",

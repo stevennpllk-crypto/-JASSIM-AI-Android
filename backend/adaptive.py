@@ -15,7 +15,7 @@ DATA_DIR = Path(os.environ.get("JASSIM_DATA_DIR", str(Path(__file__).resolve().p
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "jassim.db"
 ALLOW_EXTERNAL_CHAT = os.environ.get("JASSIM_ALLOW_EXTERNAL_CHAT", "false").lower() in ("1", "true", "yes")
-ENABLE_PUBLIC_PROVIDERS = os.environ.get("JASSIM_ENABLE_PUBLIC_PROVIDERS", "true").lower() in ("1", "true", "yes")
+ENABLE_PUBLIC_PROVIDERS = os.environ.get("JASSIM_ENABLE_PUBLIC_PROVIDERS", "false").lower() in ("1", "true", "yes")
 TIMEOUT = max(8, min(int(os.environ.get("JASSIM_PROVIDER_TIMEOUT", "45")), 120))
 
 PROVIDERS = [

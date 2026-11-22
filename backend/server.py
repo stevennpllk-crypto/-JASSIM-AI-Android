@@ -601,8 +601,10 @@ class Handler(BaseHTTPRequestHandler):
             model_state = ollama_status()
             external_ready = adaptive.external_chat_enabled()
             npc_provider_ready = adaptive.npc_chat_enabled()
+            # Readiness represents the ordinary chat path. NPC-only provider
+            # availability must not mask an unavailable private chat engine.
             ready = bool(
-                (model_state["reachable"] and model_state["model_ready"]) or external_ready or npc_provider_ready
+                (model_state["reachable"] and model_state["model_ready"]) or external_ready
             )
             if parsed.path == "/ready":
                 self.send_json(200 if ready else 503, {
@@ -754,7 +756,13 @@ class Handler(BaseHTTPRequestHandler):
                         user = auth.create_user(db, email, password)
                     else:
                         row = auth.find_user_by_email(db, email)
-                        if not row or not auth.verify_password(password, row[2]):
+                        if not row:
+                            # Perform the same PBKDF2 work as a normal failed login
+                            # to reduce account-enumeration timing differences.
+                            auth.verify_password(password, auth.DUMMY_PASSWORD_HASH)
+                            self.send_json(401, {"error": "invalid_credentials"})
+                            return
+                        if not auth.verify_password(password, row[2]):
                             self.send_json(401, {"error": "invalid_credentials"})
                             return
                         user = {"id": row[0], "email": row[1], "role": row[3]}
@@ -843,7 +851,7 @@ class Handler(BaseHTTPRequestHandler):
             message = str(body.get("message", "")).strip()
             # Only the dedicated game NPC client opts its own dialogue into public inference.
             # Ordinary JASSIM chats remain local-only unless the operator globally opts in.
-            allow_npc_provider = body.get("context") == "game_npc"
+            allow_npc_provider = body.get("context") == "game_npc" and identity["role"] == "admin"
             conversation_id = str(body.get("conversation_id", "default")).strip()[:100] or "default"
             if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", conversation_id):
                 self.send_json(400, {"error": "invalid_conversation_id"})
