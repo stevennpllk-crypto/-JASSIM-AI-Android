@@ -24,12 +24,18 @@ class ClientPrivacyTest(unittest.TestCase):
             re.compile(r'if \(baseUrl\(\)\.isEmpty\(\)\)\s*\{[^}]*لم تُرسل رسالتك إلى أي خدمة خارجية', re.S),
         )
 
-    def test_public_providers_are_disabled_by_default(self):
+    def test_public_providers_are_removed_from_private_inference(self):
         source = ADAPTIVE.read_text(encoding="utf-8")
-        self.assertRegex(
-            source,
-            re.compile(r'JASSIM_ENABLE_PUBLIC_PROVIDERS",\s*"false"'),
-        )
+        self.assertNotIn("api.groq.com", source)
+        self.assertNotIn("api.jarvisclaw.ai", source)
+        self.assertNotIn("kepler.ai.cloud.ovh.net", source)
+        self.assertNotIn("router.huggingface.co", source)
+        import sys
+        sys.path.insert(0, str(ROOT / "backend"))
+        import adaptive
+        self.assertFalse(adaptive.external_chat_enabled())
+        self.assertFalse(adaptive.npc_chat_enabled())
+        self.assertEqual(adaptive.provider_stats(), [])
 
 
 if __name__ == "__main__":
