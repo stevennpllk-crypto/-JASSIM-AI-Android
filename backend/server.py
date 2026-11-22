@@ -526,6 +526,17 @@ class Handler(BaseHTTPRequestHandler):
                 response.close()
             INFERENCE_SEMAPHORE.release()
 
+    def send_error(self, code, message=None, explain=None):
+        # BaseHTTPRequestHandler returns 501 for every unrecognized verb.
+        # Convert that protocol-level default into an explicit 405 response.
+        if code == 501:
+            self.send_response(405)
+            self.send_header("Allow", "GET, HEAD, POST, DELETE, OPTIONS")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        super().send_error(code, message, explain)
+
     def log_message(self, fmt, *args):
         print("[JASSIM] " + (fmt % args))
 
