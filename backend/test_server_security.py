@@ -23,13 +23,23 @@ class ServerPrivacySecurityTests(unittest.TestCase):
         model_state = {"reachable": False, "model_ready": False}
         self.assertFalse(server.private_chat_ready(model_state, external_ready=False))
 
-    def test_private_chat_is_ready_when_local_model_is_ready(self):
+    def test_private_chat_is_ready_when_local_model_and_token_are_ready(self):
         model_state = {"reachable": True, "model_ready": True}
-        self.assertTrue(server.private_chat_ready(model_state, external_ready=False))
+        previous_token = server.API_TOKEN
+        server.API_TOKEN = "test-api-token"
+        try:
+            self.assertTrue(server.private_chat_ready(model_state, external_ready=False))
+        finally:
+            server.API_TOKEN = previous_token
 
-    def test_operator_global_external_chat_opt_in_can_mark_chat_ready(self):
+    def test_operator_global_external_chat_opt_in_cannot_mark_private_chat_ready(self):
         model_state = {"reachable": False, "model_ready": False}
-        self.assertTrue(server.private_chat_ready(model_state, external_ready=True))
+        previous_token = server.API_TOKEN
+        server.API_TOKEN = "test-api-token"
+        try:
+            self.assertFalse(server.private_chat_ready(model_state, external_ready=True))
+        finally:
+            server.API_TOKEN = previous_token
 
 
 if __name__ == "__main__":
