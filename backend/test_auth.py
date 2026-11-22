@@ -106,6 +106,23 @@ class MultiUserAuthTest(unittest.TestCase):
             self.assertEqual(len(first_history["messages"]), 2)
             self.assertEqual(second_history["messages"], [])
 
+            # The saved memory belongs to the first account, not merely to a known conversation ID.
+            self.assertEqual(self.server.get_memory("http-private-first", first["user"]["id"]),
+                             "هذه معلومة خاصة بالحساب الأول")
+            self.assertEqual(self.server.get_memory("http-private-first", second["user"]["id"]), "")
+            self.assertEqual(call("/api/conversations", token=second_token)[1]["conversations"], [])
+
+            # A second account cannot overwrite the first account memory through the HTTP chat route.
+            with self.assertRaises(HTTPError) as overwrite_denied:
+                call("/api/chat", "POST", second_token, {
+                    "conversation_id": "http-private-first",
+                    "message": "احفظ أن هذه معلومة بديلة من الحساب الثاني"
+                })
+            self.assertEqual(overwrite_denied.exception.code, 404)
+            self.assertEqual(self.server.get_memory("http-private-first", first["user"]["id"]),
+                             "هذه معلومة خاصة بالحساب الأول")
+            self.assertFalse(self.server.clear_memory("http-private-first", second["user"]["id"]))
+
             with self.assertRaises(HTTPError) as denied:
                 call("/api/conversations?conversation_id=http-private-first", "DELETE", second_token)
             self.assertEqual(denied.exception.code, 404)
