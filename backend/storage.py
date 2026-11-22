@@ -89,15 +89,6 @@ def ensure_schema(db, sqlite_path=None):
                     updated_at TEXT NOT NULL
                 )""",
                 "CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_id, updated_at)",
-                """CREATE TABLE IF NOT EXISTS provider_scores (
-                    provider_id TEXT PRIMARY KEY,
-                    attempts BIGINT NOT NULL DEFAULT 0,
-                    successes BIGINT NOT NULL DEFAULT 0,
-                    avg_latency_ms DOUBLE PRECISION NOT NULL DEFAULT 0,
-                    quality_score DOUBLE PRECISION NOT NULL DEFAULT 0,
-                    last_success TEXT,
-                    last_error TEXT
-                )""",
                 """CREATE TABLE IF NOT EXISTS schema_migrations (
                     name TEXT PRIMARY KEY,
                     applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -140,15 +131,6 @@ def ensure_schema(db, sqlite_path=None):
                     updated_at TEXT NOT NULL
                 )""",
                 "CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_id, updated_at)",
-                """CREATE TABLE IF NOT EXISTS provider_scores (
-                    provider_id TEXT PRIMARY KEY,
-                    attempts INTEGER NOT NULL DEFAULT 0,
-                    successes INTEGER NOT NULL DEFAULT 0,
-                    avg_latency_ms REAL NOT NULL DEFAULT 0,
-                    quality_score REAL NOT NULL DEFAULT 0,
-                    last_success TEXT,
-                    last_error TEXT
-                )"""
             ]
         for statement in statements:
             db.execute(statement)
@@ -207,17 +189,6 @@ def _migrate_sqlite_once(target):
                         """INSERT INTO memories(conversation_id,content,updated_at) VALUES(?,?,?)
                            ON CONFLICT(conversation_id) DO UPDATE SET
                            content=EXCLUDED.content,updated_at=EXCLUDED.updated_at""",
-                        tuple(row)
-                    )
-            if "provider_scores" in tables:
-                for row in source.execute(
-                    """SELECT provider_id,attempts,successes,avg_latency_ms,quality_score,last_success,last_error
-                       FROM provider_scores"""
-                ):
-                    target.execute(
-                        """INSERT INTO provider_scores(provider_id,attempts,successes,avg_latency_ms,
-                           quality_score,last_success,last_error) VALUES(?,?,?,?,?,?,?)
-                           ON CONFLICT(provider_id) DO NOTHING""",
                         tuple(row)
                     )
         finally:
