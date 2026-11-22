@@ -168,7 +168,6 @@ class ServerSmokeTest(unittest.TestCase):
             env["JASSIM_PORT"] = "18788"
             env["JASSIM_HOST"] = "127.0.0.1"
             env["JASSIM_API_TOKEN"] = "readiness-test-token"
-            env["JASSIM_ENABLE_PUBLIC_PROVIDERS"] = "false"
             env["JASSIM_OLLAMA_URL"] = "http://127.0.0.1:1"
             env["JASSIM_OLLAMA_MODEL"] = "qwen3.5:4b"
             proc = subprocess.Popen(
