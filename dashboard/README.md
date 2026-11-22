@@ -11,8 +11,9 @@ The GitHub Actions workflow `.github/workflows/pages.yml` publishes this directo
 ## Connect
 Configure the base URL of the JASSIM API (without `/api/chat`). The dashboard calls:
 - `GET /health`
-- `POST /api/chat`
-- `GET /api/history?conversation_id=...`
+- `POST /api/chat/stream` (live chat via Server-Sent Events)
+- `GET /api/history?conversation_id=...` (requires a valid account session)
+- `POST /api/images/generate` (requires a valid account session and `JASSIM_HF_TOKEN` configured on the server)
 
 The current API must permit browser CORS from the dashboard origin. Do not expose an unauthenticated API publicly. Use HTTPS, authentication, rate limits, and private networking before public deployment.
 
