@@ -317,6 +317,10 @@ def ask_ollama(messages):
             if not answer:
                 raise RuntimeError("محرك Ollama لم يُرجع إجابة.")
             return answer
+        except urllib.error.HTTPError as exc:
+            detail = exc.read(2048).decode("utf-8", errors="replace")
+            print(f"Ollama /api/chat rejected request: HTTP {exc.code}: {detail[:1500]}", flush=True)
+            raise RuntimeError(f"Ollama HTTP {exc.code}: {detail[:500]}") from exc
         except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
             last_error = exc
             if attempt == 0:
@@ -427,7 +431,9 @@ class Handler(BaseHTTPRequestHandler):
             )
             try:
                 response = urllib.request.urlopen(request, timeout=OLLAMA_TIMEOUT)
-            except (urllib.error.URLError, TimeoutError, ValueError, OSError):
+            except urllib.error.HTTPError as exc:
+                detail = exc.read(2048).decode("utf-8", errors="replace")
+                print(f"Ollama streaming /api/chat rejected request: HTTP {exc.code}: {detail[:1500]}", flush=True)
                 self.send_json(503, {
                     "error": "private_model_unavailable",
                     "message": "محرك JASSIM الخاص غير متاح. لم تُرسل الرسالة إلى أي خادم آخر.",
@@ -435,8 +441,8 @@ class Handler(BaseHTTPRequestHandler):
                     "conversation_id": conversation_id
                 })
                 return
-
-            self.send_sse_headers()
+            except (urllib.error.URLError, TimeoutError, ValueError, OSError):
+                self.send_json(503, {
             answer_parts = []
             completed = False
             try:
