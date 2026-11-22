@@ -29,6 +29,20 @@ class SharedStorageTests(unittest.TestCase):
             finally:
                 db.close()
 
+
+    def test_postgres_connection_forwards_rollback(self):
+        class FakeConnection:
+            def __init__(self):
+                self.rolled_back = False
+
+            def rollback(self):
+                self.rolled_back = True
+
+        raw = FakeConnection()
+        wrapped = storage.PostgresConnection(raw)
+        wrapped.rollback()
+        self.assertTrue(raw.rolled_back)
+
     def test_backend_name_defaults_to_sqlite(self):
         self.assertIn(storage.backend_name(), ("sqlite", "postgresql"))
 

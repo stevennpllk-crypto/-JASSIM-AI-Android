@@ -7,6 +7,7 @@ from urllib.request import Request, urlopen
 import subprocess
 import sys
 import time
+from unittest.mock import patch
 import threading
 import socket
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -241,6 +242,53 @@ class ServerSmokeTest(unittest.TestCase):
                     os.environ.pop("JASSIM_ENABLE_PUBLIC_PROVIDERS", None)
                 else:
                     os.environ["JASSIM_ENABLE_PUBLIC_PROVIDERS"] = previous_enabled
+
+    def test_stream_fallback_propagates_npc_external_opt_in(self):
+        import importlib.util
+        import urllib.error
+
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_stream_fallback_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+
+                module.INFERENCE_SEMAPHORE = threading.BoundedSemaphore(1)
+                module.OLLAMA_QUEUE_TIMEOUT = 1
+                handler = module.Handler.__new__(module.Handler)
+                sent = []
+                calls = []
+                handler.send_sse_static = lambda answer, conversation_id, engine: sent.append(
+                    (answer, conversation_id, engine))
+                handler.send_json = lambda status, payload: sent.append((status, payload))
+
+                def fake_provider(messages, allow_external=False):
+                    calls.append(allow_external)
+                    return "رد احتياطي اختباري", "test-provider"
+
+                module.adaptive.answer_with_provider = fake_provider
+                with patch.object(module.urllib.request, "urlopen",
+                                  side_effect=urllib.error.URLError("ollama offline")):
+                    handler.stream_chat_response(
+                        "npc-stream", "مرحبا", [{"role": "user", "content": "مرحبا"}],
+                        "test-user", allow_external=True)
+                    handler.stream_chat_response(
+                        "private-stream", "رسالة خاصة",
+                        [{"role": "user", "content": "رسالة خاصة"}], "test-user",
+                        allow_external=False)
+
+                self.assertEqual(calls, [True, False])
+                self.assertEqual(len(sent), 2)
+                self.assertEqual(sent[0][2], "test-provider")
+                self.assertEqual(sent[1][2], "test-provider")
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
 
     def test_server_health_and_chat(self):
         with tempfile.TemporaryDirectory() as tmp:
