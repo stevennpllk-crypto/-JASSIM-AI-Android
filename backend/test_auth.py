@@ -3,6 +3,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 import json
 import threading
 from http.server import ThreadingHTTPServer
@@ -118,6 +119,44 @@ class MultiUserAuthTest(unittest.TestCase):
             httpd.server_close()
             thread.join(timeout=3)
 
+    def test_image_generation_requires_auth_and_does_not_store_prompt(self):
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), self.server.Handler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        base = "http://127.0.0.1:" + str(httpd.server_port)
+        user = auth.create_user(self.db, "image-user@example.com", "image-user-password")
+        token = auth.issue_session(self.db, user["id"])
+        prompt = "A private test prompt that must not enter chat history"
+        body = json.dumps({"prompt": prompt}).encode("utf-8")
+
+        def post(token_value=None):
+            headers = {"Content-Type": "application/json"}
+            if token_value:
+                headers["Authorization"] = "Bearer " + token_value
+            request = Request(base + "/api/images/generate", data=body, headers=headers, method="POST")
+            with urlopen(request, timeout=5) as response:
+                return response.status, json.loads(response.read().decode("utf-8"))
+
+        try:
+            with patch.object(self.server, "generate_image_hf") as provider:
+                with self.assertRaises(HTTPError) as denied:
+                    post()
+                self.assertEqual(denied.exception.code, 401)
+                provider.assert_not_called()
+
+            before = self.db.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
+            with patch.object(self.server, "generate_image_hf", return_value=("aGVsbG8=", "image/png", "test-model")) as provider:
+                status, result = post(token)
+                self.assertEqual(status, 200)
+                self.assertEqual(result["image_base64"], "aGVsbG8=")
+                provider.assert_called_once_with(prompt)
+            after = self.db.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
+            self.assertEqual(after, before)
+            self.assertEqual(self.server.history("image-prompt-not-saved", 20, user["id"]), [])
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=3)
     def test_old_conversations_remain_with_legacy_owner(self):
         self.server.save_message("legacy-chat", "user", "بيانات قديمة")
         user = auth.create_user(self.db, "new@example.com", "new-user-password")
