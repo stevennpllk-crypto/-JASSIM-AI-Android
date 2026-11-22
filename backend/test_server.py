@@ -282,6 +282,11 @@ class ServerSmokeTest(unittest.TestCase):
                 self.assertEqual(getattr(method_error.exception, "code", None), 405)
                 self.assertIn("GET", method_error.exception.headers.get("Allow", ""))
 
+                unknown_verb = Request(base + "/health", method="BREW")
+                with self.assertRaises(Exception) as unknown_verb_error:
+                    urlopen(unknown_verb, timeout=3)
+                self.assertEqual(getattr(unknown_verb_error.exception, "code", None), 405)
+
                 unknown = Request(
                     base + "/api/route-that-does-not-exist",
                     data=b"{}", headers={"Content-Type": "application/json"}
