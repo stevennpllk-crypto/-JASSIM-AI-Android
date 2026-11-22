@@ -70,6 +70,12 @@ jobs:
           if missing:
               raise SystemExit("Missing dashboard assets: " + ", ".join(missing))
           print("Dashboard HTML local assets verified:", len(parser.paths))
+          html = (root / "index.html").read_text(encoding="utf-8")
+          js = (root / "app.js").read_text(encoding="utf-8")
+          if 'id="generateImage" disabled' not in html:
+              raise SystemExit("Image generation must start disabled until server readiness is known")
+          if "imageButton.disabled=!imageReady" not in js:
+              raise SystemExit("Image generation button must follow the server readiness flag")
           PY
 
 
