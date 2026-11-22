@@ -131,6 +131,50 @@ class MultiUserAuthTest(unittest.TestCase):
             with self.assertRaises(HTTPError) as revoked:
                 call("/api/auth/me", token=first_token)
             self.assertEqual(revoked.exception.code, 401)
+            # Revocation must block other authenticated data routes too, not only /me.
+            with self.assertRaises(HTTPError) as revoked_history:
+                call("/api/history?conversation_id=http-private-first", token=first_token)
+            self.assertEqual(revoked_history.exception.code, 401)
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=3)
+
+    def test_expired_session_is_rejected_by_authenticated_http_routes(self):
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), self.server.Handler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        base = "http://127.0.0.1:" + str(httpd.server_port)
+        user = auth.create_user(self.db, "expired@example.com", "expired-session-password")
+        token = auth.issue_session(self.db, user["id"])
+        from datetime import datetime, timedelta, timezone
+        expired_at = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+        self.db.execute(
+            "UPDATE sessions SET expires_at=? WHERE token_hash=?",
+            (expired_at, auth._token_hash(token))
+        )
+        self.db.commit()
+
+        def get(path):
+            request = Request(
+                base + path,
+                headers={"Authorization": "Bearer " + token},
+                method="GET"
+            )
+            with urlopen(request, timeout=5) as response:
+                return response.status
+
+        try:
+            for path in (
+                "/api/auth/me",
+                "/api/history?conversation_id=expired-private",
+                "/api/conversations",
+            ):
+                with self.subTest(path=path):
+                    with self.assertRaises(HTTPError) as denied:
+                        get(path)
+                    self.assertEqual(denied.exception.code, 401)
+            self.assertIsNone(auth.authenticate_session(self.db, token))
         finally:
             httpd.shutdown()
             httpd.server_close()
