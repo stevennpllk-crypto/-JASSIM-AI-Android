@@ -5,6 +5,7 @@ import tempfile
 import unittest
 import json
 import threading
+from unittest.mock import patch
 from http.server import ThreadingHTTPServer
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
@@ -117,6 +118,65 @@ class MultiUserAuthTest(unittest.TestCase):
             httpd.shutdown()
             httpd.server_close()
             thread.join(timeout=3)
+
+    def test_image_generation_auth_precedes_provider_availability(self):
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), self.server.Handler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        base = "http://127.0.0.1:" + str(httpd.server_port)
+
+        def post_image(token=None):
+            headers = {"Content-Type": "application/json"}
+            if token:
+                headers["Authorization"] = "Bearer " + token
+            request = Request(
+                base + "/api/images/generate",
+                data=json.dumps({"prompt": "test image"}).encode("utf-8"),
+                headers=headers,
+                method="POST",
+            )
+            try:
+                with urlopen(request, timeout=5) as response:
+                    return response.status, json.loads(response.read().decode("utf-8"))
+            except HTTPError as error:
+                return error.code, json.loads(error.read().decode("utf-8"))
+
+        try:
+            # Unauthenticated callers must always receive 401, regardless of
+            # optional legacy API_TOKEN configuration or provider availability.
+            status, payload = post_image()
+            self.assertEqual(status, 401)
+            self.assertEqual(payload.get("error"), "unauthorized")
+
+            _, registered = self._register_test_user(base)
+            token = registered["token"]
+            # A valid session passes authentication; only then may provider
+            # availability determine whether image generation can proceed.
+            with patch.object(
+                self.server,
+                "generate_image_hf",
+                side_effect=RuntimeError("image_provider_not_configured"),
+            ):
+                status, payload = post_image(token)
+            self.assertEqual(status, 503)
+            self.assertEqual(payload.get("error"), "image_provider_not_configured")
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=3)
+
+    def _register_test_user(self, base):
+        request = Request(
+            base + "/api/auth/register",
+            data=json.dumps({
+                "email": "image-auth@example.com",
+                "password": "image-auth-password-123",
+            }).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urlopen(request, timeout=5) as response:
+            return response.status, json.loads(response.read().decode("utf-8"))
 
     def test_old_conversations_remain_with_legacy_owner(self):
         self.server.save_message("legacy-chat", "user", "بيانات قديمة")
