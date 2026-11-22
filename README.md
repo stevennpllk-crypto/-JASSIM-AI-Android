@@ -120,4 +120,3 @@ persistent volume, and starts the API only after model initialization succeeds.
 Choose a host with sufficient RAM/VRAM; Railway's current API-only service does not
 run Ollama and is not a complete private inference deployment.
 
-GitHub source, the APK, dashboard JavaScript, or a chat message.
