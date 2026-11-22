@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ANDROID_CHAT = ROOT / "app/src/main/java/com/jassim/ai/MainActivity.java"
 SERVER = ROOT / "backend/server.py"
+DASHBOARD_JS = ROOT / "dashboard/app.js"
 
 
 class SinglePrivateEngineTest(unittest.TestCase):
@@ -14,6 +15,13 @@ class SinglePrivateEngineTest(unittest.TestCase):
         self.assertNotIn("sendAnonymousFallback", source)
         self.assertNotIn("requestAnonymousProvider", source)
         self.assertNotIn("buildFallbackHistory", source)
+
+    def test_clients_have_no_provider_evaluation_controls(self):
+        android = ANDROID_CHAT.read_text(encoding="utf-8")
+        dashboard = DASHBOARD_JS.read_text(encoding="utf-8")
+        self.assertNotIn("runProviderEvaluation", android)
+        self.assertNotIn("external_provider_ready", android)
+        self.assertNotIn("api.groq.com", dashboard)
 
     def test_backend_uses_only_private_ollama_for_chat(self):
         source = SERVER.read_text(encoding="utf-8")
