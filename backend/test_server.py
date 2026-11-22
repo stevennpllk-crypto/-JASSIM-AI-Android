@@ -303,6 +303,15 @@ class ServerSmokeTest(unittest.TestCase):
                 with self.assertRaises(Exception) as auth_error:
                     urlopen(chat, timeout=3)
                 self.assertEqual(getattr(auth_error.exception, "code", None), 401)
+
+                stream_chat = Request(
+                    base + "/api/chat/stream",
+                    data=json.dumps({"message": "private stream test"}).encode(),
+                    headers={"Content-Type": "application/json", "Accept": "text/event-stream"}
+                )
+                with self.assertRaises(Exception) as stream_auth_error:
+                    urlopen(stream_chat, timeout=3)
+                self.assertEqual(getattr(stream_auth_error.exception, "code", None), 401)
             finally:
                 proc.terminate()
                 proc.wait(timeout=5)
