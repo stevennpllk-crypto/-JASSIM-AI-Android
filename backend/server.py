@@ -610,6 +610,21 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/":
+            self.send_json(200, {
+                "service": "JASSIM AI",
+                "status": "api_online",
+                "chat_endpoint": "/api/chat",
+                "readiness_endpoint": "/ready",
+                "health_endpoint": "/health",
+                "inference": "private_ollama_only"
+            })
+            return
+        if parsed.path == "/favicon.ico":
+            self.send_response(204)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         if parsed.path in ("/health", "/ready"):
             model_state = ollama_status()
             external_ready = adaptive.external_chat_enabled()
@@ -662,7 +677,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self.send_json(200, {"user": {"id": identity["user_id"], "email": identity["email"], "role": identity["role"]}})
             return
-        if parsed.path in ("/api/models", "/api/history", "/api/conversations", "/api/providers", "/api/admin/storage"):
+        if parsed.path in ("/api/models", "/api/history", "/api/conversations", "/api/admin/storage"):
             identity = self.current_identity()
             if not identity:
                 self.send_json(401, {"error": "unauthorized"})
@@ -754,7 +769,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         request_path = urlparse(self.path).path
         streaming = request_path == "/api/chat/stream"
-        if request_path not in ("/api/chat", "/api/chat/stream", "/api/admin/evaluate", "/api/images/generate", "/api/auth/register", "/api/auth/login", "/api/auth/logout"):
+        if request_path not in ("/api/chat", "/api/chat/stream", "/api/images/generate", "/api/auth/register", "/api/auth/login", "/api/auth/logout"):
             self.send_json(404, {"error": "not_found"})
             return
         if request_path in ("/api/auth/register", "/api/auth/login"):
@@ -850,10 +865,6 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(400, {"error": "bad_request", "detail": str(exc)[:160]})
             except (urllib.error.URLError, TimeoutError, OSError) as exc:
                 self.send_json(502, {"error": "image_generation_failed", "detail": type(exc).__name__})
-            return
-        if request_path == "/api/admin/evaluate":
-            result = adaptive.evaluate_providers()
-            self.send_json(200, result)
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
