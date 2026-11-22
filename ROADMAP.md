@@ -12,7 +12,7 @@ Build an independent, Arabic-first AI assistant with a polished Android app and 
 4. Keep user data portable and exportable; provide clear delete/export controls before calling memory persistent.
 5. The Android app must remain usable on entry-level devices and tolerate unstable mobile networks.
 6. Every tool action must be explicit, permissioned, logged, and confirmed.
-7. Keep the core self-hostable; optional external model providers must be opt-in.
+7. Keep inference private and self-hosted; public model-provider routing is not part of the deployment.
 
 ## Capability roadmap
 
@@ -67,7 +67,7 @@ Build an independent, Arabic-first AI assistant with a polished Android app and 
 - [x] Serialize model inference by default with a bounded queue to reduce GPU memory spikes under concurrent requests.
 - [x] Colab watchdog that restarts crashed API/model/tunnel processes while the runtime remains alive.
 - [ ] Model-specific context limits and prompt templates.
-- [ ] Optional cloud providers through server-side secrets only; never embed provider keys in APK or browser code.
+- [x] Disable public text-provider routing and external image-provider forwarding; all inference stays on owner-operated local models.
 - [ ] Health, readiness, latency, token usage, storage, and error dashboards.
 - [ ] Backups, restore drills, database migrations, and retention controls.
 - [x] Documented restartable Docker deployment, persistent model/database volumes, and readiness checks.
