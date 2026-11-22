@@ -393,7 +393,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_sse_event({"type": "token", "token": answer})
         self.send_sse_event({"type": "done", "conversation_id": conversation_id, "engine": engine})
 
-    def stream_chat_response(self, conversation_id, message, context, user_id, allow_external=False):
+    def stream_chat_response(self, conversation_id, message, context, user_id):
         if not INFERENCE_SEMAPHORE.acquire(timeout=OLLAMA_QUEUE_TIMEOUT):
             self.send_json(503, {
                 "error": "model_busy",
