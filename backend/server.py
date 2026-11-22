@@ -77,6 +77,24 @@ SYSTEM_PROMPT = """أنت JASSIM AI، مساعد مستقل عالي الجود�
 27. لا تدّعِ أنك أجريت بحثاً أو نفذت إجراءً خارجياً أو حفظت معلومة إذا لم يحدث ذلك فعلاً.
 """
 
+def private_chat_ready(model_state, external_ready):
+    """Readiness tracks the ordinary private-chat path, not NPC-only providers."""
+    return bool(
+        (model_state.get("reachable") and model_state.get("model_ready"))
+        or external_ready
+    )
+
+
+def can_route_npc_externally(body, identity):
+    """Only an authenticated server administrator may opt an NPC turn into public inference."""
+    return bool(
+        isinstance(body, dict)
+        and isinstance(identity, dict)
+        and body.get("context") == "game_npc"
+        and identity.get("role") == "admin"
+    )
+
+
 def connect_db():
     db = storage.connect(sqlite_path=DB_PATH)
     storage.ensure_schema(db, sqlite_path=DB_PATH)
@@ -638,9 +656,7 @@ class Handler(BaseHTTPRequestHandler):
             model_state = ollama_status()
             external_ready = adaptive.external_chat_enabled()
             npc_provider_ready = adaptive.npc_chat_enabled()
-            ready = bool(
-                (model_state["reachable"] and model_state["model_ready"]) or external_ready or npc_provider_ready
-            )
+            ready = private_chat_ready(model_state, external_ready)
             if parsed.path == "/ready":
                 self.send_json(200 if ready else 503, {
                     "ready": ready,
@@ -880,7 +896,7 @@ class Handler(BaseHTTPRequestHandler):
             message = str(body.get("message", "")).strip()
             # Only the dedicated game NPC client opts its own dialogue into public inference.
             # Ordinary JASSIM chats remain local-only unless the operator globally opts in.
-            allow_npc_provider = body.get("context") == "game_npc"
+            allow_npc_provider = can_route_npc_externally(body, identity)
             conversation_id = str(body.get("conversation_id", "default")).strip()[:100] or "default"
             if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", conversation_id):
                 self.send_json(400, {"error": "invalid_conversation_id"})
