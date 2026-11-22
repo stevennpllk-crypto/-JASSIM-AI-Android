@@ -15,6 +15,8 @@ DATA_DIR = Path(os.environ.get("JASSIM_DATA_DIR", str(Path(__file__).resolve().p
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "jassim.db"
 ALLOW_EXTERNAL_CHAT = os.environ.get("JASSIM_ALLOW_EXTERNAL_CHAT", "false").lower() in ("1", "true", "yes")
+# NPC prompts may include user-provided dialogue/context, so they require a separate opt-in.
+ALLOW_EXTERNAL_NPC_CHAT = os.environ.get("JASSIM_ALLOW_EXTERNAL_NPC_CHAT", "false").lower() in ("1", "true", "yes")
 ENABLE_PUBLIC_PROVIDERS = os.environ.get("JASSIM_ENABLE_PUBLIC_PROVIDERS", "true").lower() in ("1", "true", "yes")
 TIMEOUT = max(8, min(int(os.environ.get("JASSIM_PROVIDER_TIMEOUT", "45")), 120))
 
@@ -165,7 +167,7 @@ def evaluate_providers():
 
 def answer_with_provider(messages, allow_external=False):
     """Route public inference only for globally opted-in chat or explicitly marked game-NPC turns."""
-    if not (ALLOW_EXTERNAL_CHAT or allow_external) or not ENABLE_PUBLIC_PROVIDERS:
+    if not (ALLOW_EXTERNAL_CHAT or (allow_external and ALLOW_EXTERNAL_NPC_CHAT)) or not ENABLE_PUBLIC_PROVIDERS:
         raise RuntimeError("external_chat_disabled")
     ranked = provider_stats()
     by_id = {item["id"]: item for item in _configured_providers()}
@@ -188,4 +190,4 @@ def external_chat_enabled():
 
 def npc_chat_enabled():
     """NPC dialogue may use configured public providers without enabling external routing for ordinary chats."""
-    return ENABLE_PUBLIC_PROVIDERS and bool(_configured_providers())
+    return ALLOW_EXTERNAL_NPC_CHAT and ENABLE_PUBLIC_PROVIDERS and bool(_configured_providers())
