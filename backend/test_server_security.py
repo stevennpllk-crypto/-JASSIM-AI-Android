@@ -9,10 +9,10 @@ class ServerPrivacySecurityTests(unittest.TestCase):
         identity = {"user_id": "user-1", "role": "user"}
         self.assertFalse(server.can_route_npc_externally(body, identity))
 
-    def test_admin_can_enable_external_npc_routing_when_server_allows_it(self):
+    def test_admin_cannot_enable_external_npc_routing(self):
         body = {"context": "game_npc"}
         identity = {"user_id": "owner-1", "role": "admin"}
-        self.assertTrue(server.can_route_npc_externally(body, identity))
+        self.assertFalse(server.can_route_npc_externally(body, identity))
 
     def test_non_npc_context_never_uses_npc_exception(self):
         body = {"context": "ordinary_chat"}
