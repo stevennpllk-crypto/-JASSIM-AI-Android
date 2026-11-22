@@ -242,6 +242,66 @@ class ServerSmokeTest(unittest.TestCase):
                 else:
                     os.environ["JASSIM_ENABLE_PUBLIC_PROVIDERS"] = previous_enabled
 
+
+    def test_http_head_method_and_authentication_statuses(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with socket.socket() as probe:
+                probe.bind(("127.0.0.1", 0))
+                port = probe.getsockname()[1]
+            env = os.environ.copy()
+            env["JASSIM_DATA_DIR"] = tmp
+            env["JASSIM_PORT"] = str(port)
+            env["JASSIM_HOST"] = "127.0.0.1"
+            env.pop("JASSIM_API_TOKEN", None)
+            env["JASSIM_ENABLE_PUBLIC_PROVIDERS"] = "false"
+            env["JASSIM_OLLAMA_URL"] = "http://127.0.0.1:1"
+            proc = subprocess.Popen(
+                [sys.executable, str(Path(__file__).with_name("server.py"))],
+                env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+            base = "http://127.0.0.1:" + str(port)
+            try:
+                for _ in range(50):
+                    try:
+                        with urlopen(base + "/health", timeout=1):
+                            break
+                    except Exception:
+                        time.sleep(0.1)
+                else:
+                    self.fail("server did not start for HTTP method tests")
+
+                head = Request(base + "/health", method="HEAD")
+                with urlopen(head, timeout=3) as response:
+                    self.assertEqual(response.status, 200)
+                    self.assertGreater(int(response.headers.get("Content-Length", "0")), 0)
+                    self.assertEqual(response.read(), b"")
+
+                unsupported = Request(base + "/health", method="PUT")
+                with self.assertRaises(Exception) as method_error:
+                    urlopen(unsupported, timeout=3)
+                self.assertEqual(getattr(method_error.exception, "code", None), 405)
+                self.assertIn("GET", method_error.exception.headers.get("Allow", ""))
+
+                unknown = Request(
+                    base + "/api/route-that-does-not-exist",
+                    data=b"{}", headers={"Content-Type": "application/json"}
+                )
+                with self.assertRaises(Exception) as missing_error:
+                    urlopen(unknown, timeout=3)
+                self.assertEqual(getattr(missing_error.exception, "code", None), 404)
+
+                chat = Request(
+                    base + "/api/chat",
+                    data=json.dumps({"message": "private test"}).encode(),
+                    headers={"Content-Type": "application/json"}
+                )
+                with self.assertRaises(Exception) as auth_error:
+                    urlopen(chat, timeout=3)
+                self.assertEqual(getattr(auth_error.exception, "code", None), 401)
+            finally:
+                proc.terminate()
+                proc.wait(timeout=5)
+
     def test_server_health_and_chat(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = os.environ.copy()
