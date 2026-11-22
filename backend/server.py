@@ -77,11 +77,13 @@ SYSTEM_PROMPT = """أنت JASSIM AI، مساعد مستقل عالي الجود�
 27. لا تدّعِ أنك أجريت بحثاً أو نفذت إجراءً خارجياً أو حفظت معلومة إذا لم يحدث ذلك فعلاً.
 """
 
-def private_chat_ready(model_state, external_ready):
-    """Readiness tracks the ordinary private-chat path, not NPC-only providers."""
+def private_chat_ready(model_state, external_ready=False, api_token_configured=None):
+    """Only a configured token and the local Ollama model make private chat ready."""
+    token_configured = bool(API_TOKEN) if api_token_configured is None else bool(api_token_configured)
     return bool(
-        (model_state.get("reachable") and model_state.get("model_ready"))
-        or external_ready
+        token_configured
+        and model_state.get("reachable")
+        and model_state.get("model_ready")
     )
 
 
@@ -656,13 +658,27 @@ class Handler(BaseHTTPRequestHandler):
             model_state = ollama_status()
             external_ready = adaptive.external_chat_enabled()
             npc_provider_ready = adaptive.npc_chat_enabled()
-            ready = private_chat_ready(model_state, external_ready)
+            api_token_configured = bool(API_TOKEN)
+            ready = private_chat_ready(
+                model_state, external_ready, api_token_configured=api_token_configured
+            )
+            if not api_token_configured:
+                readiness_reason = "api_token_missing"
+            elif not model_state["reachable"]:
+                readiness_reason = "ollama_unreachable"
+            elif not model_state["model_ready"]:
+                readiness_reason = "model_not_installed"
+            else:
+                readiness_reason = "ready"
             if parsed.path == "/ready":
                 self.send_json(200 if ready else 503, {
                     "ready": ready,
-                    "api_token_configured": bool(API_TOKEN),
+                    "reason": readiness_reason,
+                    "model": OLLAMA_MODEL,
+                    "api_token_configured": api_token_configured,
                     "ollama_reachable": model_state["reachable"],
                     "model_ready": model_state["model_ready"],
+                    "model_loaded": model_state["model_loaded"],
                     "external_provider_ready": external_ready,
                     "npc_provider_ready": npc_provider_ready
                 })
