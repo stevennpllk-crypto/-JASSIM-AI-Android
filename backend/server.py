@@ -536,13 +536,15 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(raw)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(raw)
+        # HEAD responses carry the same status and headers as GET, but never a body.
+        if self.command != "HEAD":
+            self.wfile.write(raw)
 
     def end_headers(self):
         origin = self.headers.get("Origin")
         if origin and CORS_ORIGIN not in ("", "null") and origin == CORS_ORIGIN:
             self.send_header("Access-Control-Allow-Origin", CORS_ORIGIN)
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, HEAD, POST, DELETE, OPTIONS")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
@@ -592,8 +594,32 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self):
         self.send_response(204)
+        self.send_header("Allow", "GET, HEAD, POST, DELETE, OPTIONS")
         self.send_header("Content-Length", "0")
         self.end_headers()
+
+    def do_HEAD(self):
+        # Reuse GET routing so health/readiness/auth checks return identical headers
+        # and status codes, while send_json suppresses the response body.
+        self.do_GET()
+
+    def _method_not_allowed(self):
+        self.send_response(405)
+        self.send_header("Allow", "GET, HEAD, POST, DELETE, OPTIONS")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def do_PUT(self):
+        self._method_not_allowed()
+
+    def do_PATCH(self):
+        self._method_not_allowed()
+
+    def do_TRACE(self):
+        self._method_not_allowed()
+
+    def do_CONNECT(self):
+        self._method_not_allowed()
 
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -786,7 +812,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         identity = self.current_identity()
         if not identity:
-            self.send_json(503 if not API_TOKEN else 401, {"error": "authentication_not_configured" if not API_TOKEN else "unauthorized"})
+            # Missing/invalid credentials are an authentication failure regardless
+            # of whether the optional legacy API token is configured.
+            self.send_json(401, {"error": "unauthorized"})
             return
         if request_path == "/api/admin/evaluate" and identity["role"] != "admin":
             self.send_json(403, {"error": "admin_required"})
