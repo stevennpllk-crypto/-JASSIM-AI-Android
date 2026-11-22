@@ -375,7 +375,7 @@ def generate_answer(messages, allow_external=False):
     finally:
         INFERENCE_SEMAPHORE.release()
 
-def generate_image_hf(prompt, width=1024, height=1024):
+def generate_image_private(prompt, width=1024, height=1024):
     """Image generation stays disabled until a private, self-hosted image model exists."""
     raise RuntimeError("private_image_engine_not_configured")
 
@@ -833,7 +833,7 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(413, {"error": "prompt_too_long", "limit": 1800})
                     return
                 try:
-                    image_b64, mime, model = generate_image_hf(prompt)
+                    image_b64, mime, model = generate_image_private(prompt)
                 except RuntimeError as exc:
                     reason = str(exc)
                     status = 503 if reason == "private_image_engine_not_configured" else 502
