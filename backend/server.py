@@ -641,7 +641,6 @@ class Handler(BaseHTTPRequestHandler):
                     counts = {
                         "messages": db.execute("SELECT COUNT(*) FROM messages").fetchone()[0],
                         "memories": db.execute("SELECT COUNT(*) FROM memories").fetchone()[0],
-                        "provider_scores": db.execute("SELECT COUNT(*) FROM provider_scores").fetchone()[0]
                     }
                 finally:
                     db.close()
