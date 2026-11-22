@@ -17,8 +17,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
-import adaptive
-
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = Path(os.environ.get("JASSIM_DATA_DIR", str(ROOT / "data"))).expanduser()
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -77,22 +75,9 @@ SYSTEM_PROMPT = """أنت JASSIM AI، مساعد مستقل عالي الجود�
 27. لا تدّعِ أنك أجريت بحثاً أو نفذت إجراءً خارجياً أو حفظت معلومة إذا لم يحدث ذلك فعلاً.
 """
 
-def private_chat_ready(model_state, external_ready):
-    """Readiness tracks the ordinary private-chat path, not NPC-only providers."""
-    return bool(
-        (model_state.get("reachable") and model_state.get("model_ready"))
-        or external_ready
-    )
-
-
-def can_route_npc_externally(body, identity):
-    """Only an authenticated server administrator may opt an NPC turn into public inference."""
-    return bool(
-        isinstance(body, dict)
-        and isinstance(identity, dict)
-        and body.get("context") == "game_npc"
-        and identity.get("role") == "admin"
-    )
+def private_chat_ready(model_state):
+    """Only the configured private Ollama model can make chat ready."""
+    return bool(model_state.get("reachable") and model_state.get("model_ready"))
 
 
 def connect_db():
@@ -361,56 +346,18 @@ def ollama_status():
         return {"reachable": False, "model_ready": False, "model_loaded": False}
 
 
-def generate_answer(messages, allow_external=False):
+def generate_answer(messages):
     if not INFERENCE_SEMAPHORE.acquire(timeout=OLLAMA_QUEUE_TIMEOUT):
-        return (
-            "محرك الذكاء الاصطناعي مشغول بطلب آخر. انتظر قليلاً ثم أعد المحاولة؛ "
-            "لم يتم توليد إجابة لهذا الطلب."
-        ), "busy"
+        return ("محرك JASSIM الخاص مشغول بطلب آخر. انتظر قليلاً ثم أعد المحاولة؛ لم يتم توليد إجابة لهذا الطلب.", "busy")
     try:
         try:
             return ask_ollama(messages), "ollama"
         except (urllib.error.URLError, TimeoutError, ValueError, RuntimeError, OSError):
-            try:
-                answer, provider = adaptive.answer_with_provider(
-                    [{"role": "system", "content": SYSTEM_PROMPT}] + messages,
-                    allow_external=allow_external
-                )
-                return answer, provider
-            except RuntimeError:
-                return (
-                    "محرك الذكاء الاصطناعي غير متاح حالياً. "
-                    "لم يتمكن الخادم من الوصول إلى Ollama أو إلى مزود احتياطي مفعّل."
-                ), "fallback"
+            return ("محرك JASSIM الخاص غير متاح حالياً. لم تُرسل رسالتك إلى أي خادم أو مزوّد آخر.", "unavailable")
     finally:
         INFERENCE_SEMAPHORE.release()
 
-def generate_image_hf(prompt, width=1024, height=1024):
-    """Generate an image through Hugging Face Inference Providers; secrets stay server-side."""
-    token = os.environ.get("JASSIM_HF_TOKEN", "").strip()
-    if not token:
-        raise RuntimeError("image_provider_not_configured")
-    model = os.environ.get("JASSIM_IMAGE_MODEL", "black-forest-labs/FLUX.1-schnell").strip()
-    payload = json.dumps({"inputs": prompt, "parameters": {"width": width, "height": height}}).encode("utf-8")
-    request = urllib.request.Request(
-        "https://router.huggingface.co/hf-inference/models/" + model, data=payload,
-        headers={"Authorization": "Bearer " + token, "Content-Type": "application/json", "Accept": "image/png"},
-        method="POST"
-    )
-    timeout = max(30, min(int(os.environ.get("JASSIM_IMAGE_TIMEOUT", "180")), 300))
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        image_bytes = response.read(12 * 1024 * 1024 + 1)
-        content_type = response.headers.get("Content-Type", "image/png").split(";")[0].strip()
-    if len(image_bytes) > 12 * 1024 * 1024:
-        raise RuntimeError("generated_image_too_large")
-    if not content_type.startswith("image/"):
-        try:
-            detail = json.loads(image_bytes.decode("utf-8")).get("error", "provider_error")
-        except Exception:
-            detail = "provider_returned_non_image"
-        raise RuntimeError(str(detail)[:240])
-    import base64
-    return base64.b64encode(image_bytes).decode("ascii"), content_type, model
+
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "JASSIM-AI/0.6.0"
