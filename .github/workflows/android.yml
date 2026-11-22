@@ -40,6 +40,39 @@ jobs:
       - name: Test self-hosted backend
         run: python -m unittest discover -s backend -p 'test_*.py' -v
 
+      - name: Validate dashboard JavaScript and local assets
+        run: |
+          node --check dashboard/app.js
+          python - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+          from urllib.parse import urlparse
+
+          root = Path("dashboard")
+          class Assets(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.paths = []
+              def handle_starttag(self, tag, attrs):
+                  attrs = dict(attrs)
+                  for key in ("src", "href"):
+                      value = attrs.get(key, "")
+                      if not value or value.startswith(("#", "data:", "mailto:")):
+                          continue
+                      parsed = urlparse(value)
+                      if parsed.scheme or parsed.netloc:
+                          continue
+                      self.paths.append(value.split("?", 1)[0].split("#", 1)[0])
+
+          parser = Assets()
+          parser.feed((root / "index.html").read_text(encoding="utf-8"))
+          missing = [value for value in parser.paths if not (root / value).is_file()]
+          if missing:
+              raise SystemExit("Missing dashboard assets: " + ", ".join(missing))
+          print("Dashboard HTML local assets verified:", len(parser.paths))
+          PY
+
+
       - name: Verify deployed JASSIM server health
         run: |
           python - <<'PY'
