@@ -5,6 +5,8 @@ ROOT = Path(__file__).resolve().parents[1]
 ANDROID_CHAT = ROOT / "app/src/main/java/com/jassim/ai/MainActivity.java"
 SERVER = ROOT / "backend/server.py"
 DASHBOARD_JS = ROOT / "dashboard/app.js"
+ENV_EXAMPLE = ROOT / ".env.example"
+STORAGE = ROOT / "backend/storage.py"
 
 
 class SinglePrivateEngineTest(unittest.TestCase):
@@ -22,6 +24,11 @@ class SinglePrivateEngineTest(unittest.TestCase):
         self.assertNotIn("runProviderEvaluation", android)
         self.assertNotIn("external_provider_ready", android)
         self.assertNotIn("api.groq.com", dashboard)
+        env = ENV_EXAMPLE.read_text(encoding="utf-8")
+        storage = STORAGE.read_text(encoding="utf-8")
+        self.assertNotIn("JASSIM_ENABLE_PUBLIC_PROVIDERS", env)
+        self.assertNotIn("JASSIM_ALLOW_EXTERNAL_CHAT", env)
+        self.assertNotIn("provider_scores", storage)
 
     def test_backend_uses_only_private_ollama_for_chat(self):
         source = SERVER.read_text(encoding="utf-8")
