@@ -112,6 +112,7 @@ It uses Hugging Face Inference Providers with `black-forest-labs/FLUX.1-schnell`
 Configure `JASSIM_HF_TOKEN` as a Railway secret with Inference Providers permission; optionally set `JASSIM_IMAGE_MODEL` and `JASSIM_IMAGE_TIMEOUT`.
 Never put the Hugging Face token in dashboard JavaScript, Android source, GitHub, or a public URL.
 Image generation is a hosted pretrained model call; it does not train or fine-tune a model. Fine-tuning requires a curated licensed image dataset and a GPU training environment.
+The image prompt is sent to Hugging Face when this endpoint is configured; do not include private chat history or sensitive personal data in image prompts.
 Adobe Firefly/Photoshop Services can be added as a separate provider, but requires Adobe Developer Console credentials and an eligible Firefly Services contract.
 
 
@@ -130,6 +131,9 @@ model is `openai/gpt-oss-20b`; model availability and free-tier quotas can chang
 - Real chat is sent to a public provider only after the operator explicitly sets
   `JASSIM_ALLOW_EXTERNAL_CHAT=true`. This is a global server-side switch, not
   a per-account preference in the current version.
+- Game-NPC fallback is separately disabled by default and requires
+  `JASSIM_ALLOW_EXTERNAL_NPC_CHAT=true`; this permission is independent of the
+  ordinary-chat switch. NPC context/history may be sent to the selected public provider.
 - Groq's Free tier is rate-limited, not an unlimited production guarantee.
   Check current quotas and billing settings; do not upgrade to a paid tier without
   explicit authorization.
