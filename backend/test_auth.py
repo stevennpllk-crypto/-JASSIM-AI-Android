@@ -51,6 +51,49 @@ class MultiUserAuthTest(unittest.TestCase):
         self.assertTrue(auth.revoke_session(self.db, token))
         self.assertIsNone(auth.authenticate_session(self.db, token))
 
+    def test_logout_revokes_session_for_all_protected_http_routes(self):
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), self.server.Handler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        base = "http://127.0.0.1:" + str(httpd.server_port)
+        user = auth.create_user(self.db, "logout-http@example.com", "logout-test-password")
+        token = auth.issue_session(self.db, user["id"])
+
+        def request(path, method="GET", body=None):
+            headers = {"Authorization": "Bearer " + token, "Content-Type": "application/json"}
+            data = json.dumps(body).encode("utf-8") if body is not None else None
+            req = Request(base + path, data=data, headers=headers, method=method)
+            with urlopen(req, timeout=5) as response:
+                return response.status, json.loads(response.read().decode("utf-8"))
+
+        try:
+            status, result = request("/api/auth/logout", "POST", {})
+            self.assertEqual(status, 200)
+            self.assertTrue(result["revoked"])
+
+            for path in ("/api/auth/me", "/api/conversations",
+                         "/api/history?conversation_id=after-logout"):
+                with self.assertRaises(HTTPError) as denied:
+                    request(path)
+                self.assertEqual(denied.exception.code, 401)
+
+            with self.assertRaises(HTTPError) as denied_chat:
+                request("/api/chat", "POST", {
+                    "conversation_id": "after-logout",
+                    "message": "must be rejected"
+                })
+            self.assertEqual(denied_chat.exception.code, 401)
+
+            with patch.object(self.server, "generate_image_hf") as provider:
+                with self.assertRaises(HTTPError) as denied_image:
+                    request("/api/images/generate", "POST", {"prompt": "must not reach provider"})
+                self.assertEqual(denied_image.exception.code, 401)
+                provider.assert_not_called()
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=3)
+
     def test_accounts_cannot_read_or_delete_each_others_chats(self):
         first = auth.create_user(self.db, "first@example.com", "first-password-123")
         second = auth.create_user(self.db, "second@example.com", "second-password-123")
