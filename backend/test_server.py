@@ -592,5 +592,32 @@ class ServerSmokeTest(unittest.TestCase):
                 fake_ollama.server_close()
                 fake_thread.join(timeout=2)
 
+    def test_private_readiness_requires_local_model_and_api_token(self):
+        import importlib.util
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_private_readiness_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                local_model = {"reachable": True, "model_ready": True}
+                missing_model = {"reachable": False, "model_ready": False}
+
+                module.API_TOKEN = "readiness-test-token"
+                self.assertTrue(module.private_chat_ready(local_model, external_ready=False))
+                # An external provider must never make the private server look ready.
+                self.assertFalse(module.private_chat_ready(missing_model, external_ready=True))
+
+                module.API_TOKEN = ""
+                self.assertFalse(module.private_chat_ready(local_model, external_ready=True))
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+
+
 if __name__ == "__main__":
     unittest.main()
