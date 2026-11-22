@@ -79,7 +79,7 @@ JASSIM uses one inference engine only: the Ollama instance in the private Docker
 
 When `DATABASE_URL` is configured, the API stores chat messages and conversation memories in PostgreSQL through the shared `storage.py` adapter. Without it, local development and tests continue to use SQLite.
 
-On the first PostgreSQL startup, the backend checks the existing `JASSIM_DATA_DIR/jassim.db` SQLite file and imports its messages, memories, once. The source SQLite file is retained; the migration is marked in PostgreSQL so later replicas do not repeat it. All API replicas then share the same records.
+On the first PostgreSQL startup, the backend checks the existing `JASSIM_DATA_DIR/jassim.db` SQLite file and imports its messages and memories once. The source SQLite file is retained; the migration is marked in PostgreSQL so later replicas do not repeat it. All API replicas then share the same records.
 
 Railway deploys PostgreSQL privately and injects `DATABASE_URL=${{Postgres.DATABASE_URL}}` into the API service. After migration and verification, the legacy SQLite volume can be detached (not deleted), allowing multiple API replicas to run without a single-writer disk mount.
 
