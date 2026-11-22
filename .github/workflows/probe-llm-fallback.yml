@@ -1,11 +1,6 @@
-name: Probe anonymous LLM providers
+# Manual-only: sends fixed synthetic prompts to public providers; never runs on push.
+name: Manual synthetic LLM provider probe
 on:
-  push:
-    paths:
-      - ".github/workflows/probe-llm-fallback.yml"
-      - "backend/adaptive.py"
-      - "backend/server.py"
-      - "backend/test_server.py"
   workflow_dispatch:
 permissions:
   contents: read

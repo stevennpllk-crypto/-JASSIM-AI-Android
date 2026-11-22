@@ -140,6 +140,37 @@ class ServerSmokeTest(unittest.TestCase):
                 self.assertEqual(module.get_memory("chat-test"), "")
                 with self.assertRaises(ValueError):
                     module.set_memory("chat-test", " ")
+
+                # Account-scoped memory must not be visible to another user,
+                # and must survive reopening the database through a fresh module.
+                module.set_memory("private-chat", "معلومة خاصة بالمالك", "memory-owner")
+                self.assertEqual(
+                    module.get_memory("private-chat", "memory-attacker"), ""
+                )
+                with self.assertRaises(PermissionError):
+                    module.set_memory("private-chat", "تعديل غير مصرح", "memory-attacker")
+
+                reopened_spec = importlib.util.spec_from_file_location(
+                    "jassim_memory_reopened", Path(__file__).with_name("server.py")
+                )
+                reopened = importlib.util.module_from_spec(reopened_spec)
+                reopened_spec.loader.exec_module(reopened)
+                self.assertEqual(
+                    reopened.get_memory("private-chat", "memory-owner"),
+                    "معلومة خاصة بالمالك"
+                )
+                self.assertEqual(
+                    reopened.get_memory("private-chat", "memory-attacker"), ""
+                )
+
+                # Deleting a conversation with memory but zero messages must
+                # report success rather than a false 404.
+                reopened.set_memory("empty-delete", "ذاكرة بلا رسائل", "memory-owner")
+                deletion = reopened.delete_conversation("empty-delete", "memory-owner")
+                self.assertEqual(deletion, {"deleted_messages": 0})
+                self.assertIsNone(
+                    reopened.delete_conversation("empty-delete", "memory-owner")
+                )
             finally:
                 if previous_data_dir is None:
                     os.environ.pop("JASSIM_DATA_DIR", None)
@@ -159,6 +190,49 @@ class ServerSmokeTest(unittest.TestCase):
             self.assertIn("مشغول", answer)
         finally:
             module.INFERENCE_SEMAPHORE.release()
+
+    def test_global_chat_opt_in_never_enables_private_chat_fallback(self):
+        import importlib.util
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            previous_allow = os.environ.get("JASSIM_ALLOW_EXTERNAL_CHAT")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            os.environ["JASSIM_ALLOW_EXTERNAL_CHAT"] = "true"
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_private_chat_routing_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                module.adaptive.ALLOW_EXTERNAL_CHAT = True
+                provider_calls = []
+                original_provider = module.adaptive.answer_with_provider
+                original_ollama = module.ask_ollama
+
+                def forbidden_provider(*args, **kwargs):
+                    provider_calls.append((args, kwargs))
+                    raise RuntimeError("external_chat_disabled")
+
+                module.adaptive.answer_with_provider = forbidden_provider
+                module.ask_ollama = lambda messages: (_ for _ in ()).throw(
+                    RuntimeError("ollama_unavailable"))
+                answer, engine = module.generate_answer([
+                    {"role": "user", "content": "private message"}
+                ])
+                self.assertEqual(engine, "fallback")
+                self.assertIn("لم تُرسل رسالتك إلى أي مزوّد خارجي", answer)
+                self.assertEqual(provider_calls, [])
+            finally:
+                if "module" in locals():
+                    module.adaptive.answer_with_provider = original_provider
+                    module.ask_ollama = original_ollama
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+                if previous_allow is None:
+                    os.environ.pop("JASSIM_ALLOW_EXTERNAL_CHAT", None)
+                else:
+                    os.environ["JASSIM_ALLOW_EXTERNAL_CHAT"] = previous_allow
 
     def test_liveness_and_readiness_are_distinct(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -184,8 +258,9 @@ class ServerSmokeTest(unittest.TestCase):
                         time.sleep(0.1)
                 else:
                     self.fail("server did not start")
-                self.assertTrue(health["ok"])
+                self.assertTrue(health["ok"])  # Liveness: the API process is responding.
                 self.assertFalse(health["ollama_reachable"])
+                self.assertFalse(health["private_chat_ready"])
                 with self.assertRaises(Exception) as raised:
                     urlopen("http://127.0.0.1:18788/ready", timeout=3)
                 self.assertEqual(getattr(raised.exception, "code", None), 503)
@@ -199,9 +274,11 @@ class ServerSmokeTest(unittest.TestCase):
             previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
             previous_allow = os.environ.get("JASSIM_ALLOW_EXTERNAL_CHAT")
             previous_enabled = os.environ.get("JASSIM_ENABLE_PUBLIC_PROVIDERS")
+            previous_npc = os.environ.get("JASSIM_ALLOW_NPC_EXTERNAL_CHAT")
             os.environ["JASSIM_DATA_DIR"] = tmp
             os.environ["JASSIM_ALLOW_EXTERNAL_CHAT"] = "false"
             os.environ["JASSIM_ENABLE_PUBLIC_PROVIDERS"] = "true"
+            os.environ["JASSIM_ALLOW_NPC_EXTERNAL_CHAT"] = "true"
             try:
                 spec = importlib.util.spec_from_file_location(
                     "jassim_npc_provider_test", Path(__file__).with_name("server.py"))
@@ -227,7 +304,8 @@ class ServerSmokeTest(unittest.TestCase):
                 answer, engine = module.generate_answer(
                     [{"role": "user", "content": "محادثة خاصة"}], allow_external=False)
                 self.assertEqual(engine, "fallback")
-                self.assertEqual(calls, [True, False])
+                self.assertEqual(calls, [True])
+                self.assertIn("لم تُرسل رسالتك إلى أي مزوّد خارجي", answer)
             finally:
                 if previous_data_dir is None:
                     os.environ.pop("JASSIM_DATA_DIR", None)
@@ -241,6 +319,10 @@ class ServerSmokeTest(unittest.TestCase):
                     os.environ.pop("JASSIM_ENABLE_PUBLIC_PROVIDERS", None)
                 else:
                     os.environ["JASSIM_ENABLE_PUBLIC_PROVIDERS"] = previous_enabled
+                if previous_npc is None:
+                    os.environ.pop("JASSIM_ALLOW_NPC_EXTERNAL_CHAT", None)
+                else:
+                    os.environ["JASSIM_ALLOW_NPC_EXTERNAL_CHAT"] = previous_npc
 
     def test_server_health_and_chat(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -279,6 +361,7 @@ class ServerSmokeTest(unittest.TestCase):
                 self.assertIn("model_ready", health)
                 self.assertIsInstance(health["model_ready"], bool)
                 self.assertTrue(health["model_ready"])
+                self.assertTrue(health["private_chat_ready"])
                 self.assertTrue(health["model_loaded"])
                 self.assertTrue(health["ollama_reachable"])
                 self.assertGreaterEqual(health["uptime_seconds"], 0)
@@ -362,6 +445,76 @@ class ServerSmokeTest(unittest.TestCase):
                 self.assertEqual(conversations[0]["conversation_id"], "smoke")
                 self.assertEqual(conversations[0]["title"], "hello")
                 self.assertEqual(conversations[0]["message_count"], 2)
+
+                # Verify that separate registered accounts cannot read, append to,
+                # or delete another account's conversation.
+                def register_test_user(email):
+                    registration = json.dumps({
+                        "email": email,
+                        "password": "correct-horse-battery"
+                    }).encode()
+                    registration_req = Request(
+                        api_base + "/api/auth/register",
+                        data=registration,
+                        headers={"Content-Type": "application/json"}
+                    )
+                    with urlopen(registration_req, timeout=10) as response:
+                        return json.loads(response.read())["token"]
+
+                owner_token = register_test_user("owner@example.test")
+                other_token = register_test_user("other@example.test")
+                owner_headers = {"Authorization": "Bearer " + owner_token}
+                other_headers = {"Authorization": "Bearer " + other_token}
+                private_memory_payload = json.dumps({
+                    "message": "تذكر أن كلمة السر التجريبية سرية",
+                    "conversation_id": "tenant-private"
+                }).encode()
+                private_memory_req = Request(
+                    api_base + "/api/chat",
+                    data=private_memory_payload,
+                    headers={"Content-Type": "application/json", **owner_headers}
+                )
+                with urlopen(private_memory_req, timeout=10) as response:
+                    self.assertEqual(json.loads(response.read())["engine"], "memory")
+
+                other_history_req = Request(
+                    api_base + "/api/history?conversation_id=tenant-private",
+                    headers=other_headers
+                )
+                with urlopen(other_history_req, timeout=5) as response:
+                    self.assertEqual(json.loads(response.read())["messages"], [])
+
+                cross_account_chat = json.dumps({
+                    "message": "محاولة الوصول إلى محادثة مستخدم آخر",
+                    "conversation_id": "tenant-private"
+                }).encode()
+                cross_account_req = Request(
+                    api_base + "/api/chat",
+                    data=cross_account_chat,
+                    headers={"Content-Type": "application/json", **other_headers}
+                )
+                with self.assertRaises(Exception) as cross_account_error:
+                    urlopen(cross_account_req, timeout=5)
+                self.assertEqual(getattr(cross_account_error.exception, "code", None), 404)
+
+                cross_account_delete = Request(
+                    api_base + "/api/conversations?conversation_id=tenant-private",
+                    headers=other_headers,
+                    method="DELETE"
+                )
+                with self.assertRaises(Exception) as cross_delete_error:
+                    urlopen(cross_account_delete, timeout=5)
+                self.assertEqual(getattr(cross_delete_error.exception, "code", None), 404)
+
+                owner_history_req = Request(
+                    api_base + "/api/history?conversation_id=tenant-private",
+                    headers=owner_headers
+                )
+                with urlopen(owner_history_req, timeout=5) as response:
+                    owner_history = json.loads(response.read())["messages"]
+                self.assertEqual(len(owner_history), 2)
+                self.assertIn("كلمة السر التجريبية سرية", owner_history[0]["content"])
+
                 FakeOllamaHandler.offline = True
                 with self.assertRaises(Exception):
                     urlopen(api_base + "/ready", timeout=5)

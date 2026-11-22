@@ -13,6 +13,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -62,31 +63,6 @@ jobs:
                   time.sleep(5)
           PY
 
-      - name: Probe anonymous JarvisClaw fallback
-        continue-on-error: true
-        run: |
-          python - <<'PY'
-          import json, urllib.request, urllib.error
-          url = "https://api.jarvisclaw.ai/v1/chat/completions"
-          body = json.dumps({
-              "model": "auto/free",
-              "messages": [{"role": "user", "content": "Reply exactly: JASSIM ONLINE"}],
-              "stream": False,
-              "max_tokens": 40
-          }).encode()
-          req = urllib.request.Request(url, data=body, headers={
-              "Content-Type": "application/json"
-          })
-          try:
-              with urllib.request.urlopen(req, timeout=90) as response:
-                  data = json.loads(response.read())
-                  answer = data["choices"][0]["message"]["content"]
-                  print("ANONYMOUS_LLM_OK:", answer[:300])
-          except Exception as exc:
-              print("ANONYMOUS_LLM_UNAVAILABLE:", repr(exc))
-              raise
-          PY
-
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -101,6 +77,74 @@ jobs:
       - name: Build debug APK
         run: gradle assembleDebug
 
+      - name: Stage debug APK for emulator and artifact checks
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          APK="$(find app/build/outputs/apk -type f -name '*.apk' -print -quit)"
+          if [[ -z "$APK" || ! -s "$APK" ]]; then
+            echo "::error::Gradle completed but no APK was found under app/build/outputs/apk"
+            find app/build -maxdepth 6 -type f | sort || true
+            exit 1
+          fi
+          mkdir -p "$GITHUB_WORKSPACE/.ci-artifacts"
+          cp "$APK" "$GITHUB_WORKSPACE/.ci-artifacts/jassim-debug.apk"
+          test -s "$GITHUB_WORKSPACE/.ci-artifacts/jassim-debug.apk"
+          echo "Staged APK: $APK -> $GITHUB_WORKSPACE/.ci-artifacts/jassim-debug.apk"
+          sha256sum "$GITHUB_WORKSPACE/.ci-artifacts/jassim-debug.apk"
+
+      - name: Android Emulator smoke test
+        timeout-minutes: 25
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 900
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            set -Eeuo pipefail
+            SERIAL="emulator-5554"
+            APK="$GITHUB_WORKSPACE/.ci-artifacts/jassim-debug.apk"
+
+            adb devices -l
+            test "$(adb -s "$SERIAL" get-state)" = "device"
+            test "$(adb -s "$SERIAL" shell getprop sys.boot_completed | tr -d '\r')" = "1"
+            test -s "$APK"
+            adb install -r "$APK"
+            adb shell am force-stop com.jassim.ai
+            adb logcat -c
+
+            # am start -W can time out on a slow headless emulator even when the
+            # activity is still starting. Keep checking the process, but never
+            # turn a crash into a passing smoke test.
+            start_output="$(adb shell am start -W -n com.jassim.ai/.MainActivity 2>&1 || true)"
+            printf '%s\n' "$start_output"
+            for attempt in $(seq 1 30); do
+              if adb shell pidof com.jassim.ai >/dev/null 2>&1; then
+                break
+              fi
+              sleep 1
+            done
+
+            if ! adb shell pidof com.jassim.ai >/dev/null 2>&1; then
+              echo "::error::JASSIM process did not stay alive after MainActivity launch"
+              echo "::group::Focused Android crash diagnostics"
+              adb logcat -b crash -d -v threadtime || true
+              adb logcat -d -v threadtime -s AndroidRuntime ActivityManager ActivityTaskManager System.err || true
+              adb shell dumpsys package com.jassim.ai || true
+              adb shell dumpsys activity activities | tail -n 120 || true
+              echo "::endgroup::"
+              exit 1
+            fi
+
+            resumed="$(adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' | tail -n 1 || true)"
+            echo "Resumed activity: $resumed"
+            echo "$resumed" | grep -q 'com.jassim.ai/.MainActivity'
+            echo "ANDROID_EMULATOR_SMOKE_OK: APK installed, MainActivity foregrounded, and process alive"
+
       - name: Verify APK package
         run: |
           python - <<'PY'
@@ -108,7 +152,7 @@ jobs:
           import zipfile
           from pathlib import Path
 
-          apk = Path("app/build/outputs/apk/debug/app-debug.apk")
+          apk = Path(__import__("os").environ["GITHUB_WORKSPACE"]) / ".ci-artifacts" / "jassim-debug.apk"
           if not apk.is_file() or apk.stat().st_size < 10240:
               raise SystemExit("APK is missing or unexpectedly small")
           with zipfile.ZipFile(apk) as archive:
@@ -129,5 +173,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: JASSIM-AI-debug-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: .ci-artifacts/jassim-debug.apk
           if-no-files-found: error
