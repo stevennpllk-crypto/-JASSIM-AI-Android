@@ -786,7 +786,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         identity = self.current_identity()
         if not identity:
-            self.send_json(503 if not API_TOKEN else 401, {"error": "authentication_not_configured" if not API_TOKEN else "unauthorized"})
+            # Missing/invalid credentials are an authentication failure, not an
+            # infrastructure outage. Optional legacy API_TOKEN configuration
+            # must not change the HTTP contract for session-based accounts.
+            self.send_json(401, {"error": "unauthorized"})
             return
         if request_path == "/api/admin/evaluate" and identity["role"] != "admin":
             self.send_json(403, {"error": "admin_required"})
