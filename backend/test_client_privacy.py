@@ -5,6 +5,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ANDROID_CHAT = ROOT / "app/src/main/java/com/jassim/ai/MainActivity.java"
 SERVER = ROOT / "backend/server.py"
 DASHBOARD_JS = ROOT / "dashboard/app.js"
+DASHBOARD_HTML = ROOT / "dashboard/index.html"
 ENV_EXAMPLE = ROOT / ".env.example"
 STORAGE = ROOT / "backend/storage.py"
 
@@ -24,6 +25,9 @@ class SinglePrivateEngineTest(unittest.TestCase):
         self.assertNotIn("runProviderEvaluation", android)
         self.assertNotIn("external_provider_ready", android)
         self.assertNotIn("api.groq.com", dashboard)
+        dashboard_html = DASHBOARD_HTML.read_text(encoding="utf-8")
+        self.assertNotIn("نموذج توليد صور خارجي", dashboard_html)
+        self.assertIn("لن يتم استخدام مزوّد صور خارجي", dashboard_html)
         env = ENV_EXAMPLE.read_text(encoding="utf-8")
         storage = STORAGE.read_text(encoding="utf-8")
         self.assertNotIn("JASSIM_ENABLE_PUBLIC_PROVIDERS", env)
