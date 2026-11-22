@@ -174,6 +174,40 @@ class MultiUserAuthTest(unittest.TestCase):
                     with self.assertRaises(HTTPError) as denied:
                         get(path)
                     self.assertEqual(denied.exception.code, 401)
+            # Expired sessions must also be rejected by state-changing POST routes.
+            chat_body = json.dumps({
+                "conversation_id": "expired-private",
+                "message": "must not be accepted"
+            }).encode("utf-8")
+            chat_request = Request(
+                base + "/api/chat",
+                data=chat_body,
+                headers={
+                    "Authorization": "Bearer " + token,
+                    "Content-Type": "application/json"
+                },
+                method="POST"
+            )
+            with self.assertRaises(HTTPError) as expired_chat:
+                urlopen(chat_request, timeout=5)
+            self.assertEqual(expired_chat.exception.code, 401)
+
+            image_body = json.dumps({"prompt": "must not reach provider"}).encode("utf-8")
+            image_request = Request(
+                base + "/api/images/generate",
+                data=image_body,
+                headers={
+                    "Authorization": "Bearer " + token,
+                    "Content-Type": "application/json"
+                },
+                method="POST"
+            )
+            with patch.object(self.server, "generate_image_hf") as provider:
+                with self.assertRaises(HTTPError) as expired_image:
+                    urlopen(image_request, timeout=5)
+                self.assertEqual(expired_image.exception.code, 401)
+                provider.assert_not_called()
+
             self.assertIsNone(auth.authenticate_session(self.db, token))
         finally:
             httpd.shutdown()
