@@ -527,6 +527,17 @@ class Handler(BaseHTTPRequestHandler):
                 response.close()
             INFERENCE_SEMAPHORE.release()
 
+    def send_error(self, code, message=None, explain=None):
+        # BaseHTTPRequestHandler returns 501 for unrecognized verbs.
+        # Use an explicit 405 response and advertise the supported methods.
+        if code == 501:
+            self.send_response(405)
+            self.send_header("Allow", "GET, HEAD, POST, DELETE, OPTIONS")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        super().send_error(code, message, explain)
+
     def log_message(self, fmt, *args):
         print("[JASSIM] " + (fmt % args))
 
@@ -537,13 +548,15 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(raw)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(raw)
+        # HEAD returns GET-equivalent headers without a response body.
+        if self.command != "HEAD":
+            self.wfile.write(raw)
 
     def end_headers(self):
         origin = self.headers.get("Origin")
         if origin and CORS_ORIGIN not in ("", "null") and origin == CORS_ORIGIN:
             self.send_header("Access-Control-Allow-Origin", CORS_ORIGIN)
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, HEAD, POST, DELETE, OPTIONS")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
@@ -593,8 +606,31 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self):
         self.send_response(204)
+        self.send_header("Allow", "GET, HEAD, POST, DELETE, OPTIONS")
         self.send_header("Content-Length", "0")
         self.end_headers()
+
+    def do_HEAD(self):
+        # Reuse GET routing; send_json suppresses the response body for HEAD.
+        self.do_GET()
+
+    def _method_not_allowed(self):
+        self.send_response(405)
+        self.send_header("Allow", "GET, HEAD, POST, DELETE, OPTIONS")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def do_PUT(self):
+        self._method_not_allowed()
+
+    def do_PATCH(self):
+        self._method_not_allowed()
+
+    def do_TRACE(self):
+        self._method_not_allowed()
+
+    def do_CONNECT(self):
+        self._method_not_allowed()
 
     def do_GET(self):
         parsed = urlparse(self.path)
