@@ -5,7 +5,7 @@
   function toast(message){const el=$("toast");el.textContent=message;el.classList.add("show");setTimeout(()=>el.classList.remove("show"),2600)}
   function setStatus(ok,label){state.connected=ok;$("connectionLabel").textContent=label;$("sideStatus").textContent=label;$("chatConnection").textContent=label;document.querySelectorAll(".live-dot").forEach(x=>x.classList.toggle("online",ok));$("apiStat").textContent=ok?"متصل":"غير متصل";$("apiDetail").textContent=ok?"تم فحص /health بنجاح":"تحقق من عنوان الخادم";$("step1").textContent=ok?"✓":"●"}
   function openSettings(){$("endpoint").value=state.endpoint;$("accountEmail").value="";$("accountPassword").value="";$("accountStatus").textContent=state.token?"هناك جلسة حساب محفوظة في علامة التبويب هذه.":"سجّل الدخول أو أنشئ حساباً. لا تحتاج إلى رمز الخادم.";$("logoutAccount").disabled=!state.token;$("settingsDialog").showModal()}
-  async function request(path,options={}){if(!state.endpoint)throw new Error("أدخل عنوان الخادم أولاً");const url=state.endpoint.replace(/\/$/,"")+path;const response=await fetch(url,{...options,headers:{"Content-Type":"application/json",...(state.token?{"Authorization":"Bearer "+state.token}:{}),...(options.headers||{})}});if(!response.ok)throw new Error("HTTP "+response.status);return response.json()}
+  async function request(path,options={}){if(!state.endpoint)throw new Error("أدخل عنوان الخادم أولاً");const url=state.endpoint.replace(/\/$/,"")+path;const response=await fetch(url,{...options,headers:{"Content-Type":"application/json",...(state.token?{"Authorization":"Bearer "+state.token}:{}),...(options.headers||{})}});const data=await response.json().catch(()=>({}));if(!response.ok){const detail=data.message||data.error||data.detail;throw new Error("HTTP "+response.status+(detail?": "+detail:""))}return data}
   async function checkHealth(){if(!state.endpoint){setStatus(false,"لم يتم إعداد الخادم");$("engineStat").textContent="غير معروف";$("storageStat").textContent="—";return}try{const h=await request("/health");state.health=h;setStatus(!!h.ok,h.ok?"الخادم متصل":"الخادم غير جاهز");if($("imageStatus"))$("imageStatus").textContent=h.image_generation_ready?"توليد الصور جاهز · "+(h.image_model||"FLUX"):"الخادم متصل، لكن توليد الصور ينتظر ضبط JASSIM_HF_TOKEN في Railway.";$("engineStat").textContent=h.model||h.engine||"غير معروف";$("engineDetail").textContent=h.model_ready?"النموذج جاهز للطلبات":(h.ollama_reachable?"Ollama متصل لكن النموذج غير محمّل":"محرك Ollama غير متاح");$("storageStat").textContent=h.storage||"غير معروف";$("checkedStat").textContent=new Date().toLocaleTimeString("ar-TN");$("systemEngine").textContent=h.engine||"غير معروف";$("systemStorage").textContent=h.storage||"غير معروف";$("serverUrlText").textContent=state.endpoint}catch(e){setStatus(false,"تعذر الاتصال");$("apiDetail").textContent=e.message;toast("فشل فحص الخادم: "+e.message)}}
   function addBubble(text,who){const box=document.createElement("div");box.className="bubble "+who;box.textContent=text; $("messages").appendChild(box); $("messages").scrollTop=$("messages").scrollHeight;return box}
   function showView(id){document.querySelectorAll(".view").forEach(x=>x.classList.toggle("active",x.id===id));document.querySelectorAll(".nav").forEach(x=>x.classList.toggle("active",x.dataset.view===id));const names={overview:"نظرة عامة",chat:"مركز المحادثة",memory:"الذاكرة والسجل",images:"استوديو الصور",systems:"الخادم والمحركات"};$("pageTitle").textContent=names[id]||"JASSIM AI"}
@@ -45,12 +45,28 @@
     btn.disabled=false;btn.textContent="إيقاف ■";btn.classList.add("stop-active");
     const answerBubble=addBubble("","ai");let received=false,done=false;
     try{
+      if(!state.token){
+        answerBubble.textContent="يلزم تسجيل الدخول قبل إرسال الرسائل. سجّل الدخول أو أنشئ حساباً للمتابعة.";
+        openSettings();
+        return;
+      }
       const response=await fetch(state.endpoint.replace(/[/]+$/,"")+"/api/chat/stream",{
         method:"POST",signal:controller.signal,
         headers:{"Content-Type":"application/json","Accept":"text/event-stream","Authorization":"Bearer "+state.token},
         body:JSON.stringify({message,conversation_id:state.conversation})
       });
-      if(!response.ok)throw new Error("HTTP "+response.status);
+      if(response.status===401){
+        state.token="";
+        sessionStorage.removeItem("jassim_token");
+        answerBubble.textContent="انتهت جلسة الدخول أو لم تعد صالحة. سجّل الدخول مجدداً للمتابعة.";
+        openSettings();
+        return;
+      }
+      if(!response.ok){
+        const problem=await response.json().catch(()=>({}));
+        const detail=problem.message||problem.error||problem.detail;
+        throw new Error("HTTP "+response.status+(detail?": "+detail:""));
+      }
       if(!response.body)throw new Error("المتصفح لا يدعم البث المباشر");
       const reader=response.body.getReader(),decoder=new TextDecoder("utf-8");let buffer="";
       while(true){
