@@ -30,7 +30,7 @@ The repository includes a root `Dockerfile` and `docker-compose.yml`. On a Linux
    ```
 4. Check `https://YOUR_API_HOST/health` after configuring an HTTPS reverse proxy.
 
-The Compose file persists SQLite data in the named volume `jassim-data`. Back up that volume regularly. The API container does not include Ollama or model weights; run Ollama separately on a machine with enough RAM/VRAM and configure `JASSIM_OLLAMA_URL`.
+The Compose file persists SQLite data in the named volume `jassim-data`. Back up that volume regularly. The Compose stack starts one private Ollama engine, downloads the configured model into its persistent volume, and connects the API to it over the private Compose network. No external inference provider is configured.
 
 **Important:** Compose maps port 8787 for local/server networking. Do not expose this plain HTTP port directly to the public internet. Put it behind HTTPS (for example, Caddy or Nginx), restrict inbound firewall access, and use a strong token. Free hosts may sleep, reset storage, or lack the RAM/VRAM needed for a model.
 
@@ -73,23 +73,15 @@ The API preserves the existing contract: `POST /api/chat` with JSON `{"message":
 This is a self-hosted API foundation, not an unlimited GPU host. A 3 GB Android phone can host the API and SQLite store, but it is not suitable for large LLM inference. For larger models, connect a separately owned computer or GPU host with sufficient RAM/VRAM and persistent storage.
 
 
-## Adaptive provider learning (v0.5)
+## Single private inference engine
 
-JASSIM can benchmark multiple OpenAI-compatible inference providers and rank them using synthetic Arabic, arithmetic, and English test prompts. It stores attempts, success rate, latency, and an exponentially weighted quality estimate in SQLite. The evaluator never reads or uploads the user's chat history.
-
-- `GET /api/providers` (Bearer token): current provider ranking and score history.
-- `POST /api/admin/evaluate` (Bearer token): run the synthetic benchmark against configured public providers.
-- `JASSIM_ENABLE_PUBLIC_PROVIDERS=true`: enable provider probes (synthetic prompts only).
-- `JASSIM_ALLOW_EXTERNAL_CHAT=true`: explicitly allow actual user messages to be sent to public providers when local Ollama is unavailable. This is OFF by default. Do not enable it for confidential conversations.
-
-The initial public candidates are JarvisClaw and OVHcloud AI Endpoints. Provider availability, quotas, and terms can change; scores are routing heuristics, not proof of factual correctness. The system learns routing preferences from measured outcomes; it does not retrain model weights or rewrite its own source code. Source changes still require tests and a reviewed deployment.
-
+JASSIM uses one inference engine only: the Ollama instance in the private Docker Compose network. Chat requests are never routed to hosted model providers. If the private model is unavailable, the API returns HTTP 503 and explicitly reports that the message was not sent elsewhere. Image generation through hosted inference providers is not enabled in this private-only configuration.
 
 ## Shared PostgreSQL storage and horizontal replicas (v0.6)
 
-When `DATABASE_URL` is configured, the API stores chat messages, conversation memories, and adaptive-provider scores in PostgreSQL through the shared `storage.py` adapter. Without it, local development and tests continue to use SQLite.
+When `DATABASE_URL` is configured, the API stores chat messages and conversation memories in PostgreSQL through the shared `storage.py` adapter. Without it, local development and tests continue to use SQLite.
 
-On the first PostgreSQL startup, the backend checks the existing `JASSIM_DATA_DIR/jassim.db` SQLite file and imports its messages, memories, and provider scores once. The source SQLite file is retained; the migration is marked in PostgreSQL so later replicas do not repeat it. All API replicas then share the same records.
+On the first PostgreSQL startup, the backend checks the existing `JASSIM_DATA_DIR/jassim.db` SQLite file and imports its messages, memories, once. The source SQLite file is retained; the migration is marked in PostgreSQL so later replicas do not repeat it. All API replicas then share the same records.
 
 Railway deploys PostgreSQL privately and injects `DATABASE_URL=${{Postgres.DATABASE_URL}}` into the API service. After migration and verification, the legacy SQLite volume can be detached (not deleted), allowing multiple API replicas to run without a single-writer disk mount.
 
