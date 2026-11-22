@@ -23,14 +23,14 @@ class ServerPrivacySecurityTests(unittest.TestCase):
     def test_image_generation_never_contacts_a_hosted_provider(self):
         with patch.object(server.urllib.request, "urlopen") as outbound:
             with self.assertRaisesRegex(RuntimeError, "private_image_engine_not_configured"):
-                server.generate_image_hf("test prompt")
+                server.generate_image_private("test prompt")
             outbound.assert_not_called()
 
     def test_external_image_token_cannot_enable_image_generation(self):
         with patch.dict("os.environ", {"JASSIM_HF_TOKEN": "unused-test-token"}):
             with patch.object(server.urllib.request, "urlopen") as outbound:
                 with self.assertRaisesRegex(RuntimeError, "private_image_engine_not_configured"):
-                    server.generate_image_hf("private prompt")
+                    server.generate_image_private("private prompt")
                 outbound.assert_not_called()
 
     def test_npc_provider_does_not_make_private_chat_ready(self):
