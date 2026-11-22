@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 import server
 
@@ -18,6 +19,12 @@ class ServerPrivacySecurityTests(unittest.TestCase):
         body = {"context": "ordinary_chat"}
         identity = {"user_id": "owner-1", "role": "admin"}
         self.assertFalse(server.can_route_npc_externally(body, identity))
+
+    def test_image_generation_never_contacts_a_hosted_provider(self):
+        with patch.object(server.urllib.request, "urlopen") as outbound:
+            with self.assertRaisesRegex(RuntimeError, "private_image_engine_not_configured"):
+                server.generate_image_hf("test prompt")
+            outbound.assert_not_called()
 
     def test_npc_provider_does_not_make_private_chat_ready(self):
         model_state = {"reachable": False, "model_ready": False}
