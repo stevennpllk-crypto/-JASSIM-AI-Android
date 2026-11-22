@@ -428,7 +428,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_sse_event({"type": "token", "token": answer})
         self.send_sse_event({"type": "done", "conversation_id": conversation_id, "engine": engine})
 
-    def stream_chat_response(self, conversation_id, message, context, user_id):
+    def stream_chat_response(self, conversation_id, message, context, user_id, allow_external=False):
         if not INFERENCE_SEMAPHORE.acquire(timeout=OLLAMA_QUEUE_TIMEOUT):
             self.send_json(503, {
                 "error": "model_busy",
@@ -465,7 +465,8 @@ class Handler(BaseHTTPRequestHandler):
             except (urllib.error.URLError, TimeoutError, ValueError, OSError):
                 try:
                     answer, provider = adaptive.answer_with_provider(
-                        [{"role": "system", "content": SYSTEM_PROMPT}] + context
+                        [{"role": "system", "content": SYSTEM_PROMPT}] + context,
+                        allow_external=allow_external
                     )
                     save_message(conversation_id, "user", message, user_id)
                     save_message(conversation_id, "assistant", answer, user_id)
@@ -897,7 +898,7 @@ class Handler(BaseHTTPRequestHandler):
                 previous.insert(0, {"role": "system", "content": "معلومات اختار المستخدم حفظها صراحةً في ذاكرة حسابه الخاصة، استخدمها فقط عندما تكون ذات صلة ولا تفترض أنها حقائق خارج هذا السياق: " + saved_memory})
             context = fit_history_to_budget(previous + [{"role": "user", "content": message}])
             if streaming:
-                self.stream_chat_response(conversation_id, message, context, identity["user_id"])
+                self.stream_chat_response(conversation_id, message, context, identity["user_id"], allow_external=allow_npc_provider)
                 return
             answer, engine = generate_answer(context, allow_external=allow_npc_provider)
             if engine in ("busy", "fallback"):
