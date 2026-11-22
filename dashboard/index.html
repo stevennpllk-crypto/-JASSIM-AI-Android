@@ -30,11 +30,11 @@
     <section class="view" id="chat"><div class="chat-layout"><div class="panel chat-panel"><div class="chat-heading"><div class="chat-identity"><div class="chat-avatar">∞</div><div><h3>JASSIM AI</h3><p><span class="live-dot"></span> مساعدك الذكي الخاص</p></div></div><button class="text-btn" id="clearChat">＋ محادثة جديدة</button></div><div class="chat-messages" id="messages"><div class="welcome"><div class="welcome-avatar"><span>∞</span><i></i></div><span class="welcome-kicker">مرحباً بك في JASSIM AI</span><b>كيف يمكنني مساعدتك اليوم؟</b><p>اسألني، اطلب شرحاً، أو ابدأ بفكرة جديدة.</p><div class="suggestion-chips"><span>✦ اشرح لي فكرة</span><span>⌁ ساعدني في البرمجة</span><span>◈ لخّص موضوعاً</span></div></div></div><form id="chatForm" class="composer"><textarea id="chatInput" rows="1" placeholder="اكتب رسالتك هنا..." maxlength="8000"></textarea><button class="send-btn" type="submit">إرسال ↑</button></form></div><aside class="panel chat-info"><h3>معلومات الجلسة</h3><p>المحادثة الحالية</p><code id="conversationId">default</code><hr><p>حالة الاتصال</p><strong id="chatConnection">غير متصل</strong><p class="hint">يتم حفظ السجل على الخادم إذا كانت واجهة API تدعم ذلك.</p></aside></div></section>
     <section class="view" id="images">
       <div class="panel image-studio">
-        <div class="panel-head"><div><h3>استوديو الصور الذكي</h3><p>حوّل وصفك إلى صورة باستخدام نموذج توليد صور خارجي.</p></div><span class="panel-symbol">✧</span></div>
+        <div class="panel-head"><div><h3>استوديو الصور الذكي</h3><p>مساحة مخصصة لتوليد الصور محلياً على خادم JASSIM الخاص عند إضافة نموذج صور.</p></div><span class="panel-symbol">✧</span></div>
         <label for="imagePrompt">وصف الصورة</label>
         <textarea id="imagePrompt" rows="4" maxlength="1800" placeholder="مثلاً: مدينة مستقبلية على ساحل المتوسط عند الغروب، أسلوب سينمائي واقعي، تفاصيل عالية..."></textarea>
-        <div class="image-controls"><span>النموذج: FLUX.1-schnell · 1024×1024</span><button class="primary" id="generateImage" disabled>توليد الصورة ✦</button></div>
-        <p class="image-note" id="imageStatus">يتطلب ضبط JASSIM_HF_TOKEN في إعدادات الخادم. لا تضع المفاتيح هنا.</p>
+        <div class="image-controls"><span>توليد الصور الخاص · غير متاح حالياً</span><button class="primary" id="generateImage" disabled>توليد الصورة ✦</button></div>
+        <p class="image-note" id="imageStatus">لن يتم استخدام مزوّد صور خارجي. ستتوفر الميزة بعد إضافة نموذج صور يعمل على خادم JASSIM الخاص.</p>
         <div id="imageResult" class="image-result" aria-live="polite"></div>
       </div>
     </section>

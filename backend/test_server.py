@@ -168,7 +168,6 @@ class ServerSmokeTest(unittest.TestCase):
             env["JASSIM_PORT"] = "18788"
             env["JASSIM_HOST"] = "127.0.0.1"
             env["JASSIM_API_TOKEN"] = "readiness-test-token"
-            env["JASSIM_ENABLE_PUBLIC_PROVIDERS"] = "false"
             env["JASSIM_OLLAMA_URL"] = "http://127.0.0.1:1"
             env["JASSIM_OLLAMA_MODEL"] = "qwen3.5:4b"
             proc = subprocess.Popen(
@@ -194,96 +193,51 @@ class ServerSmokeTest(unittest.TestCase):
                 proc.terminate()
                 proc.wait(timeout=5)
 
-    def test_npc_turn_can_use_free_provider_without_global_chat_opt_in(self):
+    def test_private_chat_fails_closed_when_ollama_is_offline(self):
         import importlib.util
         with tempfile.TemporaryDirectory() as tmp:
             previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
-            previous_allow = os.environ.get("JASSIM_ALLOW_EXTERNAL_CHAT")
-            previous_enabled = os.environ.get("JASSIM_ENABLE_PUBLIC_PROVIDERS")
             os.environ["JASSIM_DATA_DIR"] = tmp
-            os.environ["JASSIM_ALLOW_EXTERNAL_CHAT"] = "false"
-            os.environ["JASSIM_ENABLE_PUBLIC_PROVIDERS"] = "true"
             try:
                 spec = importlib.util.spec_from_file_location(
-                    "jassim_npc_provider_test", Path(__file__).with_name("server.py"))
+                    "jassim_private_only_test", Path(__file__).with_name("server.py"))
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
-                calls = []
-
-                def fake_provider(messages, allow_external=False):
-                    calls.append(allow_external)
-                    if not allow_external:
-                        raise RuntimeError("external_chat_disabled")
-                    return "رد مجاني تجريبي لشخصية من المهدية", "jarvisclaw"
-
-                module.ask_ollama = lambda messages: (_ for _ in ()).throw(
-                    RuntimeError("ollama_unavailable"))
-                module.adaptive.answer_with_provider = fake_provider
-                answer, engine = module.generate_answer(
-                    [{"role": "user", "content": "مرحبا"}], allow_external=True)
-                self.assertEqual(engine, "jarvisclaw")
-                self.assertIn("رد مجاني", answer)
-                self.assertEqual(calls, [True])
-
-                answer, engine = module.generate_answer(
-                    [{"role": "user", "content": "محادثة خاصة"}], allow_external=False)
-                self.assertEqual(engine, "fallback")
-                self.assertEqual(calls, [True, False])
+                with patch.object(module, "ask_ollama", side_effect=RuntimeError("offline")):
+                    answer, engine = module.generate_answer(
+                        [{"role": "user", "content": "رسالة خاصة"}])
+                self.assertEqual(engine, "unavailable")
+                self.assertIn("لم تُرسل رسالتك إلى أي خادم أو مزوّد آخر", answer)
             finally:
                 if previous_data_dir is None:
                     os.environ.pop("JASSIM_DATA_DIR", None)
                 else:
                     os.environ["JASSIM_DATA_DIR"] = previous_data_dir
-                if previous_allow is None:
-                    os.environ.pop("JASSIM_ALLOW_EXTERNAL_CHAT", None)
-                else:
-                    os.environ["JASSIM_ALLOW_EXTERNAL_CHAT"] = previous_allow
-                if previous_enabled is None:
-                    os.environ.pop("JASSIM_ENABLE_PUBLIC_PROVIDERS", None)
-                else:
-                    os.environ["JASSIM_ENABLE_PUBLIC_PROVIDERS"] = previous_enabled
 
-    def test_stream_fallback_propagates_npc_external_opt_in(self):
+    def test_streaming_returns_503_when_private_ollama_is_offline(self):
         import importlib.util
         import urllib.error
-
         with tempfile.TemporaryDirectory() as tmp:
             previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
             os.environ["JASSIM_DATA_DIR"] = tmp
             try:
                 spec = importlib.util.spec_from_file_location(
-                    "jassim_stream_fallback_test", Path(__file__).with_name("server.py"))
+                    "jassim_stream_private_only_test", Path(__file__).with_name("server.py"))
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
-
                 module.INFERENCE_SEMAPHORE = threading.BoundedSemaphore(1)
                 module.OLLAMA_QUEUE_TIMEOUT = 1
                 handler = module.Handler.__new__(module.Handler)
                 sent = []
-                calls = []
-                handler.send_sse_static = lambda answer, conversation_id, engine: sent.append(
-                    (answer, conversation_id, engine))
                 handler.send_json = lambda status, payload: sent.append((status, payload))
-
-                def fake_provider(messages, allow_external=False):
-                    calls.append(allow_external)
-                    return "رد احتياطي اختباري", "test-provider"
-
-                module.adaptive.answer_with_provider = fake_provider
                 with patch.object(module.urllib.request, "urlopen",
-                                  side_effect=urllib.error.URLError("ollama offline")):
-                    handler.stream_chat_response(
-                        "npc-stream", "مرحبا", [{"role": "user", "content": "مرحبا"}],
-                        "test-user", allow_external=True)
+                                  side_effect=urllib.error.URLError("private Ollama offline")):
                     handler.stream_chat_response(
                         "private-stream", "رسالة خاصة",
-                        [{"role": "user", "content": "رسالة خاصة"}], "test-user",
-                        allow_external=False)
-
-                self.assertEqual(calls, [True, False])
-                self.assertEqual(len(sent), 2)
-                self.assertEqual(sent[0][2], "test-provider")
-                self.assertEqual(sent[1][2], "test-provider")
+                        [{"role": "user", "content": "رسالة خاصة"}], "test-user")
+                self.assertEqual(len(sent), 1)
+                self.assertEqual(sent[0][0], 503)
+                self.assertEqual(sent[0][1]["error"], "private_model_unavailable")
             finally:
                 if previous_data_dir is None:
                     os.environ.pop("JASSIM_DATA_DIR", None)
@@ -300,7 +254,6 @@ class ServerSmokeTest(unittest.TestCase):
             env["JASSIM_PORT"] = str(port)
             env["JASSIM_HOST"] = "127.0.0.1"
             env.pop("JASSIM_API_TOKEN", None)
-            env["JASSIM_ENABLE_PUBLIC_PROVIDERS"] = "false"
             env["JASSIM_OLLAMA_URL"] = "http://127.0.0.1:1"
             proc = subprocess.Popen(
                 [sys.executable, str(Path(__file__).with_name("server.py"))],
@@ -376,7 +329,6 @@ class ServerSmokeTest(unittest.TestCase):
             FakeOllamaHandler.offline = False
             FakeOllamaHandler.last_chat_payload = None
             env["JASSIM_API_TOKEN"] = "smoke-test-token"
-            env["JASSIM_ENABLE_PUBLIC_PROVIDERS"] = "false"
             fake_ollama = HTTPServer(("127.0.0.1", 0), FakeOllamaHandler)
             fake_thread = threading.Thread(target=fake_ollama.serve_forever, daemon=True)
             fake_thread.start()

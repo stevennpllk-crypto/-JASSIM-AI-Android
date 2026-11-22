@@ -270,10 +270,6 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams newLp = new LinearLayout.LayoutParams(dp(40), dp(38));
         newLp.setMargins(dp(5), 0, 0, 0);
         header.addView(newChat, newLp);
-        Button improve = actionButton("⚡", "اختبار وتحسين الخادم", () -> runProviderEvaluation());
-        LinearLayout.LayoutParams improveLp = new LinearLayout.LayoutParams(dp(40), dp(38));
-        improveLp.setMargins(dp(5), 0, 0, 0);
-        header.addView(improve, improveLp);
         Button settings = actionButton("⚙", "إعدادات الاتصال", () -> endpointDialog());
         LinearLayout.LayoutParams settingsLp = new LinearLayout.LayoutParams(dp(40), dp(38));
         settingsLp.setMargins(dp(5), 0, 0, 0);
@@ -462,13 +458,11 @@ public class MainActivity extends Activity {
                 JSONObject result = readJsonResponse(connection);
                 boolean ok = result.optBoolean("ok", false);
                 boolean modelReady = result.optBoolean("model_ready", false);
-                boolean adaptiveReady = result.optBoolean("external_provider_ready", false);
-                boolean ready = modelReady || adaptiveReady;
+                boolean ready = modelReady;
                 String engine = result.optString("model", result.optString("engine", "غير معروف"));
                 runOnUiThread(() -> {
                     status.setText(!ok ? "● الخادم غير جاهز"
                         : modelReady ? "● الخادم متصل — النموذج المحلي جاهز"
-                        : adaptiveReady ? "● الخادم متصل — التوجيه الذكي جاهز"
                         : "● الخادم متصل — النموذج غير جاهز (" + engine + ")");
                     status.setTextColor(!ok ? 0xFFFF7777 : ready ? 0xFF62DCA8 : 0xFFFFC36B);
                 });
@@ -751,52 +745,6 @@ public class MainActivity extends Activity {
                     if (sendButton != null) sendButton.setEnabled(true);
                     if (stopButton != null) stopButton.setEnabled(false);
                 });
-            }
-        });
-    }
-
-    private void runProviderEvaluation() {
-        if (readApiToken().trim().isEmpty()) {
-            Toast.makeText(this, "أدخل رمز الخادم أولاً من الإعدادات", Toast.LENGTH_LONG).show();
-            endpointDialog();
-            return;
-        }
-        status.setText("● يختبر الخادم مزودي الذكاء الاصطناعي...");
-        status.setTextColor(0xFFFFC36B);
-        executor.execute(() -> {
-            HttpURLConnection connection = null;
-            try {
-                connection = openConnection("/api/admin/evaluate", "POST");
-                JSONObject result = readJsonResponse(connection);
-                JSONArray ranking = result.optJSONArray("ranking");
-                StringBuilder report = new StringBuilder("اكتمل الاختبار باستخدام أسئلة تجريبية فقط.\n");
-                if (ranking != null) {
-                    for (int i = 0; i < ranking.length(); i++) {
-                        JSONObject item = ranking.optJSONObject(i);
-                        if (item == null) continue;
-                        report.append(i + 1).append(") ")
-                            .append(item.optString("name", item.optString("id", "مزود")))
-                            .append(" — جودة ")
-                            .append(item.optDouble("quality_score", 0))
-                            .append(" — سرعة ")
-                            .append(item.optInt("average_latency_ms", 0)).append(" ms\n");
-                    }
-                }
-                final String message = report.toString();
-                runOnUiThread(() -> {
-                    addMessage("JASSIM AI", message);
-                    status.setText("● انتهى الاختبار — تم تحديث ترتيب الخوادم");
-                    status.setTextColor(0xFF62DCA8);
-                });
-            } catch (Exception e) {
-                String error = e.getMessage() == null ? "تعذر إجراء الاختبار" : e.getMessage();
-                runOnUiThread(() -> {
-                    addMessage("JASSIM AI", "لم يكتمل اختبار الخوادم: " + error);
-                    status.setText("● تعذر تحديث ترتيب الخوادم");
-                    status.setTextColor(0xFFFF7777);
-                });
-            } finally {
-                if (connection != null) connection.disconnect();
             }
         });
     }

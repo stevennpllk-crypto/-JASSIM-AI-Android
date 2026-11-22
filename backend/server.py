@@ -17,8 +17,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
-import adaptive
-
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = Path(os.environ.get("JASSIM_DATA_DIR", str(ROOT / "data"))).expanduser()
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -77,22 +75,9 @@ SYSTEM_PROMPT = """أنت JASSIM AI، مساعد مستقل عالي الجود�
 27. لا تدّعِ أنك أجريت بحثاً أو نفذت إجراءً خارجياً أو حفظت معلومة إذا لم يحدث ذلك فعلاً.
 """
 
-def private_chat_ready(model_state, external_ready):
-    """Readiness tracks the ordinary private-chat path, not NPC-only providers."""
-    return bool(
-        (model_state.get("reachable") and model_state.get("model_ready"))
-        or external_ready
-    )
-
-
-def can_route_npc_externally(body, identity):
-    """Only an authenticated server administrator may opt an NPC turn into public inference."""
-    return bool(
-        isinstance(body, dict)
-        and isinstance(identity, dict)
-        and body.get("context") == "game_npc"
-        and identity.get("role") == "admin"
-    )
+def private_chat_ready(model_state, api_token_configured=True):
+    """Require both the private model and API authentication configuration."""
+    return bool(api_token_configured and model_state.get("reachable") and model_state.get("model_ready"))
 
 
 def connect_db():
@@ -361,56 +346,18 @@ def ollama_status():
         return {"reachable": False, "model_ready": False, "model_loaded": False}
 
 
-def generate_answer(messages, allow_external=False):
+def generate_answer(messages):
     if not INFERENCE_SEMAPHORE.acquire(timeout=OLLAMA_QUEUE_TIMEOUT):
-        return (
-            "محرك الذكاء الاصطناعي مشغول بطلب آخر. انتظر قليلاً ثم أعد المحاولة؛ "
-            "لم يتم توليد إجابة لهذا الطلب."
-        ), "busy"
+        return ("محرك JASSIM الخاص مشغول بطلب آخر. انتظر قليلاً ثم أعد المحاولة؛ لم يتم توليد إجابة لهذا الطلب.", "busy")
     try:
         try:
             return ask_ollama(messages), "ollama"
         except (urllib.error.URLError, TimeoutError, ValueError, RuntimeError, OSError):
-            try:
-                answer, provider = adaptive.answer_with_provider(
-                    [{"role": "system", "content": SYSTEM_PROMPT}] + messages,
-                    allow_external=allow_external
-                )
-                return answer, provider
-            except RuntimeError:
-                return (
-                    "محرك الذكاء الاصطناعي غير متاح حالياً. "
-                    "لم يتمكن الخادم من الوصول إلى Ollama أو إلى مزود احتياطي مفعّل."
-                ), "fallback"
+            return ("محرك JASSIM الخاص غير متاح حالياً. لم تُرسل رسالتك إلى أي خادم أو مزوّد آخر.", "unavailable")
     finally:
         INFERENCE_SEMAPHORE.release()
 
-def generate_image_hf(prompt, width=1024, height=1024):
-    """Generate an image through Hugging Face Inference Providers; secrets stay server-side."""
-    token = os.environ.get("JASSIM_HF_TOKEN", "").strip()
-    if not token:
-        raise RuntimeError("image_provider_not_configured")
-    model = os.environ.get("JASSIM_IMAGE_MODEL", "black-forest-labs/FLUX.1-schnell").strip()
-    payload = json.dumps({"inputs": prompt, "parameters": {"width": width, "height": height}}).encode("utf-8")
-    request = urllib.request.Request(
-        "https://router.huggingface.co/hf-inference/models/" + model, data=payload,
-        headers={"Authorization": "Bearer " + token, "Content-Type": "application/json", "Accept": "image/png"},
-        method="POST"
-    )
-    timeout = max(30, min(int(os.environ.get("JASSIM_IMAGE_TIMEOUT", "180")), 300))
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        image_bytes = response.read(12 * 1024 * 1024 + 1)
-        content_type = response.headers.get("Content-Type", "image/png").split(";")[0].strip()
-    if len(image_bytes) > 12 * 1024 * 1024:
-        raise RuntimeError("generated_image_too_large")
-    if not content_type.startswith("image/"):
-        try:
-            detail = json.loads(image_bytes.decode("utf-8")).get("error", "provider_error")
-        except Exception:
-            detail = "provider_returned_non_image"
-        raise RuntimeError(str(detail)[:240])
-    import base64
-    return base64.b64encode(image_bytes).decode("ascii"), content_type, model
+
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "JASSIM-AI/0.6.0"
@@ -446,7 +393,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_sse_event({"type": "token", "token": answer})
         self.send_sse_event({"type": "done", "conversation_id": conversation_id, "engine": engine})
 
-    def stream_chat_response(self, conversation_id, message, context, user_id, allow_external=False):
+    def stream_chat_response(self, conversation_id, message, context, user_id):
         if not INFERENCE_SEMAPHORE.acquire(timeout=OLLAMA_QUEUE_TIMEOUT):
             self.send_json(503, {
                 "error": "model_busy",
@@ -481,21 +428,12 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 response = urllib.request.urlopen(request, timeout=OLLAMA_TIMEOUT)
             except (urllib.error.URLError, TimeoutError, ValueError, OSError):
-                try:
-                    answer, provider = adaptive.answer_with_provider(
-                        [{"role": "system", "content": SYSTEM_PROMPT}] + context,
-                        allow_external=allow_external
-                    )
-                    save_message(conversation_id, "user", message, user_id)
-                    save_message(conversation_id, "assistant", answer, user_id)
-                    self.send_sse_static(answer, conversation_id, provider)
-                except RuntimeError:
-                    self.send_json(503, {
-                        "error": "model_unavailable",
-                        "message": "محرك الذكاء الاصطناعي غير متاح. لم يُفعّل مزود خارجي أو تعذر الوصول إليه.",
-                        "retry_after_seconds": 30,
-                        "conversation_id": conversation_id
-                    })
+                self.send_json(503, {
+                    "error": "private_model_unavailable",
+                    "message": "محرك JASSIM الخاص غير متاح. لم تُرسل الرسالة إلى أي خادم آخر.",
+                    "retry_after_seconds": 30,
+                    "conversation_id": conversation_id
+                })
                 return
 
             self.send_sse_headers()
@@ -654,25 +592,21 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path in ("/health", "/ready"):
             model_state = ollama_status()
-            external_ready = adaptive.external_chat_enabled()
-            npc_provider_ready = adaptive.npc_chat_enabled()
-            ready = private_chat_ready(model_state, external_ready)
+            ready = private_chat_ready(model_state, bool(API_TOKEN))
             if parsed.path == "/ready":
                 self.send_json(200 if ready else 503, {
                     "ready": ready,
                     "api_token_configured": bool(API_TOKEN),
                     "ollama_reachable": model_state["reachable"],
                     "model_ready": model_state["model_ready"],
-                    "external_provider_ready": external_ready,
-                    "npc_provider_ready": npc_provider_ready
+                    "engine": "private-ollama"
                 })
                 return
             self.send_json(200, {
                 "ok": True,
                 "service": "JASSIM AI",
                 "version": "0.6.0",
-                "engine": "adaptive-router",
-                "external_provider_ready": external_ready,
+                "engine": "private-ollama",
                 "model": OLLAMA_MODEL,
                 "model_ready": model_state["model_ready"],
                 "model_loaded": model_state["model_loaded"],
@@ -680,8 +614,7 @@ class Handler(BaseHTTPRequestHandler):
                 "uptime_seconds": int(time.monotonic() - STARTED_AT),
                 "storage": storage.backend_name(),
                 "authentication": "account-sessions",
-                "image_generation_ready": bool(os.environ.get("JASSIM_HF_TOKEN", "").strip()),
-                "image_model": os.environ.get("JASSIM_IMAGE_MODEL", "black-forest-labs/FLUX.1-schnell")
+                "image_generation_ready": False
             })
             return
         if parsed.path == "/api/auth/me":
@@ -691,19 +624,13 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self.send_json(200, {"user": {"id": identity["user_id"], "email": identity["email"], "role": identity["role"]}})
             return
-        if parsed.path in ("/api/models", "/api/history", "/api/conversations", "/api/providers", "/api/admin/storage"):
+        if parsed.path in ("/api/models", "/api/history", "/api/conversations", "/api/admin/storage"):
             identity = self.current_identity()
             if not identity:
                 self.send_json(401, {"error": "unauthorized"})
                 return
             if self.rate_limited(identity):
                 self.send_json(429, {"error": "rate_limit_exceeded", "retry_after_seconds": 60})
-                return
-            if parsed.path == "/api/providers":
-                self.send_json(200, {
-                    "external_chat_enabled": adaptive.external_chat_enabled(),
-                    "providers": adaptive.provider_stats()
-                })
                 return
             if parsed.path == "/api/admin/storage":
                 if identity["role"] != "admin":
@@ -714,7 +641,6 @@ class Handler(BaseHTTPRequestHandler):
                     counts = {
                         "messages": db.execute("SELECT COUNT(*) FROM messages").fetchone()[0],
                         "memories": db.execute("SELECT COUNT(*) FROM memories").fetchone()[0],
-                        "provider_scores": db.execute("SELECT COUNT(*) FROM provider_scores").fetchone()[0]
                     }
                 finally:
                     db.close()
@@ -783,7 +709,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         request_path = urlparse(self.path).path
         streaming = request_path == "/api/chat/stream"
-        if request_path not in ("/api/chat", "/api/chat/stream", "/api/admin/evaluate", "/api/images/generate", "/api/auth/register", "/api/auth/login", "/api/auth/logout"):
+        if request_path not in ("/api/chat", "/api/chat/stream", "/api/auth/register", "/api/auth/login", "/api/auth/logout"):
             self.send_json(404, {"error": "not_found"})
             return
         if request_path in ("/api/auth/register", "/api/auth/login"):
@@ -841,48 +767,8 @@ class Handler(BaseHTTPRequestHandler):
         if not identity:
             self.send_json(401, {"error": "unauthorized"})
             return
-        if request_path == "/api/admin/evaluate" and identity["role"] != "admin":
-            self.send_json(403, {"error": "admin_required"})
-            return
         if self.rate_limited(identity):
             self.send_json(429, {"error": "rate_limit_exceeded", "retry_after_seconds": 60})
-            return
-        if request_path == "/api/images/generate":
-            try:
-                length = int(self.headers.get("Content-Length", "0"))
-                if length < 2 or length > 10000:
-                    self.send_json(413, {"error": "invalid_body_size"})
-                    return
-                body = json.loads(self.rfile.read(length).decode("utf-8"))
-                prompt = str(body.get("prompt", "")).strip() if isinstance(body, dict) else ""
-                if not prompt:
-                    self.send_json(400, {"error": "prompt_required"})
-                    return
-                if len(prompt) > 1800:
-                    self.send_json(413, {"error": "prompt_too_long", "limit": 1800})
-                    return
-                try:
-                    image_b64, mime, model = generate_image_hf(prompt)
-                except RuntimeError as exc:
-                    reason = str(exc)
-                    status = 503 if reason == "image_provider_not_configured" else 502
-                    self.send_json(status, {
-                        "error": "image_provider_not_configured" if status == 503 else "image_generation_failed",
-                        "detail": reason
-                    })
-                    return
-                self.send_json(200, {
-                    "ok": True, "provider": "huggingface-inference",
-                    "model": model, "mime_type": mime, "image_base64": image_b64
-                })
-            except (UnicodeDecodeError, json.JSONDecodeError, AttributeError, TypeError, ValueError) as exc:
-                self.send_json(400, {"error": "bad_request", "detail": str(exc)[:160]})
-            except (urllib.error.URLError, TimeoutError, OSError) as exc:
-                self.send_json(502, {"error": "image_generation_failed", "detail": type(exc).__name__})
-            return
-        if request_path == "/api/admin/evaluate":
-            result = adaptive.evaluate_providers()
-            self.send_json(200, result)
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -894,9 +780,6 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(400, {"error": "json_object_required"})
                 return
             message = str(body.get("message", "")).strip()
-            # Only the dedicated game NPC client opts its own dialogue into public inference.
-            # Ordinary JASSIM chats remain local-only unless the operator globally opts in.
-            allow_npc_provider = can_route_npc_externally(body, identity)
             conversation_id = str(body.get("conversation_id", "default")).strip()[:100] or "default"
             if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", conversation_id):
                 self.send_json(400, {"error": "invalid_conversation_id"})
@@ -950,14 +833,14 @@ class Handler(BaseHTTPRequestHandler):
                 previous.insert(0, {"role": "system", "content": "معلومات اختار المستخدم حفظها صراحةً في ذاكرة حسابه الخاصة، استخدمها فقط عندما تكون ذات صلة ولا تفترض أنها حقائق خارج هذا السياق: " + saved_memory})
             context = fit_history_to_budget(previous + [{"role": "user", "content": message}])
             if streaming:
-                self.stream_chat_response(conversation_id, message, context, identity["user_id"], allow_external=allow_npc_provider)
+                self.stream_chat_response(conversation_id, message, context, identity["user_id"])
                 return
-            answer, engine = generate_answer(context, allow_external=allow_npc_provider)
-            if engine in ("busy", "fallback"):
+            answer, engine = generate_answer(context)
+            if engine in ("busy", "unavailable"):
                 # Do not return a fake successful chat response when no model
                 # generated an answer. The client can preserve and retry it.
                 self.send_json(503, {
-                    "error": "model_busy" if engine == "busy" else "model_unavailable",
+                    "error": "model_busy" if engine == "busy" else "private_model_unavailable",
                     "message": answer,
                     "retry_after_seconds": 5 if engine == "busy" else 30,
                     "conversation_id": conversation_id

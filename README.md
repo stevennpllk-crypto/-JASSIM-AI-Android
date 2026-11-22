@@ -87,7 +87,7 @@ curl -N -X POST "http://127.0.0.1:8787/api/chat/stream" \
 
 Colab can run the API and Ollama for experiments, but its runtime and public tunnel URL are temporary. The notebook automatically selects `qwen3.5:9b` when an NVIDIA GPU is detected and falls back to `qwen3.5:4b` otherwise; it uses an 8K context and a 3K output budget in the Colab profile, and configures indefinite model residency while the runtime remains active; this does not prevent Colab from disconnecting or reclaiming the machine. After a runtime restart, start Ollama, the API, and the tunnel again, then update the endpoint in the Android app if the tunnel URL changed. Run the notebook's **Watchdog** cell after the startup cells: it restarts crashed Ollama/API/tunnel processes while the Colab runtime remains alive and prints a replacement tunnel URL when needed. It cannot prevent Colab from disconnecting or reclaiming the machine. SQLite data persists only when `JASSIM_DATA_DIR` points to a mounted persistent drive.
 
-For a restartable API + Ollama stack on an always-on Linux host, follow [DEPLOYMENT.md](DEPLOYMENT.md) and use `docker-compose.always-on.yml`.
+For a restartable private API + Ollama stack on an always-on Linux host, use the root `docker-compose.yml`; Ollama and the API communicate on a private Docker network.
 
 A temporary tunnel is not permanent hosting. For always-on access, deploy the API behind a stable HTTPS domain on an always-on machine that can run the selected model. Free hosting may sleep, limit CPU/RAM, or lack a GPU.
 
@@ -105,41 +105,6 @@ Enable GitHub Pages for this repository and choose GitHub Actions as the deploym
 - No guaranteed always-on GPU hosting is included.
 - `/health` reports API liveness and model diagnostics; `/ready` confirms the configured model is installed and reachable, but only a successful authenticated chat request proves a generation completed.
 
-## Image generation
+## Private inference policy
 
-The Arabic dashboard includes an authenticated image studio at `/api/images/generate`.
-It uses Hugging Face Inference Providers with `black-forest-labs/FLUX.1-schnell` by default.
-Configure `JASSIM_HF_TOKEN` as a Railway secret with Inference Providers permission; optionally set `JASSIM_IMAGE_MODEL` and `JASSIM_IMAGE_TIMEOUT`.
-Never put the Hugging Face token in dashboard JavaScript, Android source, GitHub, or a public URL.
-Image generation is a hosted pretrained model call; it does not train or fine-tune a model. Fine-tuning requires a curated licensed image dataset and a GPU training environment.
-The image prompt is sent to Hugging Face when this endpoint is configured; do not include private chat history or sensitive personal data in image prompts.
-Adobe Firefly/Photoshop Services can be added as a separate provider, but requires Adobe Developer Console credentials and an eligible Firefly Services contract.
-
-
-## Optional Groq inference provider
-
-Groq can be used as a managed inference candidate when the operator configures
-`GROQ_API_KEY` as a Railway secret. The key is read only by the backend and is
-never included in the Android app or returned by an API endpoint. The candidate
-model is `openai/gpt-oss-20b`; model availability and free-tier quotas can change.
-
-**Privacy and cost safeguards**
-- `JASSIM_ALLOW_EXTERNAL_CHAT=false` remains the default. Adding a key alone
-  does not send users' conversations to Groq.
-- `JASSIM_ENABLE_PUBLIC_PROVIDERS=true` allows synthetic benchmark probes only;
-  the evaluator uses fixed test prompts, not users' chat history.
-- Real chat is sent to a public provider only after the operator explicitly sets
-  `JASSIM_ALLOW_EXTERNAL_CHAT=true`. This is a global server-side switch, not
-  a per-account preference in the current version.
-- Game-NPC fallback is separately disabled by default and requires
-  `JASSIM_ALLOW_EXTERNAL_NPC_CHAT=true`; this permission is independent of the
-  ordinary-chat switch. NPC context/history may be sent to the selected public provider.
-- Groq's Free tier is rate-limited, not an unlimited production guarantee.
-  Check current quotas and billing settings; do not upgrade to a paid tier without
-  explicit authorization.
-- Groq states inference inputs/outputs are not retained by default, but may be
-  temporarily retained for reliability or abuse investigations (up to 30 days);
-  usage metadata is retained. Review current data controls and terms.
-
-Set `GROQ_API_KEY` as a secret in Railway service variables. Never put it in
-GitHub source, the APK, dashboard JavaScript, or a chat message.
+JASSIM AI uses exactly one inference engine: the Ollama model running in the private deployment stack. The backend contains no hosted LLM fallback, no public-provider ranking or probing, and no external image-inference integration. If the private model is unavailable, chat returns HTTP 503 and the message is not forwarded to another service. Image generation remains unavailable until an image model is implemented and hosted within the same private infrastructure.
