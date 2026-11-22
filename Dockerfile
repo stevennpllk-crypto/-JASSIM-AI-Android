@@ -15,7 +15,8 @@ RUN pip install --no-cache-dir 'psycopg[binary]>=3.2,<4' \
     && mkdir -p /data \
     && chown -R jassim:jassim /app /data
 
-USER root
+# Run the API as the dedicated unprivileged account.
+USER jassim
 EXPOSE 8787
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
