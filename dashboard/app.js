@@ -45,12 +45,28 @@
     btn.disabled=false;btn.textContent="إيقاف ■";btn.classList.add("stop-active");
     const answerBubble=addBubble("","ai");let received=false,done=false;
     try{
+      if(!state.token){
+        answerBubble.textContent="يلزم تسجيل الدخول قبل إرسال الرسائل. سجّل الدخول أو أنشئ حساباً للمتابعة.";
+        openSettings();
+        return;
+      }
       const response=await fetch(state.endpoint.replace(/[/]+$/,"")+"/api/chat/stream",{
         method:"POST",signal:controller.signal,
         headers:{"Content-Type":"application/json","Accept":"text/event-stream","Authorization":"Bearer "+state.token},
         body:JSON.stringify({message,conversation_id:state.conversation})
       });
-      if(!response.ok)throw new Error("HTTP "+response.status);
+      if(response.status===401){
+        state.token="";
+        sessionStorage.removeItem("jassim_token");
+        answerBubble.textContent="انتهت جلسة الدخول أو لم تعد صالحة. سجّل الدخول مجدداً للمتابعة.";
+        openSettings();
+        return;
+      }
+      if(!response.ok){
+        const problem=await response.json().catch(()=>({}));
+        const detail=problem.message||problem.error||problem.detail;
+        throw new Error("HTTP "+response.status+(detail?": "+detail:""));
+      }
       if(!response.body)throw new Error("المتصفح لا يدعم البث المباشر");
       const reader=response.body.getReader(),decoder=new TextDecoder("utf-8");let buffer="";
       while(true){
