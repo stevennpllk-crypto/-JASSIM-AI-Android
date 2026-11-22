@@ -75,9 +75,9 @@ SYSTEM_PROMPT = """أنت JASSIM AI، مساعد مستقل عالي الجود�
 27. لا تدّعِ أنك أجريت بحثاً أو نفذت إجراءً خارجياً أو حفظت معلومة إذا لم يحدث ذلك فعلاً.
 """
 
-def private_chat_ready(model_state):
-    """Only the configured private Ollama model can make chat ready."""
-    return bool(model_state.get("reachable") and model_state.get("model_ready"))
+def private_chat_ready(model_state, api_token_configured=True):
+    """Require both the private model and API authentication configuration."""
+    return bool(api_token_configured and model_state.get("reachable") and model_state.get("model_ready"))
 
 
 def connect_db():
@@ -592,7 +592,7 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path in ("/health", "/ready"):
             model_state = ollama_status()
-            ready = private_chat_ready(model_state)
+            ready = private_chat_ready(model_state, bool(API_TOKEN))
             if parsed.path == "/ready":
                 self.send_json(200 if ready else 503, {
                     "ready": ready,
