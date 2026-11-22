@@ -34,20 +34,20 @@ The Colab notebook automatically selects Qwen3.5 9B when it detects an NVIDIA GP
 5. Start:
 
    ```sh
-   docker compose --env-file .env -f docker-compose.always-on.yml up -d --build
+   docker compose --env-file .env -f docker-compose.yml up -d --build
    ```
 
    On an NVIDIA host:
 
    ```sh
-   docker compose --env-file .env -f docker-compose.always-on.yml -f docker-compose.gpu.yml up -d --build
+   docker compose --env-file .env -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
    ```
 
 6. Check:
 
    ```sh
-   docker compose --env-file .env -f docker-compose.always-on.yml ps
-   docker compose --env-file .env -f docker-compose.always-on.yml logs -f ollama jassim-api
+   docker compose --env-file .env -f docker-compose.yml ps
+   docker compose --env-file .env -f docker-compose.yml logs -f ollama jassim-api
    ```
 
 7. Configure Android with the public HTTPS URL and the private token from `.env`. Never commit the token or place it in the APK.
