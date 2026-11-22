@@ -643,8 +643,8 @@ class Handler(BaseHTTPRequestHandler):
                 "ok": True,
                 "service": "JASSIM AI",
                 "version": "0.6.0",
-                "engine": "adaptive-router",
-                "external_provider_ready": external_ready,
+                "engine": "ollama-private",
+                "external_provider_ready": False,
                 "model": OLLAMA_MODEL,
                 "model_ready": model_state["model_ready"],
                 "model_loaded": model_state["model_loaded"],
@@ -652,8 +652,7 @@ class Handler(BaseHTTPRequestHandler):
                 "uptime_seconds": int(time.monotonic() - STARTED_AT),
                 "storage": storage.backend_name(),
                 "authentication": "account-sessions",
-                "image_generation_ready": bool(os.environ.get("JASSIM_HF_TOKEN", "").strip()),
-                "image_model": os.environ.get("JASSIM_IMAGE_MODEL", "black-forest-labs/FLUX.1-schnell")
+                "image_generation_ready": False
             })
             return
         if parsed.path == "/api/auth/me":
@@ -844,7 +843,7 @@ class Handler(BaseHTTPRequestHandler):
                     })
                     return
                 self.send_json(200, {
-                    "ok": True, "provider": "huggingface-inference",
+                    "ok": True, "provider": "private-local",
                     "model": model, "mime_type": mime, "image_base64": image_b64
                 })
             except (UnicodeDecodeError, json.JSONDecodeError, AttributeError, TypeError, ValueError) as exc:
