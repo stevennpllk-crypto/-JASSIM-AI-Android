@@ -19,9 +19,7 @@ The repository includes a root `Dockerfile` and `docker-compose.yml`. On a Linux
    ```sh
    export JASSIM_API_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
    export JASSIM_CORS_ORIGIN="https://stevennpllk-crypto.github.io"
-   # Point this to your Ollama service; default assumes Ollama runs on the Docker host.
-   export JASSIM_OLLAMA_URL="http://host.docker.internal:11434"
-   export JASSIM_OLLAMA_MODEL="qwen2.5:0.5b"
+   export JASSIM_OLLAMA_MODEL="qwen3.5:4b"
    ```
 3. Build and start:
    ```sh
