@@ -1,6 +1,6 @@
 (() => {
   const $ = (id) => document.getElementById(id);
-  const state = { endpoint: localStorage.getItem("jassim_endpoint") || "https://jassim-ai-core-final-production.up.railway.app", token: sessionStorage.getItem("jassim_token") || "", conversation: "web-" + Math.random().toString(36).slice(2,10), connected: false, health: null, activeController: null };
+  const state = { endpoint: localStorage.getItem("jassim_endpoint") || "", token: sessionStorage.getItem("jassim_token") || "", conversation: "web-" + Math.random().toString(36).slice(2,10), connected: false, health: null, activeController: null };
   $("conversationId").textContent = state.conversation;
   function toast(message){const el=$("toast");el.textContent=message;el.classList.add("show");setTimeout(()=>el.classList.remove("show"),2600)}
   function setStatus(ok,label){state.connected=ok;$("connectionLabel").textContent=label;$("sideStatus").textContent=label;$("chatConnection").textContent=label;document.querySelectorAll(".live-dot").forEach(x=>x.classList.toggle("online",ok));$("apiStat").textContent=ok?"متصل":"غير متصل";$("apiDetail").textContent=ok?"تم فحص /health بنجاح":"تحقق من عنوان الخادم";$("step1").textContent=ok?"✓":"●"}
