@@ -270,6 +270,21 @@ class ServerSmokeTest(unittest.TestCase):
                 else:
                     self.fail("server did not start for HTTP method tests")
 
+                with urlopen(base + "/", timeout=3) as response:
+                    root = json.loads(response.read())
+                    self.assertEqual(response.status, 200)
+                    self.assertEqual(root["service"], "JASSIM AI")
+                    self.assertEqual(root["status"], "api_online")
+                    self.assertEqual(root["inference"], "private_ollama_only")
+
+                with urlopen(base + "/favicon.ico", timeout=3) as response:
+                    self.assertEqual(response.status, 204)
+                    self.assertEqual(response.read(), b"")
+
+                with self.assertRaises(Exception) as providers_error:
+                    urlopen(base + "/api/providers", timeout=3)
+                self.assertEqual(getattr(providers_error.exception, "code", None), 404)
+
                 head = Request(base + "/health", method="HEAD")
                 with urlopen(head, timeout=3) as response:
                     self.assertEqual(response.status, 200)
