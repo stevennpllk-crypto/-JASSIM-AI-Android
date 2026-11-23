@@ -87,6 +87,10 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("globals().get('PUBLISH_ENDPOINT_TO_GITHUB', False)", cells[17])
         self.assertIn("private/manual only", cells[17])
         self.assertIn("Android auto-discovery is disabled", cells[15])
+        self.assertIn("لا تحتاج إلى إنشاء GitHub Token", cells[12])
+        self.assertIn("انسخ رابط HTTPS", cells[12])
+        self.assertIn("تفعيل الاكتشاف التلقائي اختيارياً فقط", cells[12])
+        self.assertNotIn("قبل تشغيل خلية النفق، أضف", cells[12])
         self.assertIn("Copy this HTTPS URL into Android Settings", cells[15])
         self.assertIn("requests.get(tunnel_url + '/ready', timeout=8)", cells[17])
 
