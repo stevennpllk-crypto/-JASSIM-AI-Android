@@ -10,9 +10,9 @@ See [ROADMAP.md](ROADMAP.md) for the complete staged plan: streaming chat, user-
 
 - `app/`: native Android client (Java). Configure the server URL and API token in the app's Settings. The active conversation transcript is restored from the authenticated history endpoint on startup.
 - `DEPLOYMENT.md`: restartable Docker deployment, persistent model/database volumes, readiness checks, and HTTPS guidance.
-- `backend/server.py`: Python standard-library API (v0.4.0) with SQLite persistence, Bearer authentication, input-size checks, per-IP rate limiting, model readiness checks, an authenticated model inventory endpoint, and an SSE streaming route.
+- `backend/server.py`: Python standard-library API (v0.6.0) with SQLite/PostgreSQL storage, account sessions, owner-scoped conversation history, input-size checks, per-IP rate limiting, private Ollama readiness checks, and SSE streaming chat.
 - `dashboard/`: Arabic RTL dashboard for health checks and chat.
-- `.github/workflows/android.yml`: backend smoke tests, debug APK build, ZIP integrity/required-entry verification, and artifact upload.
+- `.github/workflows/android.yml`: backend integration/security tests, debug APK build, Android emulator install/launch smoke test, APK integrity verification, and artifact upload.
 - `.github/workflows/pages.yml`: GitHub Pages deployment workflow for the dashboard.
 
 ## Important security notes
@@ -22,7 +22,7 @@ See [ROADMAP.md](ROADMAP.md) for the complete staged plan: streaming chat, user-
 - The dashboard stores its endpoint in browser local storage and its token in session storage. Use it only on a trusted device and close the browser session when finished.
 - Use HTTPS for any server reachable over the internet. The Android app intentionally rejects plain HTTP endpoints.
 - Keep the API bound to `127.0.0.1` behind a trusted HTTPS reverse proxy/tunnel. Do not expose the Python HTTP server directly to the public internet.
-- The shared Bearer token currently represents one shared API identity, not individual user accounts. Rotate it if it was ever exposed. A multi-user login/session system is a separate next step.
+- `JASSIM_API_TOKEN` is an operator credential for maintenance and compatibility; ordinary users should use their own account session tokens. Session tokens are stored as digests server-side and encrypted with Android Keystore on Android.
 - `/health` is a public liveness/diagnostics endpoint. `/ready` returns HTTP 503 unless the token is configured and Ollama can see the configured model. A successful chat request remains the definitive inference test.
 
 ## Run the API
@@ -93,7 +93,7 @@ A temporary tunnel is not permanent hosting. For always-on access, deploy the AP
 
 ## Android build
 
-The repository's GitHub Actions workflow builds `app/build/outputs/apk/debug/app-debug.apk` and uploads it as the `JASSIM-AI-debug-APK` artifact after a push to `main` or a manual workflow run. Download the artifact from the successful Actions run.
+The repository's GitHub Actions workflow runs backend integration/security tests, builds `app/build/outputs/apk/debug/app-debug.apk`, installs and launches it in an Android API 35 emulator, verifies the APK archive, and uploads it as the `JASSIM-AI-debug-APK` artifact. Download the artifact only from a successful Actions run. The emulator smoke test verifies installation and foreground launch; it does not prove a live Ollama generation on the production server.
 
 ## Dashboard deployment
 
@@ -101,7 +101,7 @@ Enable GitHub Pages for this repository and choose GitHub Actions as the deploym
 
 ## Current limitations
 
-- One shared Bearer token; no user registration, per-user permissions, or token revocation UI yet.
+- Registration is currently open and rate-limited per server process; email verification and password recovery are not yet implemented.
 - No guaranteed always-on GPU hosting is included.
 - `/health` reports API liveness and model diagnostics; `/ready` confirms the configured model is installed and reachable, but only a successful authenticated chat request proves a generation completed.
 
