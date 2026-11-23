@@ -79,27 +79,42 @@ jobs:
           PY
 
 
-      - name: Verify deployed JASSIM server health
+      - name: Verify configured private JASSIM model readiness
+        if: ${{ vars.JASSIM_HEALTHCHECK_URL != '' }}
+        env:
+          JASSIM_HEALTHCHECK_URL: ${{ vars.JASSIM_HEALTHCHECK_URL }}
         run: |
           python - <<'PY'
-          import json, time, urllib.request
-          url = "https://jassim-ai-core-final-production.up.railway.app/health"
-          last_error = None
+          import json
+          import os
+          import time
+          import urllib.request
+
+          base_url = os.environ["JASSIM_HEALTHCHECK_URL"].strip().rstrip("/")
+          if not base_url.startswith("https://"):
+              raise SystemExit("JASSIM_HEALTHCHECK_URL must use HTTPS")
+          url = base_url + "/ready"
           for attempt in range(12):
               try:
                   with urllib.request.urlopen(url, timeout=15) as response:
                       data = json.loads(response.read().decode("utf-8"))
-                  if not data.get("ok"):
-                      raise RuntimeError(f"Unexpected health payload: {data}")
-                  print("JASSIM_SERVER_ONLINE:", data.get("version"), data.get("engine"))
+                  if data.get("ready") is not True or data.get("engine") != "private-ollama":
+                      raise RuntimeError(
+                          "Private JASSIM model is not ready: "
+                          f"ready={data.get('ready')} engine={data.get('engine')}"
+                      )
+                  print("JASSIM_PRIVATE_MODEL_READY:", data.get("engine"))
                   break
               except Exception as exc:
-                  last_error = exc
                   if attempt == 11:
                       raise
-                  print(f"Health check attempt {attempt + 1}/12 failed: {exc}")
+                  print(f"Readiness attempt {attempt + 1}/12 failed: {exc}")
                   time.sleep(5)
           PY
+
+      - name: Explain skipped private deployment check
+        if: ${{ vars.JASSIM_HEALTHCHECK_URL == '' }}
+        run: echo "No JASSIM_HEALTHCHECK_URL repository variable; private deployment readiness check skipped. Local backend and emulator tests still run."
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
