@@ -307,7 +307,7 @@ def ollama_messages(messages):
             system_parts.append(content)
         elif role in ("user", "assistant"):
             conversation.append({"role": role, "content": content})
-    return [{"role": "system", "content": "\\n\\n".join(system_parts)}] + conversation
+    return [{"role": "system", "content": "\n\n".join(system_parts)}] + conversation
 
 
 def ask_ollama(messages):
