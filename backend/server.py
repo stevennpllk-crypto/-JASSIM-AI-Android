@@ -590,6 +590,21 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/":
+            self.send_json(200, {
+                "service": "JASSIM AI",
+                "status": "api_online",
+                "chat_endpoint": "/api/chat",
+                "readiness_endpoint": "/ready",
+                "health_endpoint": "/health",
+                "inference": "private_ollama_only"
+            })
+            return
+        if parsed.path == "/favicon.ico":
+            self.send_response(204)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         if parsed.path in ("/health", "/ready"):
             model_state = ollama_status()
             ready = private_chat_ready(model_state, bool(API_TOKEN))
