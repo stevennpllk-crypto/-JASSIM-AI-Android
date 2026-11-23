@@ -94,6 +94,37 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Copy this HTTPS URL into Android Settings", cells[15])
         self.assertIn("requests.get(tunnel_url + '/ready', timeout=8)", cells[17])
 
+    def test_ollama_messages_merge_system_context_for_qwen_templates(self):
+        import importlib.util
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location("jassim_ollama_payload_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+
+        payload_messages = module.ollama_messages([
+            {"role": "system", "content": "ذاكرة المستخدم المحفوظة"},
+            {"role": "user", "content": "السؤال الأول"},
+            {"role": "assistant", "content": "الرد الأول"},
+            {"role": "user", "content": "السؤال الحالي"},
+            {"role": "tool", "content": "يجب تجاهل دور غير مدعوم"},
+        ])
+        self.assertEqual(payload_messages[0]["role"], "system")
+        self.assertIn(module.SYSTEM_PROMPT, payload_messages[0]["content"])
+        self.assertIn("ذاكرة المستخدم المحفوظة", payload_messages[0]["content"])
+        self.assertEqual(
+            [item["role"] for item in payload_messages],
+            ["system", "user", "assistant", "user"],
+        )
+        self.assertEqual(payload_messages[-1]["content"], "السؤال الحالي")
+
     def test_history_budget_preserves_recent_messages(self):
         import importlib.util
         with tempfile.TemporaryDirectory() as tmp:

@@ -287,10 +287,33 @@ def fit_history_to_budget(messages):
     return kept
 
 
+def ollama_messages(messages):
+    """Build a single system message and keep only Ollama-supported chat roles.
+
+    Saved user memory is supplied as a system message by the API layer. Merge
+    it with the base prompt instead of sending consecutive system messages,
+    which some model chat templates reject with HTTP 400.
+    """
+    system_parts = [SYSTEM_PROMPT]
+    conversation = []
+    for item in messages:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role", "user")).strip().lower()
+        content = str(item.get("content", "")).strip()
+        if not content:
+            continue
+        if role == "system":
+            system_parts.append(content)
+        elif role in ("user", "assistant"):
+            conversation.append({"role": role, "content": content})
+    return [{"role": "system", "content": "\n\n".join(system_parts)}] + conversation
+
+
 def ask_ollama(messages):
     payload = json.dumps({
         "model": OLLAMA_MODEL,
-        "messages": [{"role": "system", "content": SYSTEM_PROMPT}] + messages,
+        "messages": ollama_messages(messages),
         "stream": False,
         "keep_alive": OLLAMA_KEEP_ALIVE,
         "options": {
@@ -411,7 +434,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             payload = json.dumps({
                 "model": OLLAMA_MODEL,
-                "messages": [{"role": "system", "content": SYSTEM_PROMPT}] + context,
+                "messages": ollama_messages(context),
                 "stream": True,
                 "keep_alive": OLLAMA_KEEP_ALIVE,
                 "options": {
