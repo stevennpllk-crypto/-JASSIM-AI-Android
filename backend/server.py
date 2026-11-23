@@ -441,6 +441,14 @@ class Handler(BaseHTTPRequestHandler):
                     "conversation_id": conversation_id
                 })
                 return
+            except (urllib.error.URLError, TimeoutError, ValueError, OSError):
+                self.send_json(503, {
+                    "error": "private_model_unavailable",
+                    "message": "محرك JASSIM الخاص غير متاح. لم تُرسل الرسالة إلى أي خادم آخر.",
+                    "retry_after_seconds": 30,
+                    "conversation_id": conversation_id
+                })
+                return
 
             self.send_sse_headers()
             answer_parts = []
