@@ -84,8 +84,8 @@ class ServerSmokeTest(unittest.TestCase):
         notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
         cells = ["".join(cell.get("source", [])) if isinstance(cell.get("source", []), list) else str(cell.get("source", "")) for cell in notebook.get("cells", [])]
         self.assertIn("PUBLISH_ENDPOINT_TO_GITHUB = False", cells[13])
-        self.assertIn("if PUBLISH_ENDPOINT_TO_GITHUB:", cells[17])
-        self.assertIn("auto-discovery remains disabled", cells[17])
+        self.assertIn("globals().get('PUBLISH_ENDPOINT_TO_GITHUB', False)", cells[17])
+        self.assertIn("private/manual only", cells[17])
 
     def test_history_budget_preserves_recent_messages(self):
         import importlib.util
