@@ -94,6 +94,17 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Copy this HTTPS URL into Android Settings", cells[15])
         self.assertIn("requests.get(tunnel_url + '/ready', timeout=8)", cells[17])
 
+    def test_colab_direct_ollama_probe_requires_nonempty_generated_answer(self):
+        notebook_path = Path(__file__).resolve().parents[1] / "notebooks" / "JASSIM_AI_Colab_GPU.ipynb"
+        notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
+        probe = "".join(notebook["cells"][11].get("source", []))
+        self.assertIn("direct_probe.json()", probe)
+        self.assertIn("direct_payload.get('error')", probe)
+        self.assertIn("direct_answer", probe)
+        self.assertIn("if not direct_answer", probe)
+        self.assertIn("no generated message.content was present", probe)
+        self.assertIn("Direct Ollama generated non-empty text", probe)
+
     def test_history_budget_preserves_recent_messages(self):
         import importlib.util
         with tempfile.TemporaryDirectory() as tmp:
