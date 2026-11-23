@@ -79,6 +79,15 @@ class ServerSmokeTest(unittest.TestCase):
             self.assertTrue(source.strip(), f"Notebook code cell {index} is empty")
             compile(source, f"JASSIM_AI_Colab_GPU.ipynb:cell-{index}", "exec")
 
+    def test_colab_watchdog_checks_model_readiness_not_api_liveness(self):
+        notebook_path = Path(__file__).resolve().parents[1] / "notebooks" / "JASSIM_AI_Colab_GPU.ipynb"
+        notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
+        watchdog = "".join(notebook["cells"][17]["source"])
+        self.assertIn("requests.get('http://127.0.0.1:8787/ready', timeout=6)", watchdog)
+        self.assertIn("requests.get(tunnel_url + '/ready', timeout=8)", watchdog)
+        self.assertNotIn("requests.get('http://127.0.0.1:8787/health', timeout=6)", watchdog)
+        self.assertNotIn("requests.get(tunnel_url + '/health', timeout=8)", watchdog)
+
     def test_colab_endpoint_publication_is_opt_in_even_after_watchdog_restart(self):
         notebook_path = Path(__file__).resolve().parents[1] / "notebooks" / "JASSIM_AI_Colab_GPU.ipynb"
         notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
