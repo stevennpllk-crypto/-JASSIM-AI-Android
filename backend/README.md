@@ -39,7 +39,13 @@ The Compose file persists SQLite data in the named volume `jassim-data`. Back up
 4. In another Termux session, test it:
    ```sh
    curl http://127.0.0.1:8787/health
-   curl -X POST http://127.0.0.1:8787/api/chat -H 'Content-Type: application/json' -d '{"message":"مرحبا","conversation_id":"test"}'
+   curl -i http://127.0.0.1:8787/ready
+
+   # If API authentication is enabled, include the configured bearer token
+   curl -X POST http://127.0.0.1:8787/api/chat \\
+     -H 'Authorization: Bearer YOUR_PRIVATE_API_TOKEN' \\
+     -H 'Content-Type: application/json' \\
+     -d '{"message":"مرحبا","conversation_id":"test"}'
    ```
 
 ## Enable API authentication
@@ -55,17 +61,17 @@ Enter the same token in the Android app settings or the dashboard connection set
 The API can call an Ollama server compatible with `POST /api/chat`.
 Set:
 - `JASSIM_OLLAMA_URL` (default `http://127.0.0.1:11434`)
-- `JASSIM_OLLAMA_MODEL` (default `qwen2.5:0.5b`)
+- `JASSIM_OLLAMA_MODEL` (default `qwen3.5:4b`)
 
 Example:
 ```sh
-JASSIM_OLLAMA_MODEL=qwen2.5:0.5b python server.py
+JASSIM_OLLAMA_MODEL=qwen3.5:4b python server.py
 ``
 
-If Ollama is unavailable, the API returns an explicit fallback response; it does not pretend that a language model is running.
+If Ollama or the configured private model is unavailable, chat fails closed with HTTP 503 and an explicit message. The user's prompt is not forwarded to another host or hosted AI provider.
 
 ## Android compatibility
-The API preserves the existing contract: `POST /api/chat` with JSON `{"message":"..."}`, returning both `answer` and `reply`. The current Android app can use this endpoint after local-network cleartext policy and automatic connection are configured in a later, separate change.
+The API supports `POST /api/chat` for a complete JSON response and `POST /api/chat/stream` for Server-Sent Events. The current Android client uses the streaming route and requires an HTTPS server URL plus an account session token or configured operator token.
 
 ## Current limits
 This is a self-hosted API foundation, not an unlimited GPU host. A 3 GB Android phone can host the API and SQLite store, but it is not suitable for large LLM inference. For larger models, connect a separately owned computer or GPU host with sufficient RAM/VRAM and persistent storage.
@@ -81,9 +87,7 @@ When `DATABASE_URL` is configured, the API stores chat messages and conversation
 
 On the first PostgreSQL startup, the backend checks the existing `JASSIM_DATA_DIR/jassim.db` SQLite file and imports its messages and memories once. The source SQLite file is retained; the migration is marked in PostgreSQL so later replicas do not repeat it. All API replicas then share the same records.
 
-Railway deploys PostgreSQL privately and injects `DATABASE_URL=${{Postgres.DATABASE_URL}}` into the API service. After migration and verification, the legacy SQLite volume can be detached (not deleted), allowing multiple API replicas to run without a single-writer disk mount.
-
-The current horizontal topology uses multiple API replicas behind the Railway domain. PostgreSQL is the shared durable data layer. This is horizontal replica scaling; it does not mean model weights are retrained. Provider evaluation remains synthetic, and routing scores are shared through PostgreSQL.
+When PostgreSQL is configured, set `DATABASE_URL` through the private environment of the chosen self-hosted deployment platform. After migration and verification, retain a backup of the original SQLite volume before detaching it. Multiple API replicas can then share the PostgreSQL data layer. Model inference still uses only the configured private Ollama instance; database scaling does not add hosted model providers or route prompts outside the private deployment.
 
 
 # JASSIM AI Multi-user Accounts
@@ -109,4 +113,4 @@ Every conversation has one owner in the `conversations` table. History, memory, 
 
 Registration is open and currently protected by the API's per-process IP rate limiter. Email verification and password reset are not yet implemented. Do not treat this as a finished public launch until registration abuse protection is moved to shared storage, email verification/recovery is configured, and the Android and dashboard login screens are deployed. Always use HTTPS for public traffic.
 
-The merged main branch includes Android and dashboard login/register/logout controls. Android stores the opaque session token using Android Keystore-backed encryption; the dashboard keeps it in sessionStorage for the current tab. These changes require a successful Railway deployment before clients can use the new account endpoints. The production Railway service still needs its GitHub source connection authorized for this repository.
+The main branch includes Android and dashboard login/register/logout controls. Android stores the opaque session token using Android Keystore-backed encryption; the dashboard keeps it in sessionStorage for the current tab. Client account features require a deployment that is running the matching backend revision and has its database and session configuration set correctly.
