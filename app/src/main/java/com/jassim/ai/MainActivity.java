@@ -900,7 +900,8 @@ public class MainActivity extends Activity {
         tokenField.setHint("رمز إداري قديم (اختياري للمطور)");
         tokenField.setInputType(android.text.InputType.TYPE_CLASS_TEXT
             | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        tokenField.setText(readApiToken());
+        // Never prefill the account session token into the legacy developer-token field.
+        tokenField.setText("");
         fields.addView(tokenField);
 
         new AlertDialog.Builder(this)
@@ -920,10 +921,24 @@ public class MainActivity extends Activity {
                     return;
                 }
                 try {
+                    String normalizedEndpoint = value;
+                    while (normalizedEndpoint.endsWith("/")) {
+                        normalizedEndpoint = normalizedEndpoint.substring(0, normalizedEndpoint.length() - 1);
+                    }
+                    boolean endpointChanged = !normalizedEndpoint.equals(baseUrl());
+                    // Bearer session tokens belong to one server; never forward them to a newly configured host.
+                    if (endpointChanged) saveApiToken("");
                     if (!token.isEmpty()) saveApiToken(token);
-                    prefs.edit().putString("endpoint", value).apply();
+                    prefs.edit().putString("endpoint", normalizedEndpoint).apply();
                     checkHealth();
-                    loadHistory();
+                    if (readApiToken().isEmpty()) {
+                        d.dismiss();
+                        status.setText("● تم تغيير الخادم — سجّل الدخول مجدداً");
+                        status.setTextColor(0xFFFFC36B);
+                        accountDialog();
+                    } else {
+                        loadHistory();
+                    }
                 } catch (Exception e) {
                     Toast.makeText(this, "تعذر حفظ الرمز بأمان على هذا الجهاز", Toast.LENGTH_LONG).show();
                 }
