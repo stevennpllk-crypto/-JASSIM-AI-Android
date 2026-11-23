@@ -19,6 +19,15 @@ class SinglePrivateEngineTest(unittest.TestCase):
         self.assertNotIn("requestAnonymousProvider", source)
         self.assertNotIn("buildFallbackHistory", source)
 
+    def test_android_connection_is_private_only_and_has_no_implicit_railway_default(self):
+        android = ANDROID_CHAT.read_text(encoding="utf-8")
+        self.assertNotIn("DEFAULT_SERVER_URL", android)
+        self.assertNotIn("jassim-ai-core-final-production.up.railway.app", android)
+        self.assertNotIn("خدمة ذكاء اصطناعي عامة مجانية", android)
+        self.assertNotIn("الخدمة الاحتياطية متاحة", android)
+        self.assertIn("لن تُرسل رسائلك إلى أي مزوّد خارجي", android)
+        self.assertIn('prefs.getString("endpoint", "")', android)
+
     def test_clients_have_no_provider_evaluation_controls(self):
         android = ANDROID_CHAT.read_text(encoding="utf-8")
         dashboard = DASHBOARD_JS.read_text(encoding="utf-8")
