@@ -44,9 +44,6 @@ public class MainActivity extends Activity {
     private volatile boolean cancelRequested;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private static final String KEY_ALIAS = "jassim_api_token_v1";
-    private static final String DEFAULT_SERVER_URL =
-        "https://jassim-ai-core-final-production.up.railway.app";
-
     private SecretKey getOrCreateSecretKey() throws Exception {
         KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
         keyStore.load(null);
@@ -103,14 +100,14 @@ public class MainActivity extends Activity {
         prefs = getSharedPreferences("jassim", MODE_PRIVATE);
         ensureConversationId();
         buildUi();
-        // Discover the current Colab tunnel from the stable GitHub Pages registry.
+        // Discover a private endpoint only when the owner explicitly publishes one.
         status.setText("● جارٍ اكتشاف عنوان الخادم...");
         status.setTextColor(0xFFFFC36B);
         autoConnect();
     }
 
-    // Stable discovery URL: Colab updates this small public JSON file whenever
-    // its temporary Cloudflare tunnel starts or changes. It contains no API token.
+    // Optional discovery registry. Publishing is disabled by default in Colab.
+    // The registry contains an endpoint only after explicit owner opt-in.
     private static final String DISCOVERY_URL =
         "https://stevennpllk-crypto.github.io/-JASSIM-AI-Android/connection.json";
 
@@ -142,7 +139,7 @@ public class MainActivity extends Activity {
                     }
                 }
             } catch (Exception ignored) {
-                // Use the last known endpoint if the discovery service is temporarily unavailable.
+                // Retain the last manually configured or previously discovered private endpoint.
             } finally {
                 if (discovery != null) discovery.disconnect();
             }
@@ -153,9 +150,9 @@ public class MainActivity extends Activity {
             }
             runOnUiThread(() -> {
                 if (baseUrl().isEmpty()) {
-                    addMessage("JASSIM AI", "الخادم الخاص غير متصل الآن. يمكنك متابعة المحادثة عبر خدمة ذكاء اصطناعي عامة مجانية؛ قد تتغير سرعتها وحدودها.");
-                    status.setText("● الخادم الخاص غير متصل — الخدمة الاحتياطية متاحة");
-                    status.setTextColor(0xFFFFC36B);
+                    addMessage("JASSIM AI", "لم يتم العثور على خادم JASSIM الخاص. افتح الإعدادات وأدخل رابط الخادم الخاص بعد تشغيله. لن تُرسل رسائلك إلى أي مزوّد خارجي.");
+                    status.setText("● الخادم الخاص غير متصل — لا يوجد مزوّد خارجي");
+                    status.setTextColor(0xFFFF7777);
                 } else {
                     status.setText(endpoint.isEmpty()
                         ? "● تعذر تحديث الرابط — نجرب آخر عنوان محفوظ"
@@ -405,7 +402,6 @@ public class MainActivity extends Activity {
 
     private String baseUrl() {
         String endpoint = prefs.getString("endpoint", "").trim();
-        if (endpoint.isEmpty()) endpoint = DEFAULT_SERVER_URL;
         while (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
         return endpoint;
     }
@@ -896,7 +892,7 @@ public class MainActivity extends Activity {
         EditText field = new EditText(this);
         field.setSingleLine(true);
         field.setHint("https://your-server.trycloudflare.com");
-        field.setText(prefs.getString("endpoint", DEFAULT_SERVER_URL));
+        field.setText(prefs.getString("endpoint", ""));
         fields.addView(field);
 
         EditText tokenField = new EditText(this);
