@@ -13,6 +13,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -115,6 +116,28 @@ jobs:
       - name: Build debug APK
         run: gradle assembleDebug
 
+      - name: Android Emulator smoke test
+        timeout-minutes: 25
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 900
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            adb devices -l
+            adb -s emulator-5554 get-state
+            adb -s emulator-5554 shell getprop sys.boot_completed | grep -q '^1$'
+            adb -s emulator-5554 install -r "$GITHUB_WORKSPACE/app/build/outputs/apk/debug/app-debug.apk"
+            adb -s emulator-5554 shell am force-stop com.jassim.ai
+            adb -s emulator-5554 shell am start -W -n com.jassim.ai/.MainActivity
+            sleep 5
+            adb -s emulator-5554 shell pidof com.jassim.ai
+            adb -s emulator-5554 shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' | tail -n 1 | grep -q 'com.jassim.ai/.MainActivity'
+            echo "ANDROID_EMULATOR_SMOKE_OK: APK installed, MainActivity foregrounded, and process alive"
       - name: Verify APK package
         run: |
           python - <<'PY'
