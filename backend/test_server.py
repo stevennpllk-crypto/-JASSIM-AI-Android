@@ -86,6 +86,9 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("PUBLISH_ENDPOINT_TO_GITHUB = False", cells[13])
         self.assertIn("globals().get('PUBLISH_ENDPOINT_TO_GITHUB', False)", cells[17])
         self.assertIn("private/manual only", cells[17])
+        self.assertIn("Android auto-discovery is disabled", cells[15])
+        self.assertIn("Copy this HTTPS URL into Android Settings", cells[15])
+        self.assertIn("requests.get(tunnel_url + '/ready', timeout=8)", cells[17])
 
     def test_history_budget_preserves_recent_messages(self):
         import importlib.util
