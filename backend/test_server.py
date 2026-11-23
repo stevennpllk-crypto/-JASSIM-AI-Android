@@ -79,6 +79,14 @@ class ServerSmokeTest(unittest.TestCase):
             self.assertTrue(source.strip(), f"Notebook code cell {index} is empty")
             compile(source, f"JASSIM_AI_Colab_GPU.ipynb:cell-{index}", "exec")
 
+    def test_colab_endpoint_publication_is_opt_in_even_after_watchdog_restart(self):
+        notebook_path = Path(__file__).resolve().parents[1] / "notebooks" / "JASSIM_AI_Colab_GPU.ipynb"
+        notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
+        cells = ["".join(cell.get("source", [])) if isinstance(cell.get("source", []), list) else str(cell.get("source", "")) for cell in notebook.get("cells", [])]
+        self.assertIn("PUBLISH_ENDPOINT_TO_GITHUB = False", cells[13])
+        self.assertIn("if PUBLISH_ENDPOINT_TO_GITHUB:", cells[17])
+        self.assertIn("auto-discovery remains disabled", cells[17])
+
     def test_history_budget_preserves_recent_messages(self):
         import importlib.util
         with tempfile.TemporaryDirectory() as tmp:
