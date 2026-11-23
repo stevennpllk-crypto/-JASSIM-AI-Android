@@ -317,6 +317,10 @@ def ask_ollama(messages):
             if not answer:
                 raise RuntimeError("محرك Ollama لم يُرجع إجابة.")
             return answer
+        except urllib.error.HTTPError as exc:
+            # Log only the HTTP status: never write prompts or response bodies to public CI logs.
+            print(f"Ollama /api/chat returned HTTP {exc.code}", flush=True)
+            raise RuntimeError(f"Ollama HTTP {exc.code}") from exc
         except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
             last_error = exc
             if attempt == 0:
@@ -427,7 +431,9 @@ class Handler(BaseHTTPRequestHandler):
             )
             try:
                 response = urllib.request.urlopen(request, timeout=OLLAMA_TIMEOUT)
-            except (urllib.error.URLError, TimeoutError, ValueError, OSError):
+            except urllib.error.HTTPError as exc:
+                # Do not log response bodies: they may contain user-provided content.
+                print(f"Ollama streaming /api/chat returned HTTP {exc.code}", flush=True)
                 self.send_json(503, {
                     "error": "private_model_unavailable",
                     "message": "محرك JASSIM الخاص غير متاح. لم تُرسل الرسالة إلى أي خادم آخر.",
