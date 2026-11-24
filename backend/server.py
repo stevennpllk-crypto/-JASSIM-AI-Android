@@ -334,7 +334,7 @@ def ask_ollama(messages):
                 detail = str(error_payload.get("error", "")).strip()
             except (ValueError, OSError, AttributeError):
                 detail = ""
-            detail = re.sub(r"[\\x00-\\x1f\\x7f]", " ", detail)[:400]
+            detail = re.sub(r"[\x00-\x1f\x7f]", " ", detail)[:400]
             suffix = f": {detail}" if detail else ""
             print(f"Ollama /api/chat returned HTTP {exc.code}{suffix}", flush=True)
             raise RuntimeError(f"Ollama HTTP {exc.code}{suffix}") from exc
