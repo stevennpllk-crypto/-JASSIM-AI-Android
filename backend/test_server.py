@@ -68,6 +68,25 @@ class FakeOllamaHandler(BaseHTTPRequestHandler):
 
 
 class ServerSmokeTest(unittest.TestCase):
+    def test_ollama_keep_alive_preserves_numeric_json_type(self):
+        import importlib.util
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_keep_alive_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+        self.assertEqual(module.parse_ollama_keep_alive("-1"), -1)
+        self.assertIsInstance(module.parse_ollama_keep_alive("-1"), int)
+        self.assertEqual(module.parse_ollama_keep_alive("5m"), "5m")
+
     def test_colab_notebook_code_cells_compile(self):
         notebook_path = Path(__file__).resolve().parents[1] / "notebooks" / "JASSIM_AI_Colab_GPU.ipynb"
         notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
@@ -420,7 +439,8 @@ class ServerSmokeTest(unittest.TestCase):
                 self.assertEqual(result["conversation_id"], "smoke")
                 sent = FakeOllamaHandler.last_chat_payload
                 self.assertEqual(sent["model"], "qwen3.5:4b")
-                self.assertEqual(sent["keep_alive"], "-1")
+                self.assertEqual(sent["keep_alive"], -1)
+                self.assertIsInstance(sent["keep_alive"], int)
                 self.assertEqual(sent["options"]["num_ctx"], 8192)
                 self.assertEqual(sent["options"]["num_predict"], 3072)
                 self.assertEqual(sent["options"]["temperature"], 0.45)
