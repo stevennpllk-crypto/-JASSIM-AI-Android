@@ -68,6 +68,42 @@ class FakeOllamaHandler(BaseHTTPRequestHandler):
 
 
 class ServerSmokeTest(unittest.TestCase):
+    def test_ollama_http_error_reports_safe_error_field(self):
+        import importlib.util
+        from io import BytesIO
+        from urllib.error import HTTPError
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_http_error_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+
+        class FakeResponse:
+            def __init__(self):
+                self.body = BytesIO(b'{"error":"invalid keep_alive type"}')
+            def read(self, size=-1):
+                return self.body.read(size)
+
+        error = HTTPError("http://localhost/api/chat", 400, "Bad Request", {}, FakeResponse())
+        with patch("builtins.print") as output:
+            try:
+                raise error
+            except HTTPError as exc:
+                try:
+                    payload = json.loads(exc.read(2048).decode("utf-8"))
+                    detail = str(payload.get("error", "")).strip()
+                except (ValueError, OSError, AttributeError):
+                    detail = ""
+                self.assertEqual(detail, "invalid keep_alive type")
+
     def test_ollama_keep_alive_preserves_numeric_json_type(self):
         import importlib.util
         with tempfile.TemporaryDirectory() as tmp:
