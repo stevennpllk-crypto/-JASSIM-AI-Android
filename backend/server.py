@@ -328,9 +328,16 @@ def ask_ollama(messages):
                 raise RuntimeError("محرك Ollama لم يُرجع إجابة.")
             return answer
         except urllib.error.HTTPError as exc:
-            # Log only the HTTP status: never write prompts or response bodies to public CI logs.
-            print(f"Ollama /api/chat returned HTTP {exc.code}", flush=True)
-            raise RuntimeError(f"Ollama HTTP {exc.code}") from exc
+            # Ollama's JSON error field is diagnostic metadata; never log prompts or request bodies.
+            try:
+                error_payload = json.loads(exc.read(2048).decode("utf-8", errors="replace"))
+                detail = str(error_payload.get("error", "")).strip()
+            except (ValueError, OSError, AttributeError):
+                detail = ""
+            detail = re.sub(r"[\\x00-\\x1f\\x7f]", " ", detail)[:400]
+            suffix = f": {detail}" if detail else ""
+            print(f"Ollama /api/chat returned HTTP {exc.code}{suffix}", flush=True)
+            raise RuntimeError(f"Ollama HTTP {exc.code}{suffix}") from exc
         except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
             last_error = exc
             if attempt == 0:
