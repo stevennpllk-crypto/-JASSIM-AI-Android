@@ -27,7 +27,17 @@ CORS_ORIGIN = os.environ.get("JASSIM_CORS_ORIGIN", "null")
 API_TOKEN = os.environ.get("JASSIM_API_TOKEN", "").strip()
 OLLAMA_URL = os.environ.get("JASSIM_OLLAMA_URL", "http://127.0.0.1:11434")
 OLLAMA_MODEL = os.environ.get("JASSIM_OLLAMA_MODEL", "qwen3.5:4b")
-OLLAMA_KEEP_ALIVE = os.environ.get("JASSIM_OLLAMA_KEEP_ALIVE", "-1")
+def parse_ollama_keep_alive(value):
+    """Keep numeric durations numeric; Ollama expects -1 as a JSON number, not the string "-1"."""
+    raw = str(value).strip()
+    try:
+        return int(raw)
+    except ValueError:
+        # Ollama also accepts duration strings such as "5m".
+        return raw
+
+
+OLLAMA_KEEP_ALIVE = parse_ollama_keep_alive(os.environ.get("JASSIM_OLLAMA_KEEP_ALIVE", "-1"))
 OLLAMA_NUM_CTX = max(2048, min(int(os.environ.get("JASSIM_NUM_CTX", "8192")), 32768))
 OLLAMA_NUM_PREDICT = max(256, min(int(os.environ.get("JASSIM_NUM_PREDICT", "3072")), 4096))
 HISTORY_CHAR_BUDGET = max(4000, min(int(os.environ.get("JASSIM_HISTORY_CHAR_BUDGET", "24000")), 100000))
