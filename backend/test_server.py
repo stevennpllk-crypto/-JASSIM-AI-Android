@@ -86,23 +86,13 @@ class ServerSmokeTest(unittest.TestCase):
                 else:
                     os.environ["JASSIM_DATA_DIR"] = previous_data_dir
 
-        class FakeResponse:
-            def __init__(self):
-                self.body = BytesIO(b'{"error":"invalid keep_alive type"}')
-            def read(self, size=-1):
-                return self.body.read(size)
-
-        error = HTTPError("http://localhost/api/chat", 400, "Bad Request", {}, FakeResponse())
-        with patch("builtins.print") as output:
-            try:
-                raise error
-            except HTTPError as exc:
-                try:
-                    payload = json.loads(exc.read(2048).decode("utf-8"))
-                    detail = str(payload.get("error", "")).strip()
-                except (ValueError, OSError, AttributeError):
-                    detail = ""
-                self.assertEqual(detail, "invalid keep_alive type")
+        error = HTTPError(
+            "http://localhost/api/chat", 400, "Bad Request", {},
+            BytesIO(b'{"error":"invalid keep_alive type"}')
+        )
+        with patch.object(module.urllib.request, "urlopen", side_effect=error):
+            with self.assertRaisesRegex(RuntimeError, "invalid keep_alive type"):
+                module.ask_ollama([{"role": "user", "content": "test prompt"}])
 
     def test_ollama_keep_alive_preserves_numeric_json_type(self):
         import importlib.util
