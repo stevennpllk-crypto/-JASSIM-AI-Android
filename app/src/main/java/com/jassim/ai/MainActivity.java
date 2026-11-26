@@ -110,7 +110,6 @@ public class MainActivity extends Activity {
 
     // The private server is built into the app; users never enter or discover a URL.
     private void autoConnect() {
-        prefs.edit().putString("endpoint", PRIVATE_SERVER_URL).apply();
         executor.execute(() -> {
             HttpURLConnection connection = null;
             try {
@@ -146,7 +145,7 @@ public class MainActivity extends Activity {
                     status.setText("● فشل الاتصال بالخادم الخاص");
                     status.setTextColor(0xFFFF7777);
                     addMessage("JASSIM AI", "تعذر الوصول إلى خادم JASSIM: " + detail
-                        + "\\nلم تُرسل رسالتك إلى أي مزوّد آخر.");
+                        + "\nلم تُرسل رسالتك إلى أي مزوّد آخر.");
                 });
             } finally {
                 if (connection != null) connection.disconnect();
@@ -251,7 +250,7 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams newLp = new LinearLayout.LayoutParams(dp(40), dp(38));
         newLp.setMargins(dp(5), 0, 0, 0);
         header.addView(newChat, newLp);
-                root.addView(header);
+        root.addView(header);
 
         status = new TextView(this);
         status.setText("● جارٍ فحص الاتصال...");
