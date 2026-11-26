@@ -406,11 +406,16 @@ public class MainActivity extends Activity {
         return endpoint;
     }
 
-    private HttpURLConnection openConnection(String path, String method) throws Exception {
+    private URL secureUrl(String path) throws Exception {
         URL url = new URL(baseUrl() + path);
         if (!"https".equalsIgnoreCase(url.getProtocol()) || url.getHost().isEmpty()) {
             throw new IOException("الاتصال الآمن HTTPS فقط مسموح به");
         }
+        return url;
+    }
+
+    private HttpURLConnection openConnection(String path, String method) throws Exception {
+        URL url = secureUrl(path);
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
         connection.setRequestMethod(method);
         connection.setConnectTimeout(20000);
@@ -807,7 +812,7 @@ public class MainActivity extends Activity {
         executor.execute(() -> {
             HttpURLConnection connection = null;
             try {
-                URL url = new URL(baseUrl() + (register ? "/api/auth/register" : "/api/auth/login"));
+                URL url = secureUrl(register ? "/api/auth/register" : "/api/auth/login");
                 connection = (HttpURLConnection) url.openConnection();
                 connection.setRequestMethod("POST");
                 connection.setConnectTimeout(15000);
