@@ -11,6 +11,13 @@ STORAGE = ROOT / "backend/storage.py"
 
 
 class SinglePrivateEngineTest(unittest.TestCase):
+    def test_all_android_auth_requests_enforce_https_before_sending_credentials(self):
+        source = ANDROID_CHAT.read_text(encoding="utf-8")
+        self.assertIn("private URL secureUrl(String path)", source)
+        self.assertIn('"https".equalsIgnoreCase(url.getProtocol())', source)
+        self.assertIn('secureUrl(register ? "/api/auth/register" : "/api/auth/login")', source)
+        self.assertIn("URL url = secureUrl(path);", source)
+
     def test_android_client_has_no_public_llm_fallback(self):
         source = ANDROID_CHAT.read_text(encoding="utf-8")
         self.assertNotIn("api.jarvisclaw.ai", source)
