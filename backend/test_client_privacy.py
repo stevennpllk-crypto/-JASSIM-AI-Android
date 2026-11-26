@@ -17,6 +17,9 @@ class SinglePrivateEngineTest(unittest.TestCase):
         self.assertIn('"https".equalsIgnoreCase(url.getProtocol())', source)
         self.assertIn('secureUrl(register ? "/api/auth/register" : "/api/auth/login")', source)
         self.assertIn("URL url = secureUrl(path);", source)
+        self.assertGreaterEqual(source.count("setInstanceFollowRedirects(false)"), 2)
+        self.assertIn("Never forward session credentials through an HTTP redirect", source)
+        self.assertIn("Login and registration credentials must never follow server redirects", source)
 
     def test_android_client_has_no_public_llm_fallback(self):
         source = ANDROID_CHAT.read_text(encoding="utf-8")
