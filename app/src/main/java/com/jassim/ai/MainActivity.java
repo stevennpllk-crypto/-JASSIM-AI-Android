@@ -417,6 +417,8 @@ public class MainActivity extends Activity {
     private HttpURLConnection openConnection(String path, String method) throws Exception {
         URL url = secureUrl(path);
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        // Never forward session credentials through an HTTP redirect to another host.
+        connection.setInstanceFollowRedirects(false);
         connection.setRequestMethod(method);
         connection.setConnectTimeout(20000);
         connection.setReadTimeout(180000);
@@ -814,6 +816,8 @@ public class MainActivity extends Activity {
             try {
                 URL url = secureUrl(register ? "/api/auth/register" : "/api/auth/login");
                 connection = (HttpURLConnection) url.openConnection();
+                // Login and registration credentials must never follow server redirects.
+                connection.setInstanceFollowRedirects(false);
                 connection.setRequestMethod("POST");
                 connection.setConnectTimeout(15000);
                 connection.setReadTimeout(20000);
