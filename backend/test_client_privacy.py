@@ -11,6 +11,16 @@ STORAGE = ROOT / "backend/storage.py"
 
 
 class SinglePrivateEngineTest(unittest.TestCase):
+    def test_all_android_auth_requests_enforce_https_before_sending_credentials(self):
+        source = ANDROID_CHAT.read_text(encoding="utf-8")
+        self.assertIn("private URL secureUrl(String path)", source)
+        self.assertIn('"https".equalsIgnoreCase(url.getProtocol())', source)
+        self.assertIn('secureUrl(register ? "/api/auth/register" : "/api/auth/login")', source)
+        self.assertIn("URL url = secureUrl(path);", source)
+        self.assertGreaterEqual(source.count("setInstanceFollowRedirects(false)"), 2)
+        self.assertIn("Never forward session credentials through an HTTP redirect", source)
+        self.assertIn("Login and registration credentials must never follow server redirects", source)
+
     def test_android_client_has_no_public_llm_fallback(self):
         source = ANDROID_CHAT.read_text(encoding="utf-8")
         self.assertNotIn("api.jarvisclaw.ai", source)
@@ -19,14 +29,18 @@ class SinglePrivateEngineTest(unittest.TestCase):
         self.assertNotIn("requestAnonymousProvider", source)
         self.assertNotIn("buildFallbackHistory", source)
 
-    def test_android_connection_is_private_only_and_has_no_implicit_railway_default(self):
+    def test_android_connects_to_the_built_in_private_server_without_manual_setup(self):
         android = ANDROID_CHAT.read_text(encoding="utf-8")
-        self.assertNotIn("DEFAULT_SERVER_URL", android)
-        self.assertNotIn("jassim-ai-core-final-production.up.railway.app", android)
-        self.assertNotIn("خدمة ذكاء اصطناعي عامة مجانية", android)
-        self.assertNotIn("الخدمة الاحتياطية متاحة", android)
-        self.assertIn("لن تُرسل رسائلك إلى أي مزوّد خارجي", android)
-        self.assertIn('prefs.getString("endpoint", "")', android)
+        self.assertIn("PRIVATE_SERVER_URL", android)
+        self.assertIn("https://jassim-ai-core-final-production.up.railway.app", android)
+        self.assertIn("private void autoConnect()", android)
+        self.assertIn('openConnection("/health", "GET")', android)
+        self.assertIn('result.optBoolean("model_ready", false)', android)
+        self.assertNotIn("DISCOVERY_URL", android)
+        self.assertNotIn("endpointDialog()", android)
+        self.assertNotIn("your-server.trycloudflare.com", android)
+        self.assertNotIn('prefs.getString("endpoint", "")', android)
+        self.assertIn("لم تُرسل رسالتك إلى أي جهة أخرى", android)
 
     def test_clients_have_no_provider_evaluation_controls(self):
         android = ANDROID_CHAT.read_text(encoding="utf-8")

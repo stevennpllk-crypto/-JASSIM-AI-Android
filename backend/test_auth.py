@@ -287,5 +287,34 @@ class MultiUserAuthTest(unittest.TestCase):
         )
 
 
+    def test_untrusted_peer_cannot_spoof_forwarded_client_ip(self):
+        self.assertEqual(
+            self.server.client_ip_from_headers(
+                "203.0.113.8", "198.51.100.77", ()
+            ),
+            "203.0.113.8"
+        )
+
+    def test_trusted_proxy_chain_ignores_spoofed_leftmost_forwarded_ip(self):
+        trusted = (self.server.ipaddress.ip_network("10.0.0.0/8"),)
+        self.assertEqual(
+            self.server.client_ip_from_headers(
+                "10.0.0.1",
+                "192.0.2.99, 198.51.100.25, 10.0.0.2",
+                trusted
+            ),
+            "198.51.100.25"
+        )
+
+    def test_invalid_forwarded_for_falls_back_to_peer_address(self):
+        trusted = (self.server.ipaddress.ip_network("10.0.0.0/8"),)
+        self.assertEqual(
+            self.server.client_ip_from_headers(
+                "10.0.0.1", "198.51.100.25, not-an-ip", trusted
+            ),
+            "10.0.0.1"
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

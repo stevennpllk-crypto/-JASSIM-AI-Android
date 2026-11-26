@@ -9,6 +9,7 @@ This deployment runs the API and Ollama together on an always-on Linux host (VPS
 - The selected model is pulled before the API starts.
 - The API container checks `/ready`, so a live Python process is not mistaken for a working model.
 - The API binds to host loopback only. Put a trusted HTTPS reverse proxy or a named Cloudflare Tunnel in front of it; do not expose port 8787 directly.
+- Client-IP rate limiting ignores `X-Forwarded-For` by default. Set `JASSIM_TRUSTED_PROXY_IPS` only to the exact IP addresses/CIDR ranges of reverse proxies that you operate and trust; never add client networks or broad ranges. If unset, requests are rate-limited by the direct TCP peer address.
 
 ## Requirements
 
