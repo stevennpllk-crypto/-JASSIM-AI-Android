@@ -95,78 +95,62 @@ public class MainActivity extends Activity {
         }
     }
 
+    private static final String PRIVATE_SERVER_URL =
+        "https://jassim-ai-core-final-production.up.railway.app";
+
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         prefs = getSharedPreferences("jassim", MODE_PRIVATE);
         ensureConversationId();
         buildUi();
-        // Discover a private endpoint only when the owner explicitly publishes one.
-        status.setText("● جارٍ اكتشاف عنوان الخادم...");
+        status.setText("● جارٍ الاتصال بخادم JASSIM الخاص...");
         status.setTextColor(0xFFFFC36B);
         autoConnect();
     }
 
-    // Optional discovery registry. Publishing is disabled by default in Colab.
-    // The registry contains an endpoint only after explicit owner opt-in.
-    private static final String DISCOVERY_URL =
-        "https://stevennpllk-crypto.github.io/-JASSIM-AI-Android/connection.json";
-
+    // The private server is built into the app; users never enter or discover a URL.
     private void autoConnect() {
+        prefs.edit().putString("endpoint", PRIVATE_SERVER_URL).apply();
         executor.execute(() -> {
-            String discovered = "";
-            HttpURLConnection discovery = null;
+            HttpURLConnection connection = null;
             try {
-                discovery = (HttpURLConnection) new URL(DISCOVERY_URL + "?t=" + System.currentTimeMillis()).openConnection();
-                discovery.setRequestMethod("GET");
-                discovery.setConnectTimeout(12000);
-                discovery.setReadTimeout(12000);
-                discovery.setRequestProperty("Accept", "application/json");
-                discovery.setRequestProperty("Cache-Control", "no-cache");
-                int code = discovery.getResponseCode();
-                if (code == 200) {
-                    StringBuilder body = new StringBuilder();
-                    try (BufferedReader reader = new BufferedReader(
-                            new InputStreamReader(discovery.getInputStream(), StandardCharsets.UTF_8))) {
-                        String line;
-                        while ((line = reader.readLine()) != null) body.append(line);
+                connection = openConnection("/health", "GET");
+                JSONObject result = readJsonResponse(connection);
+                boolean apiOnline = result.optBoolean("ok", false);
+                boolean modelReady = result.optBoolean("model_ready", false);
+                String model = result.optString("model", "المحرك الخاص");
+                runOnUiThread(() -> {
+                    if (!apiOnline) {
+                        status.setText("● تعذر الاتصال بخادم JASSIM الخاص");
+                        status.setTextColor(0xFFFF7777);
+                        addMessage("JASSIM AI", "الخادم الخاص غير متاح حالياً. لم تُرسل رسالتك إلى أي جهة أخرى.");
+                        return;
                     }
-                    JSONObject registry = new JSONObject(body.toString());
-                    String candidate = registry.optString("url", "").trim();
-                    if ("online".equals(registry.optString("status", "")) &&
-                            candidate.startsWith("https://") &&
-                            candidate.length() <= 300) {
-                        discovered = candidate;
-                    }
-                }
-            } catch (Exception ignored) {
-                // Retain the last manually configured or previously discovered private endpoint.
-            } finally {
-                if (discovery != null) discovery.disconnect();
-            }
-
-            final String endpoint = discovered;
-            if (!endpoint.isEmpty()) {
-                prefs.edit().putString("endpoint", endpoint).apply();
-            }
-            runOnUiThread(() -> {
-                if (baseUrl().isEmpty()) {
-                    addMessage("JASSIM AI", "لم يتم العثور على خادم JASSIM الخاص. افتح الإعدادات وأدخل رابط الخادم الخاص بعد تشغيله. لن تُرسل رسائلك إلى أي مزوّد خارجي.");
-                    status.setText("● الخادم الخاص غير متصل — لا يوجد مزوّد خارجي");
-                    status.setTextColor(0xFFFF7777);
-                } else {
-                    status.setText(endpoint.isEmpty()
-                        ? "● تعذر تحديث الرابط — نجرب آخر عنوان محفوظ"
-                        : "● تم اكتشاف الخادم تلقائياً — جارٍ الاتصال...");
-                    checkHealth();
-                    if (readApiToken().isEmpty()) {
-                        status.setText("● أنشئ حساباً أو سجّل الدخول للبدء");
+                    if (modelReady) {
+                        status.setText("● متصل — محرك JASSIM الخاص جاهز");
+                        status.setTextColor(0xFF62DCA8);
+                    } else {
+                        status.setText("● الخادم متصل، لكن النموذج الخاص غير جاهز (" + model + ")");
                         status.setTextColor(0xFFFFC36B);
+                        addMessage("JASSIM AI", "وصل التطبيق إلى الخادم الخاص، لكن محرك النموذج غير جاهز بعد. لن نستخدم أي مزوّد خارجي.");
+                    }
+                    if (readApiToken().isEmpty()) {
                         accountDialog();
                     } else {
                         loadHistory();
                     }
-                }
-            });
+                });
+            } catch (Exception error) {
+                String detail = error.getMessage() == null ? "تعذر الوصول إلى الخادم" : error.getMessage();
+                runOnUiThread(() -> {
+                    status.setText("● فشل الاتصال بالخادم الخاص");
+                    status.setTextColor(0xFFFF7777);
+                    addMessage("JASSIM AI", "تعذر الوصول إلى خادم JASSIM: " + detail
+                        + "\\nلم تُرسل رسالتك إلى أي مزوّد آخر.");
+                });
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
         });
     }
 
@@ -267,11 +251,7 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams newLp = new LinearLayout.LayoutParams(dp(40), dp(38));
         newLp.setMargins(dp(5), 0, 0, 0);
         header.addView(newChat, newLp);
-        Button settings = actionButton("⚙", "إعدادات الاتصال", () -> endpointDialog());
-        LinearLayout.LayoutParams settingsLp = new LinearLayout.LayoutParams(dp(40), dp(38));
-        settingsLp.setMargins(dp(5), 0, 0, 0);
-        header.addView(settings, settingsLp);
-        root.addView(header);
+                root.addView(header);
 
         status = new TextView(this);
         status.setText("● جارٍ فحص الاتصال...");
@@ -401,7 +381,7 @@ public class MainActivity extends Activity {
     }
 
     private String baseUrl() {
-        String endpoint = prefs.getString("endpoint", "").trim();
+        String endpoint = PRIVATE_SERVER_URL;
         while (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
         return endpoint;
     }
@@ -890,68 +870,6 @@ public class MainActivity extends Activity {
                 if (connection != null) connection.disconnect();
             }
         });
-    }
-
-    private void endpointDialog() {
-        LinearLayout fields = new LinearLayout(this);
-        fields.setOrientation(LinearLayout.VERTICAL);
-        int pad = (int)(18 * getResources().getDisplayMetrics().density);
-        fields.setPadding(pad, pad / 2, pad, 0);
-
-        EditText field = new EditText(this);
-        field.setSingleLine(true);
-        field.setHint("https://your-server.trycloudflare.com");
-        field.setText(prefs.getString("endpoint", ""));
-        fields.addView(field);
-
-        EditText tokenField = new EditText(this);
-        tokenField.setSingleLine(true);
-        tokenField.setHint("رمز إداري قديم (اختياري للمطور)");
-        tokenField.setInputType(android.text.InputType.TYPE_CLASS_TEXT
-            | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        // Never prefill the account session token into the legacy developer-token field.
-        tokenField.setText("");
-        fields.addView(tokenField);
-
-        new AlertDialog.Builder(this)
-            .setTitle("اتصال خادم JASSIM AI")
-            .setMessage("المستخدم العادي لا يحتاج رمز API؛ استخدم زر حساب لتسجيل الدخول. هذا الحقل اختياري للمطور فقط.")
-            .setView(fields)
-            .setNegativeButton("إلغاء", null)
-            .setPositiveButton("حفظ وفحص", (d, w) -> {
-                String value = field.getText().toString().trim();
-                String token = tokenField.getText().toString().trim();
-                if (!value.isEmpty() && !value.startsWith("https://")) {
-                    Toast.makeText(this, "الحماية مفعّلة: يجب استخدام رابط HTTPS فقط", Toast.LENGTH_LONG).show();
-                    return;
-                }
-                if (value.isEmpty()) {
-                    Toast.makeText(this, "أدخل رابط الخادم", Toast.LENGTH_LONG).show();
-                    return;
-                }
-                try {
-                    String normalizedEndpoint = value;
-                    while (normalizedEndpoint.endsWith("/")) {
-                        normalizedEndpoint = normalizedEndpoint.substring(0, normalizedEndpoint.length() - 1);
-                    }
-                    boolean endpointChanged = !normalizedEndpoint.equals(baseUrl());
-                    // Bearer session tokens belong to one server; never forward them to a newly configured host.
-                    if (endpointChanged) saveApiToken("");
-                    if (!token.isEmpty()) saveApiToken(token);
-                    prefs.edit().putString("endpoint", normalizedEndpoint).apply();
-                    checkHealth();
-                    if (readApiToken().isEmpty()) {
-                        d.dismiss();
-                        status.setText("● تم تغيير الخادم — سجّل الدخول مجدداً");
-                        status.setTextColor(0xFFFFC36B);
-                        accountDialog();
-                    } else {
-                        loadHistory();
-                    }
-                } catch (Exception e) {
-                    Toast.makeText(this, "تعذر حفظ الرمز بأمان على هذا الجهاز", Toast.LENGTH_LONG).show();
-                }
-            }).show();
     }
 
     @Override protected void onDestroy() {
