@@ -112,9 +112,11 @@ jobs:
                   time.sleep(5)
           PY
 
-      - name: Explain skipped private deployment check
+      - name: Mark private deployment readiness as unverified
         if: ${{ vars.JASSIM_HEALTHCHECK_URL == '' }}
-        run: echo "No JASSIM_HEALTHCHECK_URL repository variable; private deployment readiness check skipped. Local backend and emulator tests still run."
+        run: |
+          echo "::warning::PRIVATE_DEPLOYMENT_UNVERIFIED: JASSIM_HEALTHCHECK_URL is not configured. Local tests and APK build do not prove that the private model server is online or ready for public users."
+          echo "Deployment status: UNVERIFIED (no health-check URL configured)."
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
