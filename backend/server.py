@@ -2,6 +2,7 @@
 """JASSIM AI self-hosted API. Standard-library only; safe localhost default."""
 import json
 import os
+import ipaddress
 import storage
 import auth
 import threading
@@ -50,6 +51,46 @@ RATE_LOCK = threading.Lock()
 RATE_BUCKETS = {}
 RATE_LIMIT = int(os.environ.get("JASSIM_RATE_LIMIT_PER_MINUTE", "20"))
 RATE_WINDOW = 60
+
+def parse_trusted_proxy_networks(value):
+    """Parse explicitly trusted reverse-proxy IPs/CIDRs; empty means trust no proxy."""
+    entries = [item.strip() for item in str(value or "").split(",") if item.strip()]
+    return tuple(ipaddress.ip_network(item, strict=False) for item in entries)
+
+
+TRUSTED_PROXY_NETWORKS = parse_trusted_proxy_networks(
+    os.environ.get("JASSIM_TRUSTED_PROXY_IPS", "")
+)
+
+
+def client_ip_from_headers(peer_address, forwarded_for, trusted_networks=()):
+    """Resolve a client IP without trusting spoofable forwarding headers from untrusted peers."""
+    try:
+        peer = ipaddress.ip_address(str(peer_address).strip())
+    except ValueError:
+        return str(peer_address)
+
+    def is_trusted(address):
+        return any(address.version == network.version and address in network
+                   for network in trusted_networks)
+
+    if not is_trusted(peer):
+        return str(peer)
+
+    raw_chain = [part.strip() for part in str(forwarded_for or "").split(",") if part.strip()]
+    if not raw_chain:
+        return str(peer)
+    try:
+        chain = [ipaddress.ip_address(part) for part in raw_chain]
+    except ValueError:
+        return str(peer)
+
+    current = peer
+    for candidate in reversed(chain):
+        if not is_trusted(current):
+            break
+        current = candidate
+    return str(current)
 OLLAMA_MAX_CONCURRENT = max(1, min(int(os.environ.get("JASSIM_MAX_CONCURRENT", "1")), 4))
 OLLAMA_QUEUE_TIMEOUT = max(5, min(int(os.environ.get("JASSIM_QUEUE_TIMEOUT", "180")), 600))
 INFERENCE_SEMAPHORE = threading.BoundedSemaphore(OLLAMA_MAX_CONCURRENT)
@@ -576,9 +617,13 @@ class Handler(BaseHTTPRequestHandler):
             # Do not make unrelated customers share one bucket behind Railway's proxy.
             client = "user:" + str(identity["user_id"])
         else:
-            # Railway forwards the original client address; use it for public auth routes.
-            forwarded = self.headers.get("X-Forwarded-For", "")
-            client = "ip:" + (forwarded.split(",")[0].strip() or self.client_address[0])
+            # Forwarded addresses are used only when the immediate peer is explicitly trusted.
+            address = client_ip_from_headers(
+                self.client_address[0],
+                self.headers.get("X-Forwarded-For", ""),
+                TRUSTED_PROXY_NETWORKS
+            )
+            client = "ip:" + address
         with RATE_LOCK:
             hits = [stamp for stamp in RATE_BUCKETS.get(client, []) if now - stamp < RATE_WINDOW]
             if len(hits) >= RATE_LIMIT:
