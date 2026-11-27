@@ -645,11 +645,12 @@ class ServerSmokeTest(unittest.TestCase):
         isolated = ast.Module(body=[function], type_ignores=[])
         exec(compile(isolated, str(notebook_path), "exec"), namespace)
         choose = namespace["choose_default_model"]
-        self.assertEqual(choose(15360), "qwen3.5:9b")
-        self.assertEqual(choose(14000), "qwen3.5:9b")
-        self.assertEqual(choose(12288), "qwen3.5:4b")
-        self.assertEqual(choose(0), "qwen3.5:4b")
-        self.assertEqual(choose(15360, "custom/private-model:latest"), "custom/private-model:latest")
+        self.assertEqual(choose(15360, 14000), "qwen3.5:9b")
+        self.assertEqual(choose(14000, 10000), "qwen3.5:9b")
+        self.assertEqual(choose(15360, 9000), "qwen3.5:4b")
+        self.assertEqual(choose(12288, 11000), "qwen3.5:4b")
+        self.assertEqual(choose(0, 0), "qwen3.5:4b")
+        self.assertEqual(choose(15360, 14000, "custom/private-model:latest"), "custom/private-model:latest")
 
 
 if __name__ == "__main__":
