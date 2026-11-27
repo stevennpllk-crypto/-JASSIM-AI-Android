@@ -16,6 +16,16 @@ This deployment runs the API and Ollama together on an always-on Linux host (VPS
 - Enough RAM/VRAM for the selected model. The default `qwen3.5:4b` is the lighter compatibility choice. For stronger reasoning and coding, set `JASSIM_OLLAMA_MODEL=qwen3.5:9b` on a host with enough memory; the quantized model download is about 6.6 GB, before runtime/context overhead. If the host struggles, return to 4B.
 - CPU-only operation is supported but can be much slower. For NVIDIA GPU acceleration, install the NVIDIA Container Toolkit and use the GPU override.
 
+## Railway-specific deployment requirements
+
+Railway does not automatically start every service in `docker-compose.yml` when this repository is deployed from its `Dockerfile`. The Dockerfile starts the Python API only; it does not install or launch an Ollama server.
+
+For a Railway deployment, provision Ollama as a separate private service (or deliberately package and supervise it in the same container), attach persistent storage for model weights, and set `JASSIM_OLLAMA_URL` to the Ollama service's private internal address. Do not use `127.0.0.1:11434` when Ollama runs in a different service: loopback refers to the API container itself. The API and model service must have enough memory for the selected model and its context; a small API-only allocation is not a model host.
+
+Set the Railway service health-check path to `/ready`, not `/health`, when the deployment is intended to serve chat. `/health` is intentionally a liveness/diagnostics endpoint and can return HTTP 200 while Ollama is unavailable. `/ready` verifies the API token, Ollama reachability, and configured model availability. A successful `/ready` check still does not replace a real authenticated chat-generation test.
+
+Do not publish a deployment as ready merely because the API container is online. Confirm all of the following: the Ollama service is online, the configured model is installed, `/ready` returns HTTP 200, and an authenticated `/api/chat/stream` request completes successfully.
+
 ## Model quality
 
 The Colab notebook automatically selects Qwen3.5 9B when it detects an NVIDIA GPU and falls back to 4B otherwise. On a permanent host, choose deliberately in `.env`: 9B for better capability when memory permits, 4B for lower resource use. JASSIM allows up to 3072 output tokens by default and serializes generations to reduce GPU memory spikes. This improves answer depth and service stability, but does not replace evaluation on Arabic/Tunisian prompts.
