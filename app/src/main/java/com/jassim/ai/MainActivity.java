@@ -144,10 +144,18 @@ public class MainActivity extends Activity {
                 if (discovery != null) discovery.disconnect();
             }
 
-            final String endpoint = discovered;
-            if (!endpoint.isEmpty()) {
-                prefs.edit().putString("endpoint", endpoint).apply();
+            // A session token is scoped to the server that issued it. Never forward
+            // credentials to a newly discovered host when the registry URL changes.
+            if (!discovered.isEmpty() && !discovered.equals(baseUrl())) {
+                try {
+                    if (!readApiToken().isEmpty()) saveApiToken("");
+                    prefs.edit().putString("endpoint", discovered).apply();
+                } catch (Exception ignored) {
+                    // Fail closed: keep the previous endpoint if its token cannot be cleared.
+                    discovered = "";
+                }
             }
+            final String endpoint = discovered;
             runOnUiThread(() -> {
                 if (baseUrl().isEmpty()) {
                     addMessage("JASSIM AI", "لم يتم العثور على خادم JASSIM الخاص. افتح الإعدادات وأدخل رابط الخادم الخاص بعد تشغيله. لن تُرسل رسائلك إلى أي مزوّد خارجي.");
