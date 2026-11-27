@@ -219,6 +219,35 @@ class ServerSmokeTest(unittest.TestCase):
                 else:
                     os.environ["JASSIM_DATA_DIR"] = previous_data_dir
 
+    def test_account_memory_is_shared_across_conversations_and_isolated_by_user(self):
+        import importlib.util
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_account_memory_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                module.set_user_memory("user-a", "أفضل الشرح باللغة العربية")
+                self.assertEqual(
+                    module.get_user_memory("user-a"),
+                    "أفضل الشرح باللغة العربية"
+                )
+                self.assertEqual(module.get_user_memory("user-b"), "")
+                self.assertTrue(module.clear_user_memory("user-a"))
+                self.assertEqual(module.get_user_memory("user-a"), "")
+                self.assertFalse(module.clear_user_memory("user-a"))
+                with self.assertRaises(ValueError):
+                    module.set_user_memory("user-a", " ")
+                with self.assertRaises(ValueError):
+                    module.set_user_memory("user-a", "x" * 2001)
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+
     def test_inference_queue_rejects_overload_cleanly(self):
         import importlib.util
         spec = importlib.util.spec_from_file_location("jassim_queue_test", Path(__file__).with_name("server.py"))
