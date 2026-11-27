@@ -1,3 +1,4 @@
+import json
 import unittest
 from pathlib import Path
 
@@ -8,6 +9,7 @@ DASHBOARD_JS = ROOT / "dashboard/app.js"
 DASHBOARD_HTML = ROOT / "dashboard/index.html"
 ENV_EXAMPLE = ROOT / ".env.example"
 STORAGE = ROOT / "backend/storage.py"
+COLAB_NOTEBOOK = ROOT / "notebooks/JASSIM_AI_Colab_GPU.ipynb"
 
 
 class SinglePrivateEngineTest(unittest.TestCase):
@@ -36,6 +38,23 @@ class SinglePrivateEngineTest(unittest.TestCase):
         self.assertLess(
             source.index('if (!readApiToken().isEmpty()) saveApiToken("");'),
             source.index('prefs.edit().putString("endpoint", discovered).apply();'),
+        )
+
+
+    def test_android_discovery_url_matches_colab_published_registry(self):
+        android = ANDROID_CHAT.read_text(encoding="utf-8")
+        notebook = json.loads(COLAB_NOTEBOOK.read_text(encoding="utf-8"))
+        notebook_source = "\\n".join(
+            "".join(cell.get("source", [])) for cell in notebook.get("cells", [])
+        )
+        self.assertIn(
+            "https://stevennpllk-crypto.github.io/-JASSIM-AI-Android/dashboard/connection.json",
+            android,
+        )
+        self.assertIn("REGISTRY_PATH = 'dashboard/connection.json'", notebook_source)
+        self.assertNotIn(
+            "https://stevennpllk-crypto.github.io/-JASSIM-AI-Android/connection.json",
+            android,
         )
 
     def test_clients_have_no_provider_evaluation_controls(self):
