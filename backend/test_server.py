@@ -3,6 +3,7 @@ import json
 import os
 import tempfile
 import unittest
+import sqlite3
 from pathlib import Path
 from urllib.request import Request, urlopen
 import subprocess
@@ -242,6 +243,54 @@ class ServerSmokeTest(unittest.TestCase):
                     module.set_user_memory("user-a", " ")
                 with self.assertRaises(ValueError):
                     module.set_user_memory("user-a", "x" * 2001)
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+
+    def test_legacy_conversation_memory_migrates_once_and_does_not_return_after_clear(self):
+        import importlib.util
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "jassim.db"
+            legacy = sqlite3.connect(db_path)
+            legacy.execute("""CREATE TABLE conversations (
+                conversation_id TEXT PRIMARY KEY, user_id TEXT NOT NULL,
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL)""")
+            legacy.execute("""CREATE TABLE memories (
+                conversation_id TEXT PRIMARY KEY, content TEXT NOT NULL,
+                updated_at TEXT NOT NULL)""")
+            legacy.execute(
+                "INSERT INTO conversations VALUES(?,?,?,?)",
+                ("old-chat", "user-a", "2026-01-01T00:00:00+00:00", "2026-01-02T00:00:00+00:00")
+            )
+            legacy.execute(
+                "INSERT INTO memories VALUES(?,?,?)",
+                ("old-chat", "معلومة قديمة محفوظة", "2026-01-02T00:00:00+00:00")
+            )
+            legacy.commit()
+            legacy.close()
+
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_memory_migration_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                self.assertEqual(
+                    module.get_user_memory("user-a"),
+                    "معلومة قديمة محفوظة"
+                )
+                self.assertTrue(module.clear_user_memory("user-a"))
+                module.storage._SCHEMA_READY_KEY = None
+                module.connect_db().close()
+                self.assertEqual(module.get_user_memory("user-a"), "")
+                db = module.connect_db()
+                try:
+                    self.assertEqual(db.execute("SELECT COUNT(*) FROM memories").fetchone()[0], 0)
+                finally:
+                    db.close()
             finally:
                 if previous_data_dir is None:
                     os.environ.pop("JASSIM_DATA_DIR", None)
