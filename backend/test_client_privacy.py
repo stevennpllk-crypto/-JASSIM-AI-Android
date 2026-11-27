@@ -28,6 +28,16 @@ class SinglePrivateEngineTest(unittest.TestCase):
         self.assertIn("لن تُرسل رسائلك إلى أي مزوّد خارجي", android)
         self.assertIn('prefs.getString("endpoint", "")', android)
 
+    def test_discovered_server_change_clears_server_scoped_session_token(self):
+        source = ANDROID_CHAT.read_text(encoding="utf-8")
+        self.assertIn("if (!discovered.isEmpty() && !discovered.equals(baseUrl()))", source)
+        self.assertIn('if (!readApiToken().isEmpty()) saveApiToken("");', source)
+        self.assertIn("Fail closed: keep the previous endpoint if its token cannot be cleared.", source)
+        self.assertLess(
+            source.index('if (!readApiToken().isEmpty()) saveApiToken("");'),
+            source.index('prefs.edit().putString("endpoint", discovered).apply();'),
+        )
+
     def test_clients_have_no_provider_evaluation_controls(self):
         android = ANDROID_CHAT.read_text(encoding="utf-8")
         dashboard = DASHBOARD_JS.read_text(encoding="utf-8")
