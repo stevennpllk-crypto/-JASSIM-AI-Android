@@ -166,6 +166,9 @@ public class MainActivity extends Activity {
                     discovered = "";
                 }
             }
+            if (!discovered.isEmpty()) {
+                prefs.edit().putString("endpoint_source", "discovery").apply();
+            }
             final String endpoint = discovered;
             runOnUiThread(() -> {
                 if (baseUrl().isEmpty()) {
@@ -469,6 +472,7 @@ public class MainActivity extends Activity {
             status.setTextColor(0xFFFFC36B);
             return;
         }
+        final String checkedEndpoint = baseUrl();
         status.setText("● نفحص اتصال الخادم...");
         executor.execute(() -> {
             HttpURLConnection connection = null;
@@ -490,6 +494,14 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> {
                     status.setText("● فشل الاتصال: " + error);
                     status.setTextColor(0xFFFF7777);
+                    // Only discard a stale endpoint that came from public discovery.
+                    // Keep manually configured endpoints and never forward their token elsewhere.
+                    if (checkedEndpoint.equals(baseUrl())
+                            && "discovery".equals(prefs.getString("endpoint_source", ""))) {
+                        prefs.edit().remove("endpoint").apply();
+                        status.setText("● عنوان الخادم المكتشف لا يستجيب — سنبحث عن خادم آخر تلقائياً");
+                        scheduleDiscoveryRetry();
+                    }
                 });
             } finally {
                 if (connection != null) connection.disconnect();
@@ -952,7 +964,10 @@ public class MainActivity extends Activity {
                     // Bearer session tokens belong to one server; never forward them to a newly configured host.
                     if (endpointChanged) saveApiToken("");
                     if (!token.isEmpty()) saveApiToken(token);
-                    prefs.edit().putString("endpoint", normalizedEndpoint).apply();
+                    prefs.edit()
+                        .putString("endpoint", normalizedEndpoint)
+                        .putString("endpoint_source", "manual")
+                        .apply();
                     checkHealth();
                     if (readApiToken().isEmpty()) {
                         d.dismiss();
