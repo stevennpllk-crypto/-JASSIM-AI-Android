@@ -1,3 +1,4 @@
+import ast
 import json
 import os
 import tempfile
@@ -630,6 +631,26 @@ class ServerSmokeTest(unittest.TestCase):
                 fake_ollama.shutdown()
                 fake_ollama.server_close()
                 fake_thread.join(timeout=2)
+
+
+    def test_colab_model_selection_uses_gpu_memory_and_respects_override(self):
+        notebook_path = Path(__file__).resolve().parents[1] / "notebooks" / "JASSIM_AI_Colab_GPU.ipynb"
+        notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
+        cell = next(cell for cell in notebook["cells"] if cell.get("id") == "5wJsGoti6u7Q")
+        source = "".join(cell.get("source", []))
+        tree = ast.parse(source)
+        function = next(node for node in tree.body
+                        if isinstance(node, ast.FunctionDef) and node.name == "choose_default_model")
+        namespace = {}
+        isolated = ast.Module(body=[function], type_ignores=[])
+        exec(compile(isolated, str(notebook_path), "exec"), namespace)
+        choose = namespace["choose_default_model"]
+        self.assertEqual(choose(15360), "qwen3.5:9b")
+        self.assertEqual(choose(14000), "qwen3.5:9b")
+        self.assertEqual(choose(12288), "qwen3.5:4b")
+        self.assertEqual(choose(0), "qwen3.5:4b")
+        self.assertEqual(choose(15360, "custom/private-model:latest"), "custom/private-model:latest")
+
 
 if __name__ == "__main__":
     unittest.main()
