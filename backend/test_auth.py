@@ -160,9 +160,11 @@ class MultiUserAuthTest(unittest.TestCase):
                     "message": "احفظ أن هذه معلومة بديلة من الحساب الثاني"
                 })
             self.assertEqual(overwrite_denied.exception.code, 404)
-            self.assertEqual(self.server.get_memory("http-private-first", first["user"]["id"]),
+            self.assertEqual(self.server.get_user_memory(first["user"]["id"]),
                              "هذه معلومة خاصة بالحساب الأول")
-            self.assertFalse(self.server.clear_memory("http-private-first", second["user"]["id"]))
+            self.assertFalse(self.server.clear_user_memory(second["user"]["id"]))
+            self.assertEqual(self.server.get_user_memory(first["user"]["id"]),
+                             "هذه معلومة خاصة بالحساب الأول")
 
             with self.assertRaises(HTTPError) as denied:
                 call("/api/conversations?conversation_id=http-private-first", "DELETE", second_token)
