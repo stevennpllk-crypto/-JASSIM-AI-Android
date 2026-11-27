@@ -3,6 +3,8 @@ package com.jassim.ai;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.view.Gravity;
@@ -43,6 +45,15 @@ public class MainActivity extends Activity {
     private volatile HttpURLConnection activeChatConnection;
     private volatile boolean cancelRequested;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final Runnable discoveryRetry = () -> {
+        if (!isFinishing() && baseUrl().isEmpty()) autoConnect();
+    };
+
+    private void scheduleDiscoveryRetry() {
+        mainHandler.removeCallbacks(discoveryRetry);
+        mainHandler.postDelayed(discoveryRetry, 30000L);
+    }
     private static final String KEY_ALIAS = "jassim_api_token_v1";
     private SecretKey getOrCreateSecretKey() throws Exception {
         KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
@@ -158,10 +169,14 @@ public class MainActivity extends Activity {
             final String endpoint = discovered;
             runOnUiThread(() -> {
                 if (baseUrl().isEmpty()) {
-                    addMessage("JASSIM AI", "لم يتم العثور على خادم JASSIM الخاص. افتح الإعدادات وأدخل رابط الخادم الخاص بعد تشغيله. لن تُرسل رسائلك إلى أي مزوّد خارجي.");
-                    status.setText("● الخادم الخاص غير متصل — لا يوجد مزوّد خارجي");
+                    if (messages.getChildCount() == 0) {
+                        addMessage("JASSIM AI", "لم يتم العثور على خادم JASSIM الخاص بعد. سيعيد التطبيق البحث تلقائياً كل 30 ثانية. لن تُرسل رسائلك إلى أي مزوّد خارجي.");
+                    }
+                    status.setText("● الخادم الخاص غير متصل — إعادة المحاولة تلقائياً");
                     status.setTextColor(0xFFFF7777);
+                    scheduleDiscoveryRetry();
                 } else {
+                    mainHandler.removeCallbacks(discoveryRetry);
                     status.setText(endpoint.isEmpty()
                         ? "● تعذر تحديث الرابط — نجرب آخر عنوان محفوظ"
                         : "● تم اكتشاف الخادم تلقائياً — جارٍ الاتصال...");
@@ -954,6 +969,7 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        mainHandler.removeCallbacks(discoveryRetry);
         super.onDestroy();
         executor.shutdown();
     }
