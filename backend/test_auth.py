@@ -162,6 +162,17 @@ class MultiUserAuthTest(unittest.TestCase):
             self.assertEqual(overwrite_denied.exception.code, 404)
             self.assertEqual(self.server.get_user_memory(first["user"]["id"]),
                              "هذه معلومة خاصة بالحساب الأول")
+
+            # Streaming requests must enforce the same conversation ownership boundary.
+            with self.assertRaises(HTTPError) as stream_denied:
+                call("/api/chat/stream", "POST", second_token, {
+                    "conversation_id": "http-private-first",
+                    "message": "ماذا تتذكر عني؟"
+                })
+            self.assertEqual(stream_denied.exception.code, 404)
+            self.assertEqual(self.server.get_user_memory(first["user"]["id"]),
+                             "هذه معلومة خاصة بالحساب الأول")
+
             self.assertFalse(self.server.clear_user_memory(second["user"]["id"]))
             self.assertEqual(self.server.get_user_memory(first["user"]["id"]),
                              "هذه معلومة خاصة بالحساب الأول")
