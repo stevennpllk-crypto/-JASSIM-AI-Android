@@ -263,6 +263,53 @@ def clear_memory(conversation_id, user_id="legacy-owner"):
             db.close()
 
 
+def get_user_memory(user_id):
+    """Return explicit, account-wide memory for the authenticated user."""
+    with DB_LOCK:
+        db = connect_db()
+        try:
+            row = db.execute(
+                "SELECT content FROM user_memories WHERE user_id=?",
+                (user_id,)
+            ).fetchone()
+            return row[0] if row else ""
+        finally:
+            db.close()
+
+
+def set_user_memory(user_id, content):
+    content = str(content).strip()
+    if not content or len(content) > 2000:
+        raise ValueError("memory_must_be_1_to_2000_chars")
+    with DB_LOCK:
+        db = connect_db()
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            db.execute(
+                """INSERT INTO user_memories(user_id, content, updated_at)
+                   VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET
+                   content=excluded.content, updated_at=excluded.updated_at""",
+                (user_id, content, now)
+            )
+            db.commit()
+        finally:
+            db.close()
+
+
+def clear_user_memory(user_id):
+    with DB_LOCK:
+        db = connect_db()
+        try:
+            cursor = db.execute(
+                "DELETE FROM user_memories WHERE user_id=?",
+                (user_id,)
+            )
+            db.commit()
+            return cursor.rowcount > 0
+        finally:
+            db.close()
+
+
 def memory_command(message):
     text = str(message).strip()
     for prefix in ("تذكر أن ", "تذكّر أن ", "احفظ أن ", "تذكر ان ", "احفظ ان "):
@@ -844,8 +891,8 @@ class Handler(BaseHTTPRequestHandler):
                 if not memory_text:
                     self.send_json(400, {"error": "memory_content_required"})
                     return
-                set_memory(conversation_id, memory_text, identity["user_id"])
-                answer = "حفظت هذه المعلومة في ذاكرة هذه المحادثة. يمكنك عرضها بقول «ماذا تتذكر عني؟» أو مسحها بقول «انسَ ذاكرتي»."
+                set_user_memory(identity["user_id"], memory_text)
+                answer = "حفظت هذه المعلومة في ذاكرة حسابك، وستكون متاحة في محادثاتك الأخرى. يمكنك عرضها بقول «ماذا تتذكر عني؟» أو مسحها بقول «انسَ ذاكرتي»."
                 save_message(conversation_id, "user", message, identity["user_id"])
                 save_message(conversation_id, "assistant", answer, identity["user_id"])
                 if streaming:
@@ -854,8 +901,8 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(200, {"answer": answer, "reply": answer, "conversation_id": conversation_id, "engine": "memory"})
                 return
             if command == "show":
-                saved_memory = get_memory(conversation_id, identity["user_id"])
-                answer = ("المحفوظ في ذاكرة هذه المحادثة: " + saved_memory) if saved_memory else "لا توجد معلومات محفوظة في ذاكرة هذه المحادثة."
+                saved_memory = get_user_memory(identity["user_id"])
+                answer = ("المحفوظ في ذاكرة حسابك: " + saved_memory) if saved_memory else "لا توجد معلومات محفوظة في ذاكرة حسابك."
                 save_message(conversation_id, "user", message, identity["user_id"])
                 save_message(conversation_id, "assistant", answer, identity["user_id"])
                 if streaming:
@@ -864,8 +911,8 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(200, {"answer": answer, "reply": answer, "conversation_id": conversation_id, "engine": "memory"})
                 return
             if command == "clear":
-                clear_memory(conversation_id, identity["user_id"])
-                answer = "تم مسح ذاكرة هذه المحادثة."
+                clear_user_memory(identity["user_id"])
+                answer = "تم مسح الذاكرة المحفوظة لحسابك."
                 save_message(conversation_id, "user", message, identity["user_id"])
                 save_message(conversation_id, "assistant", answer, identity["user_id"])
                 if streaming:
@@ -874,7 +921,7 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(200, {"answer": answer, "reply": answer, "conversation_id": conversation_id, "engine": "memory"})
                 return
             previous = history(conversation_id, max(1, HISTORY_MESSAGES - 1), identity["user_id"])
-            saved_memory = get_memory(conversation_id, identity["user_id"])
+            saved_memory = get_user_memory(identity["user_id"])
             if saved_memory:
                 previous.insert(0, {"role": "system", "content": "معلومات اختار المستخدم حفظها صراحةً في ذاكرة حسابه الخاصة، استخدمها فقط عندما تكون ذات صلة ولا تفترض أنها حقائق خارج هذا السياق: " + saved_memory})
             context = fit_history_to_budget(previous + [{"role": "user", "content": message}])
