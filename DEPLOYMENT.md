@@ -96,3 +96,10 @@ The current Android workflow is configured to run on pushes to `main`, pull requ
 
 This audit deliberately did not dispatch or re-run Actions. Before treating this branch as release-ready, run the repository workflow against this exact commit and review all test, APK, and emulator results. The existing successful run on `main` validates only the source revision recorded by that run; it does not validate later commits on this development branch.
 
+## Railway capacity check — 2026-11-27
+
+A read-only-safe staging attempt confirmed that the current Railway plan rejects persistent volumes larger than 500 MB. A 4B Ollama model needs more storage than this limit, so the current plan cannot host the model weights in a persistent Railway volume. The API allocation (1 vCPU / 1 GB RAM) is also insufficient to run the model in the API container.
+
+An Ollama service was briefly created as an uncommitted staged change while checking whether the architecture could be prepared without affecting production. It was removed before completion; a final staged-change inspection confirmed that no Railway changes remain pending. No deployment, volume provisioning, or paid resource change was performed.
+
+Do not point the production API at a not-yet-provisioned Ollama hostname. The next viable route is either (a) approve a Railway plan/resource upgrade that supports persistent multi-GB model storage and sufficient RAM/CPU, or (b) use the existing GPU notebook as a temporary model host, accepting that its session and public tunnel are not permanently available. Neither route is activated automatically.
