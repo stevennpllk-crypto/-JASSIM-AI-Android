@@ -1,0 +1,59 @@
+name: Validate JASSIM AI development branch
+
+on:
+  push:
+    branches:
+      - feat/gpu-aware-model-selection
+    paths:
+      - "backend/**"
+      - "notebooks/**"
+      - "dashboard/**"
+      - ".github/workflows/dev-validation.yml"
+      - ".github/workflows/android.yml"
+      - "app/src/main/java/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jassim-dev-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-and-notebook:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout development branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/gpu-aware-model-selection
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate Colab notebook JSON and Python cells
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("notebooks/JASSIM_AI_Colab_GPU.ipynb")
+          notebook = json.loads(path.read_text(encoding="utf-8"))
+          code_cells = 0
+          for index, cell in enumerate(notebook.get("cells", [])):
+              if cell.get("cell_type") == "code":
+                  source = "".join(cell.get("source", []))
+                  compile(source, f"{path}:cell-{index}", "exec")
+                  code_cells += 1
+          print(f"Validated notebook JSON and {code_cells} Python cells.")
+          PY
+
+      - name: Run backend, authentication, storage and privacy tests
+        run: python -m unittest discover -s backend -p 'test_*.py' -v
+
+      - name: Validate dashboard JavaScript syntax
+        run: node --check dashboard/app.js
