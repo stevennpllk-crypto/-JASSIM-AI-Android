@@ -90,3 +90,9 @@ The production environment was inspected without changing its configuration or s
 
 These observations are diagnostic, not a production change. Do not switch the health-check path to `/ready` or create/resize services until a working Ollama service, adequate memory, and persistent model storage have been provisioned. Do not mark chat as operational until `/ready` returns HTTP 200 and an authenticated generation request succeeds.
 
+## Development-branch validation boundary
+
+The current Android workflow is configured to run on pushes to `main`, pull requests targeting `main`, or manual dispatch. A push to `feat/gpu-aware-model-selection` alone does not start that workflow. The development branch currently has no associated Actions run, so its backend unit tests, APK build, and emulator smoke test remain unverified.
+
+This audit deliberately did not dispatch or re-run Actions. Before treating this branch as release-ready, run the repository workflow against this exact commit and review all test, APK, and emulator results. The existing successful run on `main` validates only the source revision recorded by that run; it does not validate later commits on this development branch.
+
