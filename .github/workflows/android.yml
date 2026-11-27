@@ -2,7 +2,9 @@ name: Build JASSIM AI APK
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - "main"
+      - "feat/gpu-aware-model-selection"
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
