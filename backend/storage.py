@@ -67,6 +67,11 @@ def ensure_schema(db, sqlite_path=None):
                     content TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )""",
+                """CREATE TABLE IF NOT EXISTS user_memories (
+                    user_id TEXT PRIMARY KEY,
+                    content TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )""",
                 """CREATE TABLE IF NOT EXISTS users (
                     id TEXT PRIMARY KEY,
                     email_normalized TEXT NOT NULL UNIQUE,
@@ -106,6 +111,11 @@ def ensure_schema(db, sqlite_path=None):
                 "CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, id)",
                 """CREATE TABLE IF NOT EXISTS memories (
                     conversation_id TEXT PRIMARY KEY,
+                    content TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )""",
+                """CREATE TABLE IF NOT EXISTS user_memories (
+                    user_id TEXT PRIMARY KEY,
                     content TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )""",
@@ -156,6 +166,28 @@ def ensure_schema(db, sqlite_path=None):
                FROM memories m WHERE 1=1
                ON CONFLICT(conversation_id) DO NOTHING"""
         )
+        # Consolidate pre-existing conversation memories into one private record
+        # per owner. Preserve all distinct notes within the existing 2,000-char cap.
+        legacy_rows = db.execute(
+            """SELECT c.user_id,m.content,m.updated_at
+               FROM memories m JOIN conversations c ON c.conversation_id=m.conversation_id
+               ORDER BY m.updated_at DESC"""
+        ).fetchall()
+        grouped = {}
+        for owner_id, note, updated_at in legacy_rows:
+            bucket = grouped.setdefault(owner_id, {"notes": [], "updated_at": updated_at})
+            if note and note not in bucket["notes"]:
+                bucket["notes"].append(note)
+            if updated_at > bucket["updated_at"]:
+                bucket["updated_at"] = updated_at
+        for owner_id, bucket in grouped.items():
+            merged = "؛ ".join(bucket["notes"])
+            if merged:
+                db.execute(
+                    """INSERT INTO user_memories(user_id,content,updated_at)
+                       VALUES(?,?,?) ON CONFLICT(user_id) DO NOTHING""",
+                    (owner_id, merged[:2000], bucket["updated_at"])
+                )
         db.commit()
         _SCHEMA_READY_KEY = schema_key
 
