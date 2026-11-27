@@ -75,3 +75,18 @@ The Colab notebook automatically selects Qwen3.5 9B when it detects an NVIDIA GP
 - A stable public address requires a domain/reverse proxy or a configured named tunnel. Cloudflare Quick Tunnel URLs are temporary.
 - The shared Bearer token is still one shared identity, not individual accounts.
 - `/health` is liveness/diagnostics. `/ready` returns HTTP 503 unless the API token is configured and Ollama is reachable with the configured model installed.
+
+## Read-only Railway audit — 2026-11-27
+
+The production environment was inspected without changing its configuration or starting a deployment. The observed state is:
+
+- The API service deploys from the repository's `main` branch, not `feat/gpu-aware-model-selection`. Changes on the development branch are therefore not active in production.
+- The API service is online with 2/2 replicas, but has no volume mounted. A separate 500 MB volume named `jassim-ai-data-v2` exists and is currently unattached.
+- PostgreSQL is online and has its own persistent volume. This is the currently attached persistent database service; the unattached data volume should not be treated as active application storage.
+- No Ollama service exists in this Railway environment. The API's source default is `http://127.0.0.1:11434`; unless a valid Ollama endpoint is explicitly configured, that address targets the API container itself.
+- The API allocation is 1 vCPU and 1 GB RAM across 2 replicas. This is an API-sized allocation, not a suitable place to host a 4B/9B Ollama model.
+- Railway's configured health-check path is `/health`. This can report the API process as alive while private inference is unavailable. The code's `/ready` endpoint checks API-token configuration, Ollama reachability, and whether the configured model is installed.
+- The `jassim-remote-mcp` service exists but has no deployment and is offline.
+
+These observations are diagnostic, not a production change. Do not switch the health-check path to `/ready` or create/resize services until a working Ollama service, adequate memory, and persistent model storage have been provisioned. Do not mark chat as operational until `/ready` returns HTTP 200 and an authenticated generation request succeeds.
+
