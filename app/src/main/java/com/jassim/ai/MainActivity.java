@@ -109,7 +109,7 @@ public class MainActivity extends Activity {
     // Optional discovery registry. Publishing is disabled by default in Colab.
     // The registry contains an endpoint only after explicit owner opt-in.
     private static final String DISCOVERY_URL =
-        "https://stevennpllk-crypto.github.io/-JASSIM-AI-Android/connection.json";
+        "https://stevennpllk-crypto.github.io/-JASSIM-AI-Android/dashboard/connection.json";
 
     private void autoConnect() {
         executor.execute(() -> {
