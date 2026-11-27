@@ -148,9 +148,9 @@ class MultiUserAuthTest(unittest.TestCase):
             self.assertEqual(second_history["messages"], [])
 
             # The saved memory belongs to the first account, not merely to a known conversation ID.
-            self.assertEqual(self.server.get_memory("http-private-first", first["user"]["id"]),
+            self.assertEqual(self.server.get_user_memory(first["user"]["id"]),
                              "هذه معلومة خاصة بالحساب الأول")
-            self.assertEqual(self.server.get_memory("http-private-first", second["user"]["id"]), "")
+            self.assertEqual(self.server.get_user_memory(second["user"]["id"]), "")
             self.assertEqual(call("/api/conversations", token=second_token)[1]["conversations"], [])
 
             # A second account cannot overwrite the first account memory through the HTTP chat route.
