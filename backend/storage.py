@@ -188,6 +188,9 @@ def ensure_schema(db, sqlite_path=None):
                        VALUES(?,?,?) ON CONFLICT(user_id) DO NOTHING""",
                     (owner_id, merged[:2000], bucket["updated_at"])
                 )
+        # Old conversation-scoped rows have now been migrated. Removing them
+        # prevents a later startup from restoring memory after the user clears it.
+        db.execute("DELETE FROM memories")
         db.commit()
         _SCHEMA_READY_KEY = schema_key
 
