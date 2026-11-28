@@ -62,6 +62,9 @@ The API can call an Ollama server compatible with `POST /api/chat`.
 Set:
 - `JASSIM_OLLAMA_URL` (default `http://127.0.0.1:11434`)
 - `JASSIM_OLLAMA_MODEL` (default `qwen3.5:4b`)
+- `JASSIM_OLLAMA_AUTH_TOKEN` (optional; sends a bearer token to a trusted HTTPS authentication proxy in front of remote Ollama)
+
+Ollama itself does not validate this token. The reverse proxy must reject missing or incorrect bearer credentials. Keep the Ollama port private, use HTTPS, and never use an unauthenticated public tunnel. For a separate Ollama host, set `JASSIM_OLLAMA_URL` to its reachable HTTPS endpoint; the default loopback URL only works when Ollama runs in the same network namespace.
 
 Example:
 ```sh

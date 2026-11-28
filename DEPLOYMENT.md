@@ -16,6 +16,10 @@ This deployment runs the API and Ollama together on an always-on Linux host (VPS
 - Enough RAM/VRAM for the selected model. The default `qwen3.5:4b` is the lighter compatibility choice. For stronger reasoning and coding, set `JASSIM_OLLAMA_MODEL=qwen3.5:9b` on a host with enough memory; the quantized model download is about 6.6 GB, before runtime/context overhead. If the host struggles, return to 4B.
 - CPU-only operation is supported but can be much slower. For NVIDIA GPU acceleration, install the NVIDIA Container Toolkit and use the GPU override.
 
+## Connecting a remote Ollama host safely
+
+If Ollama runs on a separate host (including a temporary Colab session), set `JASSIM_OLLAMA_URL` on the API service to that host's HTTPS endpoint. Do not use `127.0.0.1:11434` across separate containers: loopback points back to the API container. Ollama's HTTP API has no built-in authentication, so put a trusted HTTPS reverse proxy in front of it, require a bearer token at that proxy, and set the same secret as `JASSIM_OLLAMA_AUTH_TOKEN` on the API service. The backend sends the token for both model requests and readiness probes. Never expose raw port 11434 or an unauthenticated tunnel. Use `/ready` to verify the model host; `/health` only proves the API process is alive.
+
 ## Model quality
 
 The Colab notebook automatically selects Qwen3.5 9B when it detects an NVIDIA GPU and falls back to 4B otherwise. On a permanent host, choose deliberately in `.env`: 9B for better capability when memory permits, 4B for lower resource use. JASSIM allows up to 3072 output tokens by default and serializes generations to reduce GPU memory spikes. This improves answer depth and service stability, but does not replace evaluation on Arabic/Tunisian prompts.
