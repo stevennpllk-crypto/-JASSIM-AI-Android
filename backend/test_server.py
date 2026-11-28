@@ -68,6 +68,41 @@ class FakeOllamaHandler(BaseHTTPRequestHandler):
 
 
 class ServerSmokeTest(unittest.TestCase):
+    def test_ollama_request_headers_support_optional_proxy_bearer_token(self):
+        import importlib.util
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_data_dir = os.environ.get("JASSIM_DATA_DIR")
+            os.environ["JASSIM_DATA_DIR"] = tmp
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "jassim_ollama_auth_test", Path(__file__).with_name("server.py"))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            finally:
+                if previous_data_dir is None:
+                    os.environ.pop("JASSIM_DATA_DIR", None)
+                else:
+                    os.environ["JASSIM_DATA_DIR"] = previous_data_dir
+
+        with patch.object(module, "OLLAMA_AUTH_TOKEN", "unit-test-token"):
+            self.assertEqual(
+                module.ollama_request_headers(),
+                {"Authorization": "Bearer unit-test-token"}
+            )
+            self.assertEqual(
+                module.ollama_request_headers(json_content=True),
+                {
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer unit-test-token"
+                }
+            )
+        with patch.object(module, "OLLAMA_AUTH_TOKEN", ""):
+            self.assertEqual(module.ollama_request_headers(), {})
+            self.assertEqual(
+                module.ollama_request_headers(json_content=True),
+                {"Content-Type": "application/json"}
+            )
+
     def test_ollama_http_error_reports_safe_error_field(self):
         import importlib.util
         from io import BytesIO
