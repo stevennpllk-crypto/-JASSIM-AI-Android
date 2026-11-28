@@ -16,6 +16,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 class FakeOllamaHandler(BaseHTTPRequestHandler):
     last_chat_payload = None
+    auth_headers = []
     offline = False
     stream_slow = False
 
@@ -23,6 +24,7 @@ class FakeOllamaHandler(BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
+        FakeOllamaHandler.auth_headers.append(self.headers.get("Authorization"))
         if FakeOllamaHandler.offline:
             self.send_error(503)
             return
@@ -41,6 +43,7 @@ class FakeOllamaHandler(BaseHTTPRequestHandler):
         self.wfile.write(raw)
 
     def do_POST(self):
+        FakeOllamaHandler.auth_headers.append(self.headers.get("Authorization"))
         if FakeOllamaHandler.offline:
             self.send_error(503)
             return
@@ -493,12 +496,14 @@ class ServerSmokeTest(unittest.TestCase):
             env["JASSIM_HOST"] = "127.0.0.1"
             FakeOllamaHandler.offline = False
             FakeOllamaHandler.last_chat_payload = None
+            FakeOllamaHandler.auth_headers = []
             env["JASSIM_API_TOKEN"] = "smoke-test-token"
             fake_ollama = HTTPServer(("127.0.0.1", 0), FakeOllamaHandler)
             fake_thread = threading.Thread(target=fake_ollama.serve_forever, daemon=True)
             fake_thread.start()
             env["JASSIM_OLLAMA_URL"] = "http://127.0.0.1:" + str(fake_ollama.server_port)
             env["JASSIM_OLLAMA_MODEL"] = "qwen3.5:4b"
+            env["JASSIM_OLLAMA_AUTH_TOKEN"] = "test-ollama-proxy-token"
             server_log_path = Path(tmp) / "server.log"
             server_log = open(server_log_path, "w")
             proc = subprocess.Popen([sys.executable, str(Path(__file__).with_name("server.py"))],
@@ -519,6 +524,8 @@ class ServerSmokeTest(unittest.TestCase):
                 self.assertTrue(health["model_ready"])
                 self.assertTrue(health["model_loaded"])
                 self.assertTrue(health["ollama_reachable"])
+                self.assertTrue(FakeOllamaHandler.auth_headers)
+                self.assertTrue(all(value == "Bearer test-ollama-proxy-token" for value in FakeOllamaHandler.auth_headers))
                 self.assertGreaterEqual(health["uptime_seconds"], 0)
                 with urlopen(api_base + "/ready", timeout=5) as r:
                     self.assertTrue(json.loads(r.read())["ready"])
@@ -543,6 +550,7 @@ class ServerSmokeTest(unittest.TestCase):
                 self.assertIn("إجابة اختبار", result["answer"])
                 self.assertEqual(result["conversation_id"], "smoke")
                 sent = FakeOllamaHandler.last_chat_payload
+                self.assertEqual(FakeOllamaHandler.auth_headers[-1], "Bearer test-ollama-proxy-token")
                 self.assertEqual(sent["model"], "qwen3.5:4b")
                 self.assertEqual(sent["keep_alive"], -1)
                 self.assertIsInstance(sent["keep_alive"], int)
