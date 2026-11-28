@@ -27,6 +27,16 @@ CORS_ORIGIN = os.environ.get("JASSIM_CORS_ORIGIN", "null")
 API_TOKEN = os.environ.get("JASSIM_API_TOKEN", "").strip()
 OLLAMA_URL = os.environ.get("JASSIM_OLLAMA_URL", "http://127.0.0.1:11434")
 OLLAMA_MODEL = os.environ.get("JASSIM_OLLAMA_MODEL", "qwen3.5:4b")
+# Optional bearer credential for a trusted HTTPS auth proxy in front of remote Ollama.
+# Ollama itself does not validate this header; the proxy must enforce it.
+OLLAMA_AUTH_TOKEN = os.environ.get("JASSIM_OLLAMA_AUTH_TOKEN", "").strip()
+
+
+def ollama_request_headers(json_content=False):
+    headers = {"Content-Type": "application/json"} if json_content else {}
+    if OLLAMA_AUTH_TOKEN:
+        headers["Authorization"] = "Bearer " + OLLAMA_AUTH_TOKEN
+    return headers
 def parse_ollama_keep_alive(value):
     """Keep numeric durations numeric; Ollama expects -1 as a JSON number, not the string "-1"."""
     raw = str(value).strip()
@@ -362,7 +372,7 @@ def ask_ollama(messages):
     request = urllib.request.Request(
         OLLAMA_URL.rstrip("/") + "/api/chat",
         data=payload,
-        headers={"Content-Type": "application/json"},
+        headers=ollama_request_headers(json_content=True),
         method="POST"
     )
     last_error = None
@@ -395,13 +405,13 @@ def ollama_status():
     """Check model availability and whether Ollama currently keeps it loaded."""
     base = OLLAMA_URL.rstrip("/")
     try:
-        with urllib.request.urlopen(urllib.request.Request(base + "/api/tags"), timeout=1.0) as response:
+        with urllib.request.urlopen(urllib.request.Request(base + "/api/tags", headers=ollama_request_headers()), timeout=1.0) as response:
             tags = json.loads(response.read().decode("utf-8"))
         names = [item.get("name", "") for item in tags.get("models", []) if isinstance(item, dict)]
         available = any(name == OLLAMA_MODEL or name.startswith(OLLAMA_MODEL + ":") for name in names)
         loaded = False
         try:
-            with urllib.request.urlopen(urllib.request.Request(base + "/api/ps"), timeout=1.0) as response:
+            with urllib.request.urlopen(urllib.request.Request(base + "/api/ps", headers=ollama_request_headers()), timeout=1.0) as response:
                 running = json.loads(response.read().decode("utf-8"))
             loaded = any(
                 item.get("name") == OLLAMA_MODEL or str(item.get("name", "")).startswith(OLLAMA_MODEL + ":")
@@ -490,7 +500,7 @@ class Handler(BaseHTTPRequestHandler):
             request = urllib.request.Request(
                 OLLAMA_URL.rstrip("/") + "/api/chat",
                 data=payload,
-                headers={"Content-Type": "application/json"},
+                headers=ollama_request_headers(json_content=True),
                 method="POST"
             )
             try:
